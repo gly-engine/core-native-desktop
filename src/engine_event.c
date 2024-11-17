@@ -2,6 +2,10 @@
 #include "game/bytecode.h"
 #include "zeebo.h"
 
+static int native_callback_loop;
+static int native_callback_draw;
+static int native_callback_keyboard;
+
 /**
  * @param [in] file_name
  * @param [out] buf
@@ -87,26 +91,46 @@ static void engine_init() {
             break;
         }
     } while (0);
+
+    lua_getglobal(L, "native_callback_loop");
+    native_callback_loop = luaL_ref(L, LUA_REGISTRYINDEX);
+
+    lua_getglobal(L, "native_callback_draw");
+    native_callback_draw = luaL_ref(L, LUA_REGISTRYINDEX);
+    
+    lua_getglobal(L, "native_callback_keyboard");
+    native_callback_keyboard = luaL_ref(L, LUA_REGISTRYINDEX);
 }
 
-static void engine_exit() {}
+static void engine_exit() {
+    lua_State *L = lua();
+    if (native_callback_loop) {
+        luaL_unref(L, LUA_REGISTRYINDEX, native_callback_loop);
+    }
+    if (native_callback_draw) {
+        luaL_unref(L, LUA_REGISTRYINDEX, native_callback_draw);
+    }
+    if (native_callback_keyboard) {
+        luaL_unref(L, LUA_REGISTRYINDEX, native_callback_keyboard);
+    }
+}
 
 static void engine_loop() {
     lua_State *L = lua();
-    lua_getglobal(L, "native_callback_loop");
+    lua_rawgeti(L, LUA_REGISTRYINDEX, native_callback_loop);
     lua_pushnumber(L, kernel_time.dt);
     lua_pcall(L, 1, 0, 0);
 }
 
 static void engine_draw() {
     lua_State *L = lua();
-    lua_getglobal(L, "native_callback_draw");
+    lua_rawgeti(L, LUA_REGISTRYINDEX, native_callback_draw);
     lua_pcall(L, 0, 0, 0);
 }
 
 void engine_keypress(const char *const key, uint8_t value) {
     lua_State *L = lua();
-    lua_getglobal(L, "native_callback_keyboard");
+    lua_rawgeti(L, LUA_REGISTRYINDEX, native_callback_keyboard);
     lua_pushstring(L, key);
     lua_pushinteger(L, value);
     lua_pcall(L, 2, 0, 0);

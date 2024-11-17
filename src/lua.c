@@ -28,5 +28,5 @@ lua_State *const lua() {
 void lua_install() {
     kernel_event_install(KERNEL_EVENT_PRE_INIT, lua_pre_init);
     kernel_event_install(KERNEL_EVENT_INIT, lua_init);
-    kernel_event_install(KERNEL_EVENT_EXIT, lua_exit);
+    kernel_event_install(KERNEL_EVENT_POST_EXIT, lua_exit);
 }
