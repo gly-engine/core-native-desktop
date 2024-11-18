@@ -92,12 +92,12 @@ static void engine_init() {
         }
     } while (0);
 
-    if (game && game != game_bytecode_lua) {
-        free(game);
+    if (game && (void*) game != (void*) game_bytecode_lua) {
+        free((void*) game);
     }
 
-    if (engine && engine != engine_bytecode_lua) {
-        free(engine);
+    if (engine && (void*) engine != (void*) engine_bytecode_lua) {
+        free((void*) engine);
     }
 
     lua_getglobal(L, "native_callback_loop");

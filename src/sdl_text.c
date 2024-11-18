@@ -20,9 +20,9 @@ void sdl_text_font_size(uint32_t font_size) {
 
     uint32_t index = font_size - 3;
 
-    if (font[font_size] == NULL) {
+    if (font[index] == NULL) {
         SDL_RWops *rw = SDL_RWFromConstMem(notosans_regular_ttf, notosans_regular_ttf_len);
-        font[index] = TTF_OpenFontRW(rw, 1, font_size + 3);
+        font[index] = TTF_OpenFontRW(rw, 1, font_size);
     }
 
     if (font[index] == NULL) {
