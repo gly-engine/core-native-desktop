@@ -97,7 +97,7 @@ static void engine_init() {
 
     lua_getglobal(L, "native_callback_draw");
     native_callback_draw = luaL_ref(L, LUA_REGISTRYINDEX);
-    
+
     lua_getglobal(L, "native_callback_keyboard");
     native_callback_keyboard = luaL_ref(L, LUA_REGISTRYINDEX);
 }
