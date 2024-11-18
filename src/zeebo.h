@@ -10,8 +10,10 @@
 #include "lua/lualib.h"
 #include "lua/lauxlib.h"
 
+#ifndef TEST
 #include "SDL/include/SDL.h"
 #include "SDL_ttf/SDL_ttf.h"
+#endif 
 
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
@@ -20,6 +22,12 @@
 
 #ifndef NOT_USE_GETOPT
 #include <unistd.h>
+#endif
+
+#ifndef TEST
+#define PRIVATE static
+#else
+#define PRIVATE extern
 #endif
 
 typedef enum {
@@ -106,7 +114,9 @@ void sdl_text_font_size(uint32_t font_size);
 void sdl_text_print(uint8_t mode, int x, int y, const char *text, int *const width, int *const height);
 
 //! @file src/sdl_primitives.c
+#ifndef TEST
 SDL_Color sdl_get_color();
+#endif
 void sdl_draw_start();
 void sdl_draw_flush();
 void sdl_draw_clear(uint32_t c, double x, double y, double w, double h);
