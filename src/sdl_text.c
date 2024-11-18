@@ -85,6 +85,13 @@ void sdl_text_print(uint8_t mode, int x, int y, const char *text, int *const wid
         }
     } while (0);
 
+    if (textSurface) {
+        SDL_FreeSurface(textSurface);
+    }
+    if (textTexture) {
+        SDL_DestroyTexture(textTexture);
+    }
+
     if (width && height) {
         *width = textWidth;
         *height = textHeight;
