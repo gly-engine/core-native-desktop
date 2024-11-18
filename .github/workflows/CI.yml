@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  test:
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+    -
+      run: |
+        cmake -Bbuild -H. -DTESTS=ON -DTESTS_ONLY=ON -DCOVERAGE=ON -DJ=4
+    -
+      run: |
+        make -C build -j 4
+    -
+      run: |
+        ctest --test-dir build --output-on-failure
+    -
+      run: |
+        gcovr --exclude vendor --exclude tests
+        gcovr --exclude vendor --exclude tests --xml -o cobertura.xml
+    - 
+      if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+      run: |
+        bash <(curl -s https://codecov.io/bash) -t ${{ secrets.CODECOV_TOKEN }}

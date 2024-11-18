@@ -12,6 +12,9 @@ CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
 
+# Coverage files
+cobertura.xml
+
 # Project Files
 build/*
 !build/.gitkeep
