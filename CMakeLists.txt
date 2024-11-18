@@ -13,6 +13,11 @@ include_directories("${CMAKE_SOURCE_DIR}/src")
 include_directories("${CMAKE_SOURCE_DIR}/vendor")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
 
+# Paralelism in cmake stage
+if(NOT DEFINED J)
+    set(J, 1)
+endif()
+
 # Zig
 set(ZIG_VERSION "0.13.0")
 set(ZIG_DIR "${CMAKE_SOURCE_DIR}/vendor/zig")
@@ -45,7 +50,7 @@ set(LUA_DOWNLOAD "https://github.com/lua/lua/archive/refs/tags/v${LUA_VERSION}.t
 if(NOT EXISTS ${LUA_DIR})
     FetchContent_Populate(dep_lua URL "${LUA_DOWNLOAD}" SOURCE_DIR ${LUA_DIR})
     execute_process(
-        COMMAND make CC=${ZIG_DIR}/zig_cc MYCFLAGS="-std=c99" MYLIBS="" 
+        COMMAND ${CMAKE_MAKE_PROGRAM} CC=${ZIG_DIR}/zig_cc MYCFLAGS="-std=c99" MYLIBS="" -j ${J}
         WORKING_DIRECTORY ${LUA_DIR}
     )
 endif()
@@ -200,7 +205,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(dep_bearssl)
 if (NOT EXISTS "${BEARSSL_DIR}/build/libbearssl.a")
     execute_process(
-        COMMAND make build/libbearssl.a
+        COMMAND ${CMAKE_MAKE_PROGRAM} build/libbearssl.a -j ${J}
         WORKING_DIRECTORY ${BEARSSL_DIR}
         COMMAND_ERROR_IS_FATAL ANY
     )
@@ -236,12 +241,13 @@ set(FFMPEG_DIR "${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
 if (NOT EXISTS "${FFMPEG_DIR}/libavcodec/libavcodec.a")
     FetchContent_Populate(dep_ffmpeg URL ${FFMPEG_DOWNLOAD} SOURCE_DIR ${FFMPEG_DIR})
     execute_process(
-        COMMAND ./configure --prefix=${FFMPEG_DIR}/build --enable-static --disable-shared --disable-lzma --disable-x86asm --disable-libdrm
+        COMMAND ./configure --prefix=${FFMPEG_DIR}/build --enable-static --disable-shared
+        --disable-bzlib --disable-lzma --disable-x86asm --disable-libdrm
         WORKING_DIRECTORY ${FFMPEG_DIR}
         COMMAND_ERROR_IS_FATAL ANY
     )
     execute_process(
-        COMMAND make
+        COMMAND ${CMAKE_MAKE_PROGRAM} -j ${J}
         WORKING_DIRECTORY ${FFMPEG_DIR}
         COMMAND_ERROR_IS_FATAL ANY
     )
