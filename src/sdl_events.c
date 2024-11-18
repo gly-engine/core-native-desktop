@@ -117,7 +117,7 @@ void sdl_install() {
     kernel_event_install(KERNEL_EVENT_PRE_INIT, sdl_pre_init);
     kernel_event_install(KERNEL_EVENT_POST_INIT, sdl_post_init);
     kernel_event_install(KERNEL_EVENT_PRE_TICKET, sdl_tickets);
-    kernel_event_install(KERNEL_EVENT_TICKET, sdl_event_pool);
+    kernel_event_install(KERNEL_EVENT_PRE_UPDATE, sdl_event_pool);
     kernel_event_install(KERNEL_EVENT_PRE_DRAW, sdl_pre_draw);
     kernel_event_install(KERNEL_EVENT_POST_DRAW, sdl_post_draw);
     kernel_event_install(KERNEL_EVENT_POST_TICKET, sdl_delay);
