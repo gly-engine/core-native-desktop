@@ -5,6 +5,7 @@
 extern SDL_Renderer *renderer;
 static TTF_Font *font[80];
 static TTF_Font *font_current;
+static TTF_Font *font_previous;
 //! @endcond
 
 /**
@@ -29,8 +30,17 @@ void sdl_text_font_size(uint32_t font_size) {
         kernel_add_error("Failed to load font");
         kernel_add_error(SDL_GetError());
     } else {
+        font_previous = font_current;
         font_current = font[index];
     }
+}
+
+
+void sdl_text_font_previous()
+{
+    if (font_previous != NULL) {
+        font_current = font_previous;
+    }   
 }
 
 /**

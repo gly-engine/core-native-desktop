@@ -78,8 +78,11 @@ void kernel_exit();
 void engine_install();
 void engine_keypress(const char *const , uint8_t);
 
-//! @file src/ffmpeg.c
+//! @file src/ffmpeg_event.c
 void ffmpeg_install();
+
+//! @file src/ffmpeg_image.c
+void ffmpeg_image_draw(double x, double y, const char* src);
 
 //! @file src/kernel_error.c
 void kernel_add_error(const char*);
@@ -101,6 +104,7 @@ void lua_install();
 void native_draw_install();
 void native_http_install();
 void native_json_install();
+void native_text_install();
 
 //! @file src/sdl_api.c
 void sdl_set_title(char* new_title);
@@ -110,6 +114,7 @@ char *const sdl_get_title();
 void sdl_install();
 
 //! @file src/sdl_text.c
+void sdl_text_font_previous();
 void sdl_text_font_size(uint32_t font_size);
 void sdl_text_print(uint8_t mode, int x, int y, const char *text, int *const width, int *const height);
 

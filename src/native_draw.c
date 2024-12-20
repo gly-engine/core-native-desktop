@@ -49,51 +49,11 @@ static int native_draw_line(lua_State *L) {
     return 0;
 }
 
-static int native_draw_font(lua_State *L) {
-    if (lua_gettop(L) == 1) {
-        sdl_text_font_size(luaL_checkinteger(L, 1));
-    } else {
-        sdl_text_font_size(luaL_checkinteger(L, 2));
-    }
-    lua_settop(L, 0);
-    return 0;
-}
-
-static int native_draw_text(lua_State *L) {
-    int width, height;
-    int argc = lua_gettop(L);
-    if (argc == 1) {
-        const char *text = luaL_checkstring(L, 1);
-        sdl_text_print(1, 0, 0, text, &width, &height);
-        lua_pop(L, 1);
-    } else if (argc == 3) {
-        int x = luaL_checknumber(L, 1);
-        int y = luaL_checknumber(L, 2);
-        const char *text = luaL_checkstring(L, 3);
-        sdl_text_print(0, x, y, text, &width, &height);
-        lua_pop(L, 3);
-    } else if (argc == 8) {
-        int x = luaL_checknumber(L, 1);
-        int y = luaL_checknumber(L, 2);
-        int ox = luaL_checknumber(L, 3);
-        int oy = luaL_checknumber(L, 4);
-        int w = luaL_checknumber(L, 5);
-        int h = luaL_checknumber(L, 6);
-        int s = luaL_checknumber(L, 7);
-        const char *text = luaL_checkstring(L, 8);
-        int hem = w / 80;
-        x = ox + ((hem)*x);
-        y = oy + ((h / 24) * y);
-        sdl_text_font_size(s * hem);
-        sdl_text_print(0, x, y, text, &width, &height);
-        lua_pop(L, 8);
-    }
-    lua_pushnumber(L, width);
-    lua_pushnumber(L, height);
-    return 2;
-}
-
 static int native_draw_image(lua_State *L) {
+    double x = luaL_checknumber(L, 2);
+    double y = luaL_checknumber(L, 3);
+    const char* src = luaL_checkstring(L, 1);
+    ffmpeg_image_draw(x, y, src);
     lua_settop(L, 0);
     return 0;
 }
@@ -105,8 +65,7 @@ static void native_draw_load() {
     static const luaL_Reg lib[] = {{"native_draw_start", native_draw_start},   {"native_draw_flush", native_draw_flush},
                                    {"native_draw_clear", native_draw_clear},   {"native_draw_color", native_draw_color},
                                    {"native_draw_rect", native_draw_rect},     {"native_draw_line", native_draw_line},
-                                   {"native_draw_font", native_draw_font},     {"native_draw_text", native_draw_text},
-                                   {"native_draw_text_tui", native_draw_text}, {"native_draw_image", native_draw_image}};
+                                   {"native_draw_image", native_draw_image}};
 
     while (i < sizeof(lib) / sizeof(luaL_Reg)) {
         lua_pushcfunction(L, lib[i].func);

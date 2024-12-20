@@ -53,6 +53,7 @@ int main(int argc, char *argv[]) {
     sdl_install();
 
     native_draw_install();
+    native_text_install();
     native_json_install();
     native_http_install();
 
