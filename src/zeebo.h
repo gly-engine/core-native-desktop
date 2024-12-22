@@ -67,6 +67,7 @@ typedef struct {
 } kernel_time_t;
 
 extern lua_State *const lua();
+extern int lua_handler();
 extern kernel_time_t kernel_time;
 extern kernel_options_t kernel_option;
 
@@ -88,6 +89,7 @@ void ffmpeg_image_draw(double x, double y, const char* src);
 void kernel_add_error(const char*);
 bool kernel_has_error();
 const char *const kernel_get_error();
+void kernel_add_error_traceback(lua_State *L);
 
 //! @file src/kernel_event.c
 void kernel_event_install(kernel_event_t, void*);

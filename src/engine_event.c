@@ -52,7 +52,7 @@ static void engine_init() {
 
     const char *engine = engine_bytecode_lua;
     unsigned int engine_len = engine_bytecode_lua_len;
-
+ 
     do {
         if (!load_script(kernel_option.game, &game, &game_len)) {
             kernel_add_error("Cannot open file:");
@@ -72,8 +72,9 @@ static void engine_init() {
         }
 
         luaL_loadbuffer(L, engine, engine_len, "engine");
-        if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
-            kernel_add_error(lua_tostring(L, -1));
+        if (lua_pcall(L, 0, 0, lua_handler()) != LUA_OK) {
+            kernel_add_error("engine load");
+            kernel_add_error_traceback(L);
             break;
         }
 
@@ -82,12 +83,14 @@ static void engine_init() {
         lua_pushnumber(L, kernel_option.height);
 
         luaL_loadbuffer(L, game, game_len, "game");
-        if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
-            kernel_add_error(lua_tostring(L, -1));
+        if (lua_pcall(L, 0, 1, lua_handler()) != LUA_OK) {
+            kernel_add_error("game load");
+            kernel_add_error_traceback(L);
             break;
         }
-        if (lua_pcall(L, 3, 0, 0) != LUA_OK) {
-            kernel_add_error(lua_tostring(L, -1));
+        if (lua_pcall(L, 3, 0, lua_handler()) != LUA_OK) {
+            kernel_add_error("game init");
+            kernel_add_error_traceback(L);
             break;
         }
     } while (0);
@@ -127,13 +130,19 @@ static void engine_loop() {
     lua_State *L = lua();
     lua_rawgeti(L, LUA_REGISTRYINDEX, native_callback_loop);
     lua_pushnumber(L, kernel_time.dt);
-    lua_pcall(L, 1, 0, 0);
+    if (lua_pcall(L, 1, 0, lua_handler()) != LUA_OK) {
+        kernel_add_error("engine loop");
+        kernel_add_error(lua_tostring(L, -1));
+    }
 }
 
 static void engine_draw() {
     lua_State *L = lua();
     lua_rawgeti(L, LUA_REGISTRYINDEX, native_callback_draw);
-    lua_pcall(L, 0, 0, 0);
+    if (lua_pcall(L, 0, 0, lua_handler()) != LUA_OK) {
+        kernel_add_error("engine draw");
+        kernel_add_error(lua_tostring(L, -1));
+    }
 }
 
 void engine_keypress(const char *const key, uint8_t value) {
