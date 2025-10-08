@@ -1,3 +1,4 @@
+# Cmake files
 CMakeLists.txt.user
 CMakeCache.txt
 CMakeFiles
@@ -10,3 +11,17 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
+
+# Coverage files
+cobertura.xml
+
+# Project Files
+build/*
+!build/.gitkeep
+vendor
+html
+latex
+
+# System files
+Thumbs.db
+.DS_Store
