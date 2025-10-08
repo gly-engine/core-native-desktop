@@ -41,11 +41,21 @@ FILE(GLOB ffmpeg_files "${FFMPEG_DIR}/*/*.a")
 #set_target_properties(ffmpeg-static PROPERTIES IMPORTED_LOCATION ${ffmpeg_files})
 #set(ffmpeg_files "${FFMPEG_DIR}/libavcodec/libavcodec.a;${FFMPEG_DIR}/libavformat/libavformat.a;${FFMPEG_DIR}/libavutil/libavutil.a;${FFMPEG_DIR}/libswscale/libswscale.a")
 
+# libuv
+set(LIBUV_VERSION "v1.48.0")
+FetchContent_Declare(
+    libuv
+    GIT_REPOSITORY https://github.com/libuv/libuv.git
+    GIT_TAG ${LIBUV_VERSION}
+)
+FetchContent_MakeAvailable(libuv)
+
 # EXE
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
 file(GLOB_RECURSE SOURCES "src/*.c")
 add_executable(${PROJECT_NAME} ${SOURCES})
 target_link_libraries(${PROJECT_NAME} PRIVATE "${ffmpeg_files}")
 target_link_libraries(${PROJECT_NAME} PRIVATE raylib-static)
+target_link_libraries(${PROJECT_NAME} PRIVATE uv_a)
 target_link_libraries(${PROJECT_NAME} PRIVATE m z)
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
