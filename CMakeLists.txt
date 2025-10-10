@@ -50,6 +50,15 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(libuv)
 
+# zlib
+set(ZLIB_VERSION "v1.3.1")
+FetchContent_Declare(
+    zlib
+    GIT_REPOSITORY https://github.com/madler/zlib.git
+    GIT_TAG ${ZLIB_VERSION}
+)
+FetchContent_MakeAvailable(zlib)
+
 # EXE
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
 file(GLOB_RECURSE SOURCES "src/*.c")
@@ -57,5 +66,6 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 target_link_libraries(${PROJECT_NAME} PRIVATE "${ffmpeg_files}")
 target_link_libraries(${PROJECT_NAME} PRIVATE raylib-static)
 target_link_libraries(${PROJECT_NAME} PRIVATE uv_a)
-target_link_libraries(${PROJECT_NAME} PRIVATE m z)
+target_link_libraries(${PROJECT_NAME} PRIVATE zlib)
+target_link_libraries(${PROJECT_NAME} PRIVATE m)
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
