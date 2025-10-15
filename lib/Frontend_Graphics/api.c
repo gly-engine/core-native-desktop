@@ -104,6 +104,8 @@ static const struct {
                {"native_text_font_previous", hook_native_text_font_previous},
                {NULL, NULL}};
 
-void gecnd_lua_open_graphics(gecnd_t gly, lua_State *L) {
-    for (int i = 0; glylibs[i].name != NULL; i++) { lua_register(L, glylibs[i].name, glylibs[i].func); }
+gecnd_enum_error_code_t gecnd_lua_open_graphics(gecnd_t *gly) {
+    for (int i = 0; glylibs[i].name != NULL; i++) { 
+        lua_register(gly->L, glylibs[i].name, glylibs[i].func);
+    }
 }

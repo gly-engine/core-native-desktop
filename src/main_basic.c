@@ -4,12 +4,12 @@
 #include "lualib.h"
 
 int main() {
-    gecnd_t gly = gecnd_new();
     lua_State *L = luaL_newstate();
+    gecnd_t *gly = gecnd_new(L);
     const char *const cwd = gecnd_utils_get_exe_cwd();
 
     luaL_openlibs(L);
-    gecnd_lua_open_graphics(gly, L);
+    gecnd_lua_open_graphics(gly);
     gecnd_set_game_file(gly, cwd, "game.lua");
     gecnd_set_engine_file(gly, cwd, "engine.lua");
     gecnd_set_control_mode(gly, GECND_CONTROL_FPS | GECND_CONTROL_WINDOW);
