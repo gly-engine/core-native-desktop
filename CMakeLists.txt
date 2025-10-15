@@ -3,10 +3,49 @@ cmake_minimum_required(VERSION 3.19)
 project(game LANGUAGES C)
 include(FetchContent)
 
-include_directories("${CMAKE_SOURCE_DIR}/src")
+include_directories("${CMAKE_SOURCE_DIR}/inc")
+include_directories("${CMAKE_SOURCE_DIR}/lib")
 include_directories("${CMAKE_SOURCE_DIR}/vendor")
+include_directories("${CMAKE_SOURCE_DIR}/vendor/lua")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/raylib/include")
+
+# Zig
+set(ZIG_VERSION "0.13.0")
+set(ZIG_DIR "${CMAKE_SOURCE_DIR}/vendor/zig")
+set(ZIG_DOWNLOAD "http://ziglang.org/download")
+string(TOLOWER ${CMAKE_HOST_SYSTEM_NAME} CMAKE_HOST_SYSTEM_NAME_LOWER)
+if(${CMAKE_HOST_SYSTEM_NAME} STREQUAL "Darwin")
+    set(ZIG_DOWNLOAD "${ZIG_DOWNLOAD}/${ZIG_VERSION}/zig-macos-${CMAKE_HOST_SYSTEM_PROCESSOR}-${ZIG_VERSION}.tar.xz")
+elseif(${CMAKE_HOST_SYSTEM_NAME} STREQUAL "Linux")
+    set(ZIG_DOWNLOAD "${ZIG_DOWNLOAD}/${ZIG_VERSION}/zig-linux-${CMAKE_HOST_SYSTEM_PROCESSOR}-${ZIG_VERSION}.tar.xz")
+elseif(${CMAKE_HOST_SYSTEM_NAME} STREQUAL "Windows")
+    set(ZIG_DOWNLOAD "${ZIG_DOWNLOAD}/${ZIG_VERSION}/zig-windows-${CMAKE_HOST_SYSTEM_PROCESSOR}-${ZIG_VERSION}.zip")
+endif()
+if(NOT EXISTS ${ZIG_DIR})
+    FetchContent_Populate(dep_zig URL ${ZIG_DOWNLOAD} SOURCE_DIR ${ZIG_DIR})
+endif()
+find_program(ZIGC zig PATHS ${ZIG_DIR} REQUIRED NO_DEFAULT_PATH)
+
+# Lua
+set(LUA_VERSION "5.4.7")
+set(LUA_DIR "${CMAKE_SOURCE_DIR}/vendor/lua")
+set(LUA_DOWNLOAD "https://github.com/lua/lua/archive/refs/tags/v${LUA_VERSION}.tar.gz")
+set(LUA_OPTMIZE FALSE)
+if(NOT EXISTS "${LUA_DIR}/lua/lua")
+    set(LUA_OPTMIZE TRUE)
+    FetchContent_Populate(dep_lua URL "${LUA_DOWNLOAD}" SOURCE_DIR ${LUA_DIR})
+    execute_process(
+        WORKING_DIRECTORY ${LUA_DIR}
+        COMMAND ${ZIGC} cc -DMAKE_LUA onelua.c -o lua
+            -target ${CMAKE_HOST_SYSTEM_PROCESSOR}-${CMAKE_HOST_SYSTEM_NAME_LOWER}
+    )
+endif()
+file(GLOB lua_files "${LUA_DIR}/*.c")
+list(REMOVE_ITEM lua_files "${LUA_DIR}/lua.c")
+list(REMOVE_ITEM lua_files "${LUA_DIR}/onelua.c")
+add_library(lua-static STATIC ${lua_files})
+find_program(LUAC lua PATHS ${LUA_DIR} REQUIRED NO_DEFAULT_PATH)
 
 # Raylib
 set(RAYLIB_VERSION "5.5")
@@ -61,10 +100,12 @@ FetchContent_MakeAvailable(zlib)
 
 # EXE
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
-file(GLOB_RECURSE SOURCES "src/*.c")
-add_executable(${PROJECT_NAME} ${SOURCES})
+file(GLOB_RECURSE SOURCES "lib/**/*.c")
+set(ENTRYPOINT "src/main_basic.c")
+add_executable(${PROJECT_NAME} "${ENTRYPOINT};${SOURCES}")
 target_link_libraries(${PROJECT_NAME} PRIVATE "${ffmpeg_files}")
 target_link_libraries(${PROJECT_NAME} PRIVATE raylib-static)
+target_link_libraries(${PROJECT_NAME} PRIVATE lua-static)
 target_link_libraries(${PROJECT_NAME} PRIVATE uv_a)
 target_link_libraries(${PROJECT_NAME} PRIVATE zlib)
 target_link_libraries(${PROJECT_NAME} PRIVATE m)

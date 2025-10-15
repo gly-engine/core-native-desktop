@@ -16,8 +16,7 @@ CMakeUserPresets.json
 cobertura.xml
 
 # Project Files
-build/*
-!build/.gitkeep
+build
 vendor
 html
 latex
