@@ -6,7 +6,7 @@
 #include "gecnd.h"
 
 //! @cond
-// *#define GLY_HOOK_TEMPLATE
+#define GLY_HOOK_TEMPLATE
 #include "Frontend_Graphics/hooks.c"
 //! @endcond
 

@@ -47,6 +47,8 @@ gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, 
 gecnd_enum_error_code_t gecnd_native_callback_loop(gecnd_t *gly, int16_t delta_time);
 gecnd_enum_error_code_t gecnd_native_callback_draw(gecnd_t *gly);
 gecnd_enum_error_code_t gecnd_native_callback_keyboard(gecnd_t *gly, char *const key, bool pressed);
+// iterators
+bool gecnd_next_input(gecnd_t *gly, char** key, bool *pressed);
 
 const char *const gecnd_utils_get_cwd(void);
 const char *const gecnd_utils_get_exe_cwd(void);
