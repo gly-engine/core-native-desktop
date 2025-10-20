@@ -2,7 +2,13 @@
 #include <stdlib.h>
 #include <lauxlib.h>
 #include <lua.h>
+
 #include "gecnd.h"
+
+//! @cond
+#define GLY_HOOK_TEMPLATE
+#include "Frontend_Core/hooks.c"
+//! @endcond
 
 gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, int16_t height) {
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_code_engine);
@@ -43,6 +49,7 @@ gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, 
     gly->ref_native_callback_loop = luaL_ref(gly->L, LUA_REGISTRYINDEX);
 
     gly_hook_display_init(width, height);
+    return GECND_OK;
 }
 
 gecnd_enum_error_code_t gecnd_native_callback_draw(gecnd_t *gly) {
@@ -50,6 +57,7 @@ gecnd_enum_error_code_t gecnd_native_callback_draw(gecnd_t *gly) {
     if (lua_pcall(gly->L, 0, 0, 0) != LUA_OK) {
         printf("lua error: %s\n", luaL_checkstring(gly->L, -1));
     }
+    return GECND_OK;
 }
 
 gecnd_enum_error_code_t gecnd_native_callback_loop(gecnd_t *gly, int16_t delta_time) {
@@ -58,6 +66,7 @@ gecnd_enum_error_code_t gecnd_native_callback_loop(gecnd_t *gly, int16_t delta_t
     if (lua_pcall(gly->L, 1, 0, 0) != LUA_OK) {
         printf("lua error: %s\n", luaL_checkstring(gly->L, -1));
     }
+    return GECND_OK;
 }
 
 gecnd_enum_error_code_t gecnd_native_callback_keyboard(gecnd_t *gly, char *key, bool pressed) {
@@ -67,4 +76,5 @@ gecnd_enum_error_code_t gecnd_native_callback_keyboard(gecnd_t *gly, char *key, 
     if (lua_pcall(gly->L, 2, 0, 0) != LUA_OK) {
         printf("lua error: %s\n", luaL_checkstring(gly->L, -1));
     }
+    return GECND_OK;
 }

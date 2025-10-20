@@ -1,23 +1,23 @@
 cmake_minimum_required(VERSION 3.19)
 
-project(game LANGUAGES C)
+project(core LANGUAGES C)
 include(FetchContent)
 
 include_directories("${CMAKE_SOURCE_DIR}/inc")
 include_directories("${CMAKE_SOURCE_DIR}/lib")
-include_directories("${CMAKE_SOURCE_DIR}/vendor")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/lua")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/raylib/include")
 
 # EXE
-file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
-file(GLOB_RECURSE SOURCES "lib/**/*.c")
 set(ENTRYPOINT "src/main_basic.c")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
+file(GLOB_RECURSE SOURCES "lib/Frontend_*/*.c" "lib/Common_*/*.c")
+if(BACKEND)
+    file(GLOB_RECURSE BACKEND_SOURCES "lib/Backend_${BACKEND}/*.c")
+    set(SOURCES "${SOURCES};${BACKEND_SOURCES}")
+endif()
 add_executable(${PROJECT_NAME} "${ENTRYPOINT};${SOURCES}")
-set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
-target_link_libraries(${PROJECT_NAME} PRIVATE m)
 
 # Zig
 set(ZIG_VERSION "0.13.0")
@@ -42,7 +42,7 @@ set(LUA_VERSION "5.4.7")
 set(LUA_DIR "${CMAKE_SOURCE_DIR}/vendor/lua")
 set(LUA_DOWNLOAD "https://github.com/lua/lua/archive/refs/tags/v${LUA_VERSION}.tar.gz")
 set(LUA_OPTMIZE FALSE)
-if(NOT EXISTS "${LUA_DIR}/lua/lua")
+if(NOT EXISTS "${LUA_DIR}/lua")
     set(LUA_OPTMIZE TRUE)
     FetchContent_Populate(dep_lua URL "${LUA_DOWNLOAD}" SOURCE_DIR ${LUA_DIR})
     execute_process(
@@ -63,18 +63,25 @@ set(LUAC "${LUAC}" CACHE INTERNAL "LUA COMPILER")
 set(RAYLIB_VERSION "5.5")
 set(RAYLIB_DIR "${CMAKE_SOURCE_DIR}/vendor/raylib")
 set(RAYLIB_DOWNLOAD "https://github.com/raysan5/raylib/releases/download/${RAYLIB_VERSION}/raylib-${RAYLIB_VERSION}_linux_amd64.tar.gz")
-if(NOT EXISTS "${RAYLIB_DIR}")
-    FetchContent_Populate(dep_raylib URL "${RAYLIB_DOWNLOAD}" SOURCE_DIR ${RAYLIB_DIR})
+option(GECND_USE_RAYLIB "Use Raylib backend" ON)
+if(GECND_USE_RAYLIB)
+    if(NOT "${BACKEND}" STREQUAL "Raylib")
+        message(FATAL_ERROR "You must define -DBACKEND=\"Raylib\" when running cmake")
+    endif()
+    if(NOT EXISTS "${RAYLIB_DIR}")
+        FetchContent_Populate(dep_raylib URL "${RAYLIB_DOWNLOAD}" SOURCE_DIR ${RAYLIB_DIR})
+    endif()
+    add_library(raylib-static STATIC IMPORTED)
+    set_target_properties(raylib-static PROPERTIES IMPORTED_LOCATION "${RAYLIB_DIR}/lib/libraylib.a")
+    target_link_libraries(${PROJECT_NAME} PRIVATE raylib-static)
 endif()
-add_library(raylib-static STATIC IMPORTED)
-set_target_properties(raylib-static PROPERTIES IMPORTED_LOCATION "${RAYLIB_DIR}/lib/libraylib.a")
-target_link_libraries(${PROJECT_NAME} PRIVATE raylib-static)
 
+# FFMPEG
+set(FFMPEG_VERSION "7.0.2")
+set(FFMPEG_DOWNLOAD "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz")
+set(FFMPEG_DIR "${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
 option(GECND_USE_FFMPEG "fetch ffmpeg" OFF)
 if(GECND_USE_FFMPEG)
-    set(FFMPEG_VERSION "7.0.2")
-    set(FFMPEG_DOWNLOAD "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz")
-    set(FFMPEG_DIR "${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
     if (NOT EXISTS "${FFMPEG_DIR}/libavcodec/libavcodec.a")
         FetchContent_Populate(dep_ffmpeg URL ${FFMPEG_DOWNLOAD} SOURCE_DIR ${FFMPEG_DIR})
         execute_process(
@@ -90,32 +97,31 @@ if(GECND_USE_FFMPEG)
         )
     endif()
     FILE(GLOB ffmpeg_files "${FFMPEG_DIR}/*/*.a")
-    #add_library(ffmpeg-static STATIC IMPORTED)
-    #set_target_properties(ffmpeg-static PROPERTIES IMPORTED_LOCATION ${ffmpeg_files})
-    #set(ffmpeg_files "${FFMPEG_DIR}/libavcodec/libavcodec.a;${FFMPEG_DIR}/libavformat/libavformat.a;${FFMPEG_DIR}/libavutil/libavutil.a;${FFMPEG_DIR}/libswscale/libswscale.a")
     target_link_libraries(${PROJECT_NAME} PRIVATE "${ffmpeg_files}")
 endif()
 
+# LibUV
+set(LIBUV_VERSION "v1.48.0")
+set(LIBUV_REPO "https://github.com/libuv/libuv.git")
+set(LIBUV_DIR "${CMAKE_SOURCE_DIR}/vendor/libuv")
 option(GECND_USE_LIBUV "fetch libuv" OFF)
 if (GECND_USE_LIBUV)
-    set(LIBUV_VERSION "v1.48.0")
-    FetchContent_Declare(
-        libuv
-        GIT_REPOSITORY https://github.com/libuv/libuv.git
-        GIT_TAG ${LIBUV_VERSION}
-    )
+    FetchContent_Declare(libuv GIT_REPOSITORY ${LIBUV_REPO} GIT_TAG ${LIBUV_VERSION} SOURCE_DIR ${LIBUV_DIR})
     FetchContent_MakeAvailable(libuv)
     target_link_libraries(${PROJECT_NAME} PRIVATE uv_a)
 endif()
 
+# Zlib
+set(ZLIB_VERSION "v1.3.1")
+set(ZLIB_REPO "https://github.com/madler/zlib.git")
+set(ZLIB_DIR "${CMAKE_SOURCE_DIR}/vendor/zlib")
 option(GECND_USE_ZLIB "fetch zlib" OFF)
 if (GECND_USE_LIBUV)
-    set(ZLIB_VERSION "v1.3.1")
-    FetchContent_Declare(
-        zlib
-        GIT_REPOSITORY https://github.com/madler/zlib.git
-        GIT_TAG ${ZLIB_VERSION}
-    )
+    FetchContent_Declare(zlib GIT_REPOSITORY ${ZLIB_REPO} GIT_TAG ${ZLIB_VERSION} SOURCE_DIR ${ZLIB_DIR})
     FetchContent_MakeAvailable(zlib)
     target_link_libraries(${PROJECT_NAME} PRIVATE zlib)
 endif()
+
+set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
+target_link_libraries(${PROJECT_NAME} PRIVATE m)
