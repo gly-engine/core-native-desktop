@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdint.h>
 
 //! @cond
@@ -9,6 +10,7 @@
 #endif
 //! @endcond
 
+CREATE_GLY_HOOK(void, gly_hook_should_close, (bool*))
 CREATE_GLY_HOOK(void, gly_hook_display_init, (uint16_t, uint16_t))
 CREATE_GLY_HOOK(void, native_draw_start, ())
 CREATE_GLY_HOOK(void, native_draw_flush, ())

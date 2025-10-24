@@ -22,7 +22,7 @@ gecnd_t *gecnd_new(lua_State* L) {
     return gly;   
 }
 
-void gecnd_destory(gecnd_t *gly) {
+void gecnd_destroy(gecnd_t *gly) {
     if (gly) {
         free(gly);
     }

@@ -34,7 +34,7 @@ typedef struct {
 gecnd_t *gecnd_new();
 void gecnd_destroy(gecnd_t *gly);
 // configure
-gecnd_enum_error_code_t gecnd_lua_open_graphics(gecnd_t *gly);
+gecnd_enum_error_code_t gecnd_lua_openlibs(gecnd_t *gly);
 gecnd_enum_error_code_t gecnd_set_game_file(gecnd_t *gly, const char *const path, const char *const file);
 gecnd_enum_error_code_t gecnd_set_engine_file(gecnd_t *gly, const char *const path, const char *const file);
 gecnd_enum_error_code_t gecnd_set_control_mode(gecnd_t *gly, gecnd_enum_control_mode_t mode);
@@ -44,6 +44,7 @@ gecnd_enum_error_code_t gecnd_native_callback_loop(gecnd_t *gly, int16_t delta_t
 gecnd_enum_error_code_t gecnd_native_callback_draw(gecnd_t *gly);
 gecnd_enum_error_code_t gecnd_native_callback_keyboard(gecnd_t *gly, char *const key, bool pressed);
 // iterators
+bool gecnd_is_running(gecnd_t *gly);
 bool gecnd_next_input(gecnd_t *gly, char **key, bool *pressed);
 
 const char *const gecnd_utils_get_cwd(void);
