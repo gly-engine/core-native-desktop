@@ -5,7 +5,7 @@
 #define CREATE_GLY_HOOK(ret, name, args) \
     __attribute__((weak)) ret name args {}
 #else
-#define CREATE_GLY_HOOK(ret, name, args) __attribute__((weak)) ret name args;
+#define CREATE_GLY_HOOK(ret, name, args) ret name args;
 #endif
 //! @endcond
 

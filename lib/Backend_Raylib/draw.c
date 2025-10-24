@@ -5,6 +5,9 @@
 
 #include "raylib.h"
 
+#include "gecnd.h"
+#include "gehook.h"
+
 //! @cond
 static Color gly_current_color = {255, 255, 255, 255};
 static Font gly_current_font = {0};
@@ -12,6 +15,7 @@ static bool gly_font_loaded = false;
 static int gly_font_size = 16;
 //! @endcond
 
+#include <stdio.h>
 void gly_hook_display_init(uint16_t width, uint16_t height) {
     if (!IsWindowReady()) {
         InitWindow(width, height, "GlyDisplay (Raylib)");
@@ -95,7 +99,7 @@ void native_text_font_name(const char *path) {
     }
 }
 
-void native_text_font_default(int index) {
+void native_text_font_default(uint8_t index) {
     (void)index;
     if (gly_font_loaded) {
         UnloadFont(gly_current_font);
@@ -105,3 +109,18 @@ void native_text_font_default(int index) {
 }
 
 void native_text_font_previous(void) {}
+
+void native_image_draw(int16_t x, int16_t y, const char *path) {
+    static Texture2D texture = {0};
+    static char loaded_path[1024] = {0};
+
+    if (texture.id == 0 || strcmp(loaded_path, path) != 0) {
+        if (texture.id != 0) {
+            UnloadTexture(texture);
+        }
+        texture = LoadTexture(path);
+        strncpy(loaded_path, path, sizeof(loaded_path) - 1);
+    }
+
+    DrawTexture(texture, x, y, WHITE);
+}
