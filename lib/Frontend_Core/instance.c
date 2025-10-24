@@ -12,6 +12,7 @@ extern const luaL_Reg frontend_api_draw[];
 extern const luaL_Reg frontend_api_text[];
 extern const luaL_Reg frontend_api_http[];
 extern const luaL_Reg frontend_api_image[];
+extern const luaL_Reg frontend_api_system[];
 
 gecnd_t *gecnd_new(lua_State* L) {
     gecnd_t *gly = NULL;
@@ -34,11 +35,11 @@ gecnd_t *gecnd_new(lua_State* L) {
         for (int i = 0; frontend_api_text[i].name != NULL; i++) {
             lua_register(L, frontend_api_text[i].name, frontend_api_text[i].func);
         }
-        for (int i = 0; frontend_api_http[i].name != NULL; i++) {
-            lua_register(L, frontend_api_http[i].name, frontend_api_http[i].func);
-        }
         for (int i = 0; frontend_api_image[i].name != NULL; i++) {
             lua_register(L, frontend_api_image[i].name, frontend_api_image[i].func);
+        }
+        for (int i = 0; frontend_api_system[i].name != NULL; i++) {
+            lua_register(L, frontend_api_system[i].name, frontend_api_system[i].func);
         }
 
         gly_hook_luaopen_cjson(L);
