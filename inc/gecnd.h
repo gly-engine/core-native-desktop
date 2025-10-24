@@ -37,7 +37,7 @@ void gecnd_destroy(gecnd_t *gly);
 gecnd_enum_error_code_t gecnd_lua_openlibs(gecnd_t *gly);
 gecnd_enum_error_code_t gecnd_set_game_file(gecnd_t *gly, const char *const path, const char *const file);
 gecnd_enum_error_code_t gecnd_set_engine_file(gecnd_t *gly, const char *const path, const char *const file);
-gecnd_enum_error_code_t gecnd_set_control_mode(gecnd_t *gly, gecnd_enum_control_mode_t mode);
+gecnd_enum_error_code_t gecnd_set_control_mode(gecnd_t *gly, int flags);
 // callbacks
 gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, int16_t height);
 gecnd_enum_error_code_t gecnd_native_callback_loop(gecnd_t *gly, int16_t delta_time);
@@ -47,5 +47,5 @@ gecnd_enum_error_code_t gecnd_native_callback_keyboard(gecnd_t *gly, char *const
 bool gecnd_is_running(gecnd_t *gly);
 bool gecnd_next_input(gecnd_t *gly, char **key, bool *pressed);
 
-const char *const gecnd_utils_get_cwd(void);
-const char *const gecnd_utils_get_exe_cwd(void);
+const char *gecnd_utils_get_cwd(void);
+const char *gecnd_utils_get_exe_cwd(void);

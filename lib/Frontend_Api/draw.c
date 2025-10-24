@@ -46,4 +46,5 @@ const luaL_Reg frontend_api_draw[] = {{"native_draw_start", hook_native_draw_sta
                {"native_draw_clear", hook_native_draw_clear},
                {"native_draw_color", hook_native_draw_color},
                {"native_draw_rect", hook_native_draw_rect},
+               {"native_draw_line", hook_native_draw_line},
                {NULL, NULL}};

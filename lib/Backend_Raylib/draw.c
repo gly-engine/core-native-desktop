@@ -37,6 +37,10 @@ void gly_hook_display_close(void) {
     }
 }
 
+static inline Color color_from_u32(uint32_t c) {
+    return (Color){(c >> 24) & 0xFF, (c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF};
+}
+
 void native_draw_start(void) {
     BeginDrawing();
 }
@@ -46,13 +50,11 @@ void native_draw_flush(void) {
 }
 
 void native_draw_color(uint32_t color) {
-    // color_u rgba = { color };
-    gly_current_color = WHITE;
+    gly_current_color = color_from_u32(color);
 }
 
 void native_draw_clear(uint32_t color) {
-    // color_u rgba = { color };
-    ClearBackground(BLACK);
+    ClearBackground(color_from_u32(color));
 }
 
 void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h) {
@@ -75,11 +77,11 @@ void native_text_print(int16_t x, int16_t y, const char *text) {
 
 void native_text_mensure(const char *text, int16_t *w, int16_t *h) {
     Vector2 size;
-
+    /// @todo correct use font mensure?
     if (!gly_font_loaded)
-        size = MeasureTextEx(GetFontDefault(), text, gly_font_size, 0);
+        size = MeasureTextEx(GetFontDefault(), text, gly_font_size, 2);
     else
-        size = MeasureTextEx(gly_current_font, text, gly_font_size, 0);
+        size = MeasureTextEx(gly_current_font, text, gly_font_size, 2);
 
     if (w)
         *w = (int16_t)ceilf(size.x);
