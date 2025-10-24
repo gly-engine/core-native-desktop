@@ -49,7 +49,7 @@ const char *gecnd_utils_get_exe_cwd() {
         *last_sep = '\0';
 
     initialized = true;
-    return path[0] ? path : NULL;
+    return (const char*) (path[0] ? path : NULL);
 }
 
 const char *gecnd_utils_get_cwd() {
@@ -64,5 +64,5 @@ const char *gecnd_utils_get_cwd() {
         return NULL;
 #endif
 
-    return cwd;
+    return (const char*) cwd;
 }

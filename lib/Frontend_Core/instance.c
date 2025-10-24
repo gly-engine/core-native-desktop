@@ -1,7 +1,16 @@
+#include <stddef.h>
 #include <string.h>
 #include <stdlib.h>
+
+#include <lauxlib.h>
 #include <lua.h>
+
 #include "gecnd.h"
+
+extern const luaL_Reg frontend_api_draw[];
+extern const luaL_Reg frontend_api_text[];
+extern const luaL_Reg frontend_api_http[];
+extern const luaL_Reg frontend_api_image[];
 
 gecnd_t *gecnd_new(lua_State* L) {
     gecnd_t *gly = NULL;
@@ -17,6 +26,19 @@ gecnd_t *gecnd_new(lua_State* L) {
         }
 
         gly->L = L;
+
+        for (int i = 0; frontend_api_draw[i].name != NULL; i++) {
+            lua_register(L, frontend_api_draw[i].name, frontend_api_draw[i].func);
+        }
+        for (int i = 0; frontend_api_text[i].name != NULL; i++) {
+            lua_register(L, frontend_api_text[i].name, frontend_api_text[i].func);
+        }
+        for (int i = 0; frontend_api_http[i].name != NULL; i++) {
+            lua_register(L, frontend_api_http[i].name, frontend_api_http[i].func);
+        }
+        for (int i = 0; frontend_api_image[i].name != NULL; i++) {
+            lua_register(L, frontend_api_image[i].name, frontend_api_image[i].func);
+        }
     }
     while(0);
     return gly;   
