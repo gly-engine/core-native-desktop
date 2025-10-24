@@ -13,7 +13,7 @@ static int hook_native_image_load(lua_State *L) {
 
 static int hook_native_image_draw(lua_State *L) {
     /// @todo organize stack
-    native_image_draw((int16_t)luaL_checknumber(L, 2), (int16_t)luaL_checknumber(L, 3), luaL_checkstring(L, 1));
+    native_image_draw(luaL_checkstring(L, 1), (int16_t)luaL_checknumber(L, 2), (int16_t)luaL_checknumber(L, 3));
     lua_settop(L, 0);
     return 0;
 }

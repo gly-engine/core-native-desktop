@@ -110,7 +110,7 @@ void native_text_font_default(uint8_t index) {
 
 void native_text_font_previous(void) {}
 
-void native_image_draw(int16_t x, int16_t y, const char *path) {
+void native_image_draw(const char *path, int16_t x, int16_t y) {
     static Texture2D texture = {0};
     static char loaded_path[1024] = {0};
 
