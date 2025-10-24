@@ -1,14 +1,15 @@
 #include <stdint.h>
 
 //! @cond
-#if defined(GLY_HOOK_TEMPLATE)
-#define CREATE_GLY_HOOK(ret, name, args) __attribute__((weak)) ret name args;
-#else
+#if defined(GLY_HOOK_IMPL)
 #define CREATE_GLY_HOOK(ret, name, args) \
     __attribute__((weak)) ret name args {}
+#else
+#define CREATE_GLY_HOOK(ret, name, args) __attribute__((weak)) ret name args;
 #endif
 //! @endcond
 
+CREATE_GLY_HOOK(void, gly_hook_display_init, (uint16_t, uint16_t))
 CREATE_GLY_HOOK(void, native_draw_start, ())
 CREATE_GLY_HOOK(void, native_draw_flush, ())
 CREATE_GLY_HOOK(void, native_draw_color, (uint32_t))
@@ -22,3 +23,4 @@ CREATE_GLY_HOOK(void, native_text_font_name, (const char *))
 CREATE_GLY_HOOK(void, native_text_font_default, (uint8_t))
 CREATE_GLY_HOOK(void, native_text_font_previous, ())
 CREATE_GLY_HOOK(void, native_image_draw, (int16_t, int16_t, const char *))
+CREATE_GLY_HOOK(void, native_image_mensure, (const char *, int16_t *const, int16_t *const))

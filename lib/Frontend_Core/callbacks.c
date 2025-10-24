@@ -4,11 +4,7 @@
 #include <lua.h>
 
 #include "gecnd.h"
-
-//! @cond
-#define GLY_HOOK_TEMPLATE
-#include "Frontend_Core/hooks.c"
-//! @endcond
+#include "gehook.h"
 
 gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, int16_t height) {
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_code_engine);

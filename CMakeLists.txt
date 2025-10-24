@@ -4,7 +4,7 @@ project(core LANGUAGES C)
 include(FetchContent)
 
 include_directories("${CMAKE_SOURCE_DIR}/inc")
-include_directories("${CMAKE_SOURCE_DIR}/lib")
+include_directories("${CMAKE_SOURCE_DIR}/lib/Common_Utils")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/lua")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/raylib/include")

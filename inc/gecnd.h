@@ -5,11 +5,7 @@
 typedef struct lua_State lua_State;
 //! @endcond
 
-typedef enum {
-    GECND_CONTROL_NONE = 0, 
-    GECND_CONTROL_FPS = 1,
-    GECND_CONTROL_WINDOW = 2
-} gecnd_enum_control_mode_t;
+typedef enum { GECND_CONTROL_NONE = 0, GECND_CONTROL_FPS = 1, GECND_CONTROL_WINDOW = 2 } gecnd_enum_control_mode_t;
 
 typedef enum {
     GECND_OK = 0,
@@ -48,7 +44,7 @@ gecnd_enum_error_code_t gecnd_native_callback_loop(gecnd_t *gly, int16_t delta_t
 gecnd_enum_error_code_t gecnd_native_callback_draw(gecnd_t *gly);
 gecnd_enum_error_code_t gecnd_native_callback_keyboard(gecnd_t *gly, char *const key, bool pressed);
 // iterators
-bool gecnd_next_input(gecnd_t *gly, char** key, bool *pressed);
+bool gecnd_next_input(gecnd_t *gly, char **key, bool *pressed);
 
 const char *const gecnd_utils_get_cwd(void);
 const char *const gecnd_utils_get_exe_cwd(void);
