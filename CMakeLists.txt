@@ -5,6 +5,7 @@ include(FetchContent)
 
 include_directories("${CMAKE_SOURCE_DIR}/inc")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/lua")
+include_directories("${CMAKE_SOURCE_DIR}/vendor/klib")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/raylib/include")
 
@@ -73,6 +74,13 @@ if(GECND_USE_RAYLIB)
     add_library(raylib-static STATIC IMPORTED)
     set_target_properties(raylib-static PROPERTIES IMPORTED_LOCATION "${RAYLIB_DIR}/lib/libraylib.a")
     target_link_libraries(${PROJECT_NAME} PRIVATE raylib-static)
+endif()
+
+# Klib
+set(KLIB_DIR "${CMAKE_SOURCE_DIR}/vendor/klib")
+set(KLIB_DOWNLOAD "https://github.com/attractivechaos/klib/archive/5c1451caa1ee476624d00eed71810532c89b82d1.tar.gz")
+if(NOT EXISTS "${KLIB_DIR}")
+    FetchContent_Populate(dep_klib URL "${KLIB_DOWNLOAD}" SOURCE_DIR ${KLIB_DIR})
 endif()
 
 # FFMPEG

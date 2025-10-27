@@ -7,12 +7,14 @@
 
 #include "gecnd.h"
 #include "gehook.h"
+#include "kvec.h"
 
 //! @cond
 static Color gly_current_color = {255, 255, 255, 255};
 static Font gly_current_font = {0};
 static bool gly_font_loaded = false;
 static int gly_font_size = 16;
+static kvec_t(Texture2D) gly_textures;
 //! @endcond
 
 #include <stdio.h>
@@ -25,6 +27,7 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     gly_current_font = GetFontDefault();
     gly_font_loaded = false;
     gly_font_size = 16;
+    kv_init(gly_textures);
 }
 
 void gly_hook_should_close(bool *should_close) {
@@ -32,6 +35,13 @@ void gly_hook_should_close(bool *should_close) {
 }
 
 void gly_hook_display_close(void) {
+    for (size_t i = 0; i < kv_size(gly_textures); i++) {
+        if (kv_A(gly_textures, i).id > 0) {
+            UnloadTexture(kv_A(gly_textures, i));
+        }
+    }
+    kv_destroy(gly_textures);
+
     if (IsWindowReady()) {
         CloseWindow();
     }
@@ -83,10 +93,10 @@ void native_text_mensure(const char *text, int16_t *w, int16_t *h) {
     else
         size = MeasureTextEx(gly_current_font, text, gly_font_size, 2);
 
-    if (w)
+    if (w && h) {
         *w = (int16_t)ceilf(size.x);
-    if (h)
         *h = (int16_t)ceilf(size.y);
+    }
 }
 
 void native_text_font_size(uint8_t size) {
@@ -116,17 +126,46 @@ void native_text_font_default(uint8_t index) {
 
 void native_text_font_previous(void) {}
 
-void native_image_draw(const char *path, int16_t x, int16_t y) {
-    static Texture2D texture = {0};
-    static char loaded_path[1024] = {0};
-
-    if (texture.id == 0 || strcmp(loaded_path, path) != 0) {
-        if (texture.id != 0) {
-            UnloadTexture(texture);
-        }
-        texture = LoadTexture(path);
-        strncpy(loaded_path, path, sizeof(loaded_path) - 1);
+void native_image_load(const char *path, int32_t image_id, bool *success) {
+    Texture2D texture = LoadTexture(path);
+    if (texture.id == 0) {
+        if (success)
+            *success = false;
+        return;
     }
 
-    DrawTexture(texture, x, y, WHITE);
+    size_t index = image_id - 1;
+
+    while (kv_size(gly_textures) <= index) {
+        kv_push(Texture2D, gly_textures, (Texture2D){0});
+    }
+
+    if (kv_A(gly_textures, index).id != 0) {
+        UnloadTexture(kv_A(gly_textures, index));
+    }
+
+    kv_A(gly_textures, index) = texture;
+    if (success)
+        *success = true;
+}
+
+void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
+    size_t index = image_id - 1;
+    if (image_id > 0 && kv_size(gly_textures) > index) {
+        Texture2D texture = kv_A(gly_textures, index);
+        if (texture.id != 0) {
+            DrawTexture(texture, x, y, WHITE);
+        }
+    }
+}
+
+void native_image_mensure(int32_t image_id, int16_t *w, int16_t *h) {
+    size_t index = image_id - 1;
+    if (image_id > 0 && kv_size(gly_textures) > index) {
+        Texture2D texture = kv_A(gly_textures, index);
+        if (texture.id != 0 && w && h) {
+            *w = texture.width;
+            *h = texture.height;
+        }
+    }
 }
