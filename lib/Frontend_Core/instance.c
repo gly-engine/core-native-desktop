@@ -42,6 +42,7 @@ gecnd_t *gecnd_new(lua_State* L) {
         }
 
         gly_hook_luaopen_cjson(L);
+        gly_hook_luaopen_base64(L);
     }
     while(0);
     return gly;   

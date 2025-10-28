@@ -8,6 +8,7 @@ include_directories("${CMAKE_SOURCE_DIR}/vendor/lua")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/klib")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/raylib/include")
+include_directories("${CMAKE_SOURCE_DIR}/vendor/libb64/include")
 
 # EXE
 set(ENTRYPOINT "src/main_basic.c")
@@ -71,6 +72,20 @@ if(GECND_USE_LUA_CJSON)
     add_library(lua_cjson-static STATIC "${LUACJSON_DIR}/lua_cjson.c;${LUACJSON_DIR}/strbuf.c;${LUACJSON_DIR}/fpconv.c")
     target_sources(${PROJECT_NAME} PRIVATE "lib/ThirdParty_Api/json.c")
     target_link_libraries(${PROJECT_NAME} PRIVATE lua_cjson-static)
+endif()
+
+# Lua Base 64
+set(BASE64_VERSION "2.0.0.1")
+set(BASE64_DIR "${CMAKE_SOURCE_DIR}/vendor/libb64")
+set(BASE64_DOWNLOAD "https://github.com/libb64/libb64/archive/refs/tags/v${BASE64_VERSION}.tar.gz")
+option(GECND_USE_LUA_BASE64 "fetch base64" ON)
+if(GECND_USE_LUA_BASE64)
+    if(NOT EXISTS ${BASE64_DIR})
+        FetchContent_Populate(dep_libb64 URL ${BASE64_DOWNLOAD} SOURCE_DIR ${BASE64_DIR})
+    endif()
+    add_library(lua_base64-static STATIC "${BASE64_DIR}/src/cencode.c" "${BASE64_DIR}/src/cdecode.c")
+    target_sources(${PROJECT_NAME} PRIVATE "lib/ThirdParty_Api/base64.c")
+    target_link_libraries(${PROJECT_NAME} PRIVATE lua_base64-static)
 endif()
 
 # Raylib

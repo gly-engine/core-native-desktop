@@ -17,6 +17,7 @@ typedef struct lua_State lua_State;
 CREATE_GLY_HOOK(void, gly_hook_should_close, (bool*))
 CREATE_GLY_HOOK(void, gly_hook_display_init, (uint16_t, uint16_t))
 CREATE_GLY_HOOK(void, gly_hook_luaopen_cjson, (lua_State*))
+CREATE_GLY_HOOK(void, gly_hook_luaopen_base64, (lua_State*))
 CREATE_GLY_HOOK(void, native_draw_start, ())
 CREATE_GLY_HOOK(void, native_draw_flush, ())
 CREATE_GLY_HOOK(void, native_draw_color, (uint32_t))
