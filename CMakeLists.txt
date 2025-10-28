@@ -59,6 +59,20 @@ find_program(LUAC lua PATHS ${LUA_DIR} REQUIRED NO_DEFAULT_PATH)
 target_link_libraries(${PROJECT_NAME} PRIVATE lua-static)
 set(LUAC "${LUAC}" CACHE INTERNAL "LUA COMPILER")
 
+# Lua CJson
+set(LUACJSON_VERSION "2.1.0.9")
+set(LUACJSON_DIR "${CMAKE_SOURCE_DIR}/vendor/lua_cjson")
+set(LUACJSON_DOWNLOAD "https://github.com/openresty/lua-cjson/archive/refs/tags/${LUACJSON_VERSION}.tar.gz")
+option(GECND_USE_LUA_CJSON "fetch lua cjson" ON)
+if(GECND_USE_LUA_CJSON)
+    if(NOT EXISTS ${LUACJSON_DIR})
+        FetchContent_Populate(dep_cjson_lua URL ${LUACJSON_DOWNLOAD} SOURCE_DIR ${LUACJSON_DIR})
+    endif()
+    add_library(lua_cjson-static STATIC "${LUACJSON_DIR}/lua_cjson.c;${LUACJSON_DIR}/strbuf.c;${LUACJSON_DIR}/fpconv.c")
+    target_sources(${PROJECT_NAME} PRIVATE "lib/ThirdParty_Api/json.c")
+    target_link_libraries(${PROJECT_NAME} PRIVATE lua_cjson-static)
+endif()
+
 # Raylib
 set(RAYLIB_VERSION "5.5")
 set(RAYLIB_DIR "${CMAKE_SOURCE_DIR}/vendor/raylib")

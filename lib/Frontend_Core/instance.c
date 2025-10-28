@@ -6,6 +6,7 @@
 #include <lua.h>
 
 #include "gecnd.h"
+#include "gehook.h"
 
 extern const luaL_Reg frontend_api_draw[];
 extern const luaL_Reg frontend_api_text[];
@@ -39,6 +40,8 @@ gecnd_t *gecnd_new(lua_State* L) {
         for (int i = 0; frontend_api_image[i].name != NULL; i++) {
             lua_register(L, frontend_api_image[i].name, frontend_api_image[i].func);
         }
+
+        gly_hook_luaopen_cjson(L);
     }
     while(0);
     return gly;   
