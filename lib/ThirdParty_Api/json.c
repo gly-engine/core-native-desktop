@@ -6,8 +6,6 @@
 extern int luaopen_cjson(lua_State *L);
 
 void gly_hook_luaopen_cjson(lua_State *L) {
-    printf("carregando jeison\n");
-
     luaopen_cjson(L);
     int cjson_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 

@@ -8,7 +8,7 @@
 
 #include "gehook.h"
 
-static int l_base64_encode(lua_State *L) {
+static int lua_base64_encode(lua_State *L) {
     size_t input_len;
     const char *input = luaL_checklstring(L, 1, &input_len);
 
@@ -27,7 +27,7 @@ static int l_base64_encode(lua_State *L) {
     return 1;
 }
 
-static int l_base64_decode(lua_State *L) {
+static int lua_base64_decode(lua_State *L) {
     size_t input_len;
     const char *input = luaL_checklstring(L, 1, &input_len);
 
@@ -47,8 +47,8 @@ static int l_base64_decode(lua_State *L) {
 
 void gly_hook_luaopen_base64(lua_State *L) {
     const luaL_Reg base64_funcs[] = {
-        {"native_base64_encode", l_base64_encode},
-        {"native_base64_decode", l_base64_decode},
+        {"native_base64_encode", lua_base64_encode},
+        {"native_base64_decode", lua_base64_decode},
         {NULL, NULL}
     };
     
