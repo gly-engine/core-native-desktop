@@ -7,6 +7,8 @@
 #include "gehook.h"
 
 gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, int16_t height) {
+    gly_hook_display_init(width, height);
+
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_code_engine);
     if (lua_pcall(gly->L, 0, 0, 0) != LUA_OK) {
         printf("lua error: %s", luaL_checkstring(gly->L, -1));
@@ -44,7 +46,6 @@ gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, 
     }
     gly->ref_native_callback_loop = luaL_ref(gly->L, LUA_REGISTRYINDEX);
 
-    gly_hook_display_init(width, height);
     return GECND_OK;
 }
 
