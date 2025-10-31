@@ -44,6 +44,7 @@ gecnd_t *gecnd_new(lua_State* L) {
 
         gly_hook_luaopen_cjson(L);
         gly_hook_luaopen_base64(L);
+        gly_hook_luaopen_storage(L);
     }
     while(0);
     return gly;   
@@ -51,6 +52,7 @@ gecnd_t *gecnd_new(lua_State* L) {
 
 void gecnd_destroy(gecnd_t *gly) {
     if (gly) {
+        gly_hook_luaclose_storage(gly->L);
         free(gly);
     }
 }

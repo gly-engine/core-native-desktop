@@ -7,6 +7,7 @@ include_directories("${CMAKE_SOURCE_DIR}/inc")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/lua")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/klib")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
+include_directories("${CMAKE_SOURCE_DIR}/vendor/sqlite3")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/raylib/include")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/libb64/include")
 
@@ -86,6 +87,20 @@ if(GECND_USE_LUA_BASE64)
     add_library(lua_base64-static STATIC "${BASE64_DIR}/src/cencode.c" "${BASE64_DIR}/src/cdecode.c")
     target_sources(${PROJECT_NAME} PRIVATE "lib/ThirdParty_Api/base64.c")
     target_link_libraries(${PROJECT_NAME} PRIVATE lua_base64-static)
+endif()
+
+# SQLite3
+set(SQLITE_VERSION "3410200") # exemplo: 3.41.2
+set(SQLITE_DIR "${CMAKE_SOURCE_DIR}/vendor/sqlite3")
+set(SQLITE_DOWNLOAD "https://www.sqlite.org/2023/sqlite-amalgamation-${SQLITE_VERSION}.zip")
+option(GECND_USE_SQLITE3 "Fetch and build sqlite3" ON)
+if(GECND_USE_SQLITE3)
+    if(NOT EXISTS ${SQLITE_DIR})
+        FetchContent_Populate(dep_sqlite3 URL ${SQLITE_DOWNLOAD} SOURCE_DIR ${SQLITE_DIR})
+    endif()
+    add_library(sqlite3-static STATIC "${SQLITE_DIR}/sqlite3.c")
+    target_sources(${PROJECT_NAME} PRIVATE "lib/ThirdParty_Api/storage.c")
+    target_link_libraries(${PROJECT_NAME} PRIVATE sqlite3-static)
 endif()
 
 # Raylib
