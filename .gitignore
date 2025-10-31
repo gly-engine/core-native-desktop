@@ -24,3 +24,6 @@ latex
 # System files
 Thumbs.db
 .DS_Store
+
+# GECND Files
+*.db
