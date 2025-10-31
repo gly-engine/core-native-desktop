@@ -8,6 +8,7 @@
 #include "gecnd.h"
 #include "gehook.h"
 
+extern const luaL_Reg frontend_api_log[];
 extern const luaL_Reg frontend_api_draw[];
 extern const luaL_Reg frontend_api_text[];
 extern const luaL_Reg frontend_api_image[];
@@ -28,6 +29,9 @@ gecnd_t *gecnd_new(lua_State* L) {
 
         gly->L = L;
 
+        for (int i = 0; frontend_api_log[i].name != NULL; i++) {
+            lua_register(L, frontend_api_log[i].name, frontend_api_log[i].func);
+        }
         for (int i = 0; frontend_api_draw[i].name != NULL; i++) {
             lua_register(L, frontend_api_draw[i].name, frontend_api_draw[i].func);
         }
