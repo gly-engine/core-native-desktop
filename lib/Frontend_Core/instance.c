@@ -10,7 +10,6 @@
 
 extern const luaL_Reg frontend_api_draw[];
 extern const luaL_Reg frontend_api_text[];
-extern const luaL_Reg frontend_api_http[];
 extern const luaL_Reg frontend_api_image[];
 extern const luaL_Reg frontend_api_system[];
 
@@ -42,6 +41,7 @@ gecnd_t *gecnd_new(lua_State* L) {
             lua_register(L, frontend_api_system[i].name, frontend_api_system[i].func);
         }
 
+        gly_hook_luaopen_http(L);
         gly_hook_luaopen_cjson(L);
         gly_hook_luaopen_base64(L);
         gly_hook_luaopen_storage(L);

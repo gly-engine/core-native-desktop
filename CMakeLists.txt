@@ -8,6 +8,7 @@ include_directories("${CMAKE_SOURCE_DIR}/vendor/lua")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/klib")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/sqlite3")
+include_directories("${CMAKE_SOURCE_DIR}/vendor/curl/include")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/raylib/include")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/libb64/include")
 
@@ -172,6 +173,57 @@ if (GECND_USE_LIBUV)
     FetchContent_MakeAvailable(zlib)
     target_link_libraries(${PROJECT_NAME} PRIVATE zlib)
 endif()
+
+# Bear SSL
+set(BEARSSL_VERSION "0.6")
+set(BEARSSL_DIR "${CMAKE_SOURCE_DIR}/vendor/bearssl")
+set(USE_LIBIDN2 OFF CACHE BOOL "" FORCE)
+set(BEARSSL_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/vendor/bearssl/inc")
+set(CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/vendor/bearssl/build;${CMAKE_PREFIX_PATH}")
+
+# Curl
+set(CURL_VERSION "8_9_1")
+set(CURL_DIR "${CMAKE_SOURCE_DIR}/vendor/curl")
+set(HTTP_ONLY ON CACHE BOOL "" FORCE)
+set(PICKY_COMPILER OFF CACHE BOOL "" FORCE)
+set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
+set(BUILD_STATIC_CURL OFF CACHE BOOL "" FORCE)
+set(ENABLE_ARES OFF CACHE BOOL "" FORCE)
+set(CURL_DISABLE_TESTS ON CACHE BOOL "" FORCE)
+set(CURL_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
+set(BUILD_LIBCURL_DOCS OFF CACHE BOOL "" FORCE)
+set(BUILD_MISC_DOCS OFF CACHE BOOL "" FORCE)
+set(ENABLE_CURL_MANUAL OFF CACHE BOOL "" FORCE)
+set(CURL_USE_OPENSSL OFF CACHE BOOL "" FORCE)
+set(CURL_USE_BEARSSL ON CACHE BOOL "" FORCE)
+set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
+set(CURL_USE_LIBSSH2 OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+    dep_bearssl
+    GIT_REPOSITORY https://www.bearssl.org/git/BearSSL
+    GIT_TAG "v${BEARSSL_VERSION}"
+    SOURCE_DIR ${BEARSSL_DIR}
+)
+FetchContent_MakeAvailable(dep_bearssl)
+if (NOT EXISTS "${BEARSSL_DIR}/build/libbearssl.a")
+    execute_process(
+        COMMAND ${CMAKE_MAKE_PROGRAM} build/libbearssl.a -j ${J}
+        WORKING_DIRECTORY ${BEARSSL_DIR}
+        COMMAND_ERROR_IS_FATAL ANY
+    )
+endif()
+FetchContent_Declare(
+    dep_curl
+    GIT_REPOSITORY https://github.com/curl/curl
+    GIT_TAG curl-8_9_1
+    SOURCE_DIR ${CURL_DIR}
+)
+FetchContent_MakeAvailable(dep_curl)
+target_link_libraries(${PROJECT_NAME} PRIVATE CURL::libcurl)
+target_sources(${PROJECT_NAME} PRIVATE "lib/ThirdParty_Api/http.c")
 
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
