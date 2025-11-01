@@ -6,7 +6,7 @@ typedef struct lua_State lua_State;
 //! @endcond
 
 //! @cond
-#if defined(GLY_HOOK_IMPL)
+#if defined(GLY_HOOK_IMPL) && !defined(GLY_EMPTY_HOOKS)
 #define CREATE_GLY_HOOK(ret, name, args) \
     __attribute__((weak)) ret name args {}
 #else

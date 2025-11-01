@@ -31,7 +31,7 @@ typedef struct {
 } gecnd_t;
 
 // instance
-gecnd_t *gecnd_new();
+gecnd_t *gecnd_new(lua_State* L);
 void gecnd_destroy(gecnd_t *gly);
 // configure
 gecnd_enum_error_code_t gecnd_lua_openlibs(gecnd_t *gly);

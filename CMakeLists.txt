@@ -16,10 +16,11 @@ include_directories("${CMAKE_SOURCE_DIR}/vendor/raylib/include")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/libb64/include")
 
 # EXE
-if(NOT DEFINED GENCD_ENTRYPOINT)
-    set(GENCD_ENTRYPOINT "${CMAKE_CURRENT_LIST_DIR}/src/main_basic.c")
+if(NOT DEFINED GECND_ENTRYPOINT)
+    set(GECND_ENTRYPOINT "${CMAKE_CURRENT_LIST_DIR}/src/main_basic.c")
 endif()
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/lib")
 file(GLOB_RECURSE SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/lib/Frontend_*/*.c"
     "${CMAKE_CURRENT_LIST_DIR}/lib/Common_*/*.c"
@@ -28,7 +29,13 @@ if(BACKEND)
     file(GLOB_RECURSE BACKEND_SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_${BACKEND}/*.c")
     set(SOURCES "${SOURCES};${BACKEND_SOURCES}")
 endif()
-add_executable(${PROJECT_NAME} "${GENCD_ENTRYPOINT};${SOURCES}")
+option(GECND_AS_LIBRARY "build static lib gecnd intead binary" OFF)
+if(NOT GECND_AS_LIBRARY)
+    add_executable(${PROJECT_NAME} "${GENCD_ENTRYPOINT};${SOURCES}")
+else()
+    add_library(${PROJECT_NAME} STATIC "${GENCD_ENTRYPOINT};${SOURCES}")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE "GLY_EMPTY_HOOKS")
+endif()
 
 # Zig
 set(ZIG_VERSION "0.13.0")
@@ -253,5 +260,6 @@ if(GECND_USE_CURL)
 endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set_target_properties(${PROJECT_NAME} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
 target_link_libraries(${PROJECT_NAME} PRIVATE m)
