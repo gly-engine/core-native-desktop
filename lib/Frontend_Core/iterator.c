@@ -1,9 +1,7 @@
 #include "gecnd.h"
+#include "gehook.h"
 
-bool gecnd_next_input(gecnd_t *gly, char** key, bool *pressed)
-{
+bool gecnd_next_input(gecnd_t *gly, char **key, bool *pressed) {
     (void) gly;
-    (void) key;
-    (void) pressed;
-    return false;
+    return gly_hook_input_get_next(key, pressed);
 }

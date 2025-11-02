@@ -46,6 +46,12 @@ gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, 
     }
     gly->ref_native_callback_loop = luaL_ref(gly->L, LUA_REGISTRYINDEX);
 
+    if (lua_getglobal(gly->L, "native_callback_keyboard") != LUA_TFUNCTION) {
+        printf("native_callback_keyboard");
+        exit(1);
+    }
+    gly->ref_native_callback_keyboard = luaL_ref(gly->L, LUA_REGISTRYINDEX);
+
     return GECND_OK;
 }
 
@@ -67,7 +73,7 @@ gecnd_enum_error_code_t gecnd_native_callback_loop(gecnd_t *gly, int16_t delta_t
 }
 
 gecnd_enum_error_code_t gecnd_native_callback_keyboard(gecnd_t *gly, char *key, bool pressed) {
-    lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_loop);
+    lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_keyboard);
     lua_pushstring(gly->L, key);
     lua_pushboolean(gly->L, pressed);
     if (lua_pcall(gly->L, 2, 0, 0) != LUA_OK) {
