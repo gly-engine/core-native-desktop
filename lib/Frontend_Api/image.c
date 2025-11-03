@@ -53,7 +53,7 @@ static int32_t image_load(const char *src) {
     return new_id;
 }
 
-static int hook_native_image_load(lua_State *L) {
+static int lua_native_image_load(lua_State *L) {
     const char *img_src = luaL_checkstring(L, 1);
     int32_t img_id = image_load(img_src);
     lua_settop(L, 0);
@@ -61,7 +61,7 @@ static int hook_native_image_load(lua_State *L) {
     return 1;
 }
 
-static int hook_native_image_exists(lua_State *L) {
+static int lua_native_image_exists(lua_State *L) {
     const char *img_src = luaL_checkstring(L, 1);
     int32_t img_id = image_load(img_src);
     lua_settop(L, 0);
@@ -69,7 +69,7 @@ static int hook_native_image_exists(lua_State *L) {
     return 1;
 }
 
-static int hook_native_image_draw(lua_State *L) {
+static int lua_native_image_draw(lua_State *L) {
     int32_t img_id = -1;
 
     if (lua_type(L, 1) == LUA_TSTRING) {
@@ -91,7 +91,7 @@ static int hook_native_image_draw(lua_State *L) {
     return 0;
 }
 
-static int hook_native_image_mensure(lua_State *L) {
+static int lua_native_image_mensure(lua_State *L) {
     int32_t img_id = -1;
 
     if (lua_type(L, 1) == LUA_TSTRING) {
@@ -116,8 +116,8 @@ static int hook_native_image_mensure(lua_State *L) {
 }
 
 const luaL_Reg frontend_api_image[] = {
-               {"native_image_load", hook_native_image_load},
-               {"native_image_draw", hook_native_image_draw},
-               {"native_image_exists", hook_native_image_exists},
-               {"native_image_mensure", hook_native_image_mensure},
+               {"native_image_load", lua_native_image_load},
+               {"native_image_draw", lua_native_image_draw},
+               {"native_image_exists", lua_native_image_exists},
+               {"native_image_mensure", lua_native_image_mensure},
                {NULL, NULL}};
