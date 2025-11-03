@@ -160,6 +160,9 @@ set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
 set(CURL_USE_LIBSSH2 OFF CACHE BOOL "" FORCE)
 option(GECND_USE_CURL "use curl" ON)
 
+# Mock
+option(GECND_MOCK_HTTP "add package http but raise error on request" OFF)
+
 if(GECND_USE_JSON)
     if(NOT EXISTS ${LUACJSON_DIR})
         FetchContent_Populate(dep_cjson_lua URL ${LUACJSON_DOWNLOAD} SOURCE_DIR ${LUACJSON_DIR})
@@ -260,8 +263,13 @@ if(GECND_USE_CURL)
     )
     FetchContent_MakeAvailable(dep_curl)
     target_link_libraries(${PROJECT_NAME} PRIVATE CURL::libcurl)
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Api/http.c")
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Api/http_curl.c")
 endif()
+
+if(GECND_MOCK_HTTP)
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Api/http_mock.c")
+endif()
+
 
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set_target_properties(${PROJECT_NAME} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
