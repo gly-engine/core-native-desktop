@@ -1,3 +1,5 @@
+#include <stddef.h>
+
 #include "gecnd.h"
 #include "gehook.h"
 
