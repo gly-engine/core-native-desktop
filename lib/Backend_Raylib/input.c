@@ -15,12 +15,21 @@ static const struct {
     { KEY_C,           "c" },
     { KEY_V,           "d" },
     { KEY_LEFT_SHIFT,  "menu" }
+//    { KEY_H,           "ch_down" },
+//    { KEY_L,           "vol_up" },
+//    { KEY_I,           "ch_up" },
+//    { KEY_K,           "vol_down" }
 };
 
 #define KEYMAP_COUNT (sizeof(keymap) / sizeof(keymap[0]))
 
 static bool old_state[KEYMAP_COUNT];
 static uint8_t index;
+
+void gly_hook_keyboard_has_media(bool *enable)
+{
+    *enable = true;
+}
 
 void gly_hook_input_keyboard(char** key, bool* press)
 {
