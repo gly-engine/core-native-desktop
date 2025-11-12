@@ -3,17 +3,13 @@
 #include "lua.h"
 #include "lualib.h"
 
-int main() {
+int main(int argc, char* argv[]) {
     lua_State *L = luaL_newstate();
-    gecnd_t *gly = gecnd_new(L);
-    const char *const cwd = gecnd_utils_get_exe_cwd();
+    gecnd_t *gly = gecnd_new2(L, argc, argv);
 
     luaL_openlibs(L);
-    gecnd_set_game_file(gly, cwd, "game.lua");
-    gecnd_set_engine_file(gly, cwd, "main.lua");
-    gecnd_set_control_mode(gly, GECND_CONTROL_FPS | GECND_CONTROL_WINDOW);
 
-    if (gecnd_native_callback_init(gly, 1280, 720) == GECND_OK) {
+    if (gly && gecnd_native_callback_init(gly, gly->width, gly->height) == GECND_OK) {
         static char *key;
         static bool pressed;
 

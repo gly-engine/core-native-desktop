@@ -10,6 +10,7 @@ typedef enum { GECND_CONTROL_NONE = 0, GECND_CONTROL_FPS = 1, GECND_CONTROL_WIND
 typedef enum {
     GECND_OK = 0,
     GECND_ERROR_LUA,
+    GECND_ERROR_FLAG_INVALID_SIZE,
     GECND_ERROR_NO_GLY,
     GECND_ERROR_NO_GAME,
     GECND_ERROR_NO_ENGINE,
@@ -21,23 +22,25 @@ typedef enum {
 
 typedef struct {
     lua_State *L;
-    gecnd_enum_control_mode_t control_mode;
+    int16_t width;
+    int16_t height;
     int ref_code_game;
     int ref_code_engine;
     int ref_native_callback_init;
     int ref_native_callback_loop;
     int ref_native_callback_draw;
     int ref_native_callback_keyboard;
+    gecnd_enum_error_code_t error;
 } gecnd_t;
 
 // instance
 gecnd_t *gecnd_new(lua_State* L);
+gecnd_t *gecnd_new2(lua_State* L, int argc, char* argv[]);
 void gecnd_destroy(gecnd_t *gly);
 // configure
 gecnd_enum_error_code_t gecnd_lua_openlibs(gecnd_t *gly);
 gecnd_enum_error_code_t gecnd_set_game_file(gecnd_t *gly, const char *const path, const char *const file);
 gecnd_enum_error_code_t gecnd_set_engine_file(gecnd_t *gly, const char *const path, const char *const file);
-gecnd_enum_error_code_t gecnd_set_control_mode(gecnd_t *gly, int flags);
 // callbacks
 gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, int16_t height);
 gecnd_enum_error_code_t gecnd_native_callback_loop(gecnd_t *gly, int16_t delta_time);

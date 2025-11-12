@@ -8,6 +8,14 @@
 #include "gecnd.h"
 #include "gehook.h"
 
+#ifndef GECND_DEFAULT_WIDTH
+#define GECND_DEFAULT_WIDTH 1280
+#endif
+
+#ifndef GECND_DEFAULT_HEIGHT
+#define GECND_DEFAULT_HEIGHT 720
+#endif
+
 extern const luaL_Reg frontend_api_log[];
 extern const luaL_Reg frontend_api_draw[];
 extern const luaL_Reg frontend_api_text[];
@@ -17,6 +25,7 @@ extern const luaL_Reg frontend_api_system[];
 gecnd_t *gecnd_new(lua_State* L) {
     gecnd_t *gly = NULL;
     bool native_keyboard_has_media = false;
+    const char *const cwd = gecnd_utils_get_exe_cwd();
 
     do {
         if (!L) {
@@ -29,7 +38,13 @@ gecnd_t *gecnd_new(lua_State* L) {
             break;
         }
 
+        (void) memset(gly, 0, sizeof(gecnd_t));
+
         gly->L = L;
+        gly->width = GECND_DEFAULT_WIDTH;
+        gly->height = GECND_DEFAULT_HEIGHT;
+        gecnd_set_game_file(gly, cwd, "game.lua");
+        gecnd_set_engine_file(gly, cwd, "main.lua");
 
         for (int i = 0; frontend_api_log[i].name != NULL; i++) {
             lua_register(L, frontend_api_log[i].name, frontend_api_log[i].func);
