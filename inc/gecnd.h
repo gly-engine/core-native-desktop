@@ -37,6 +37,8 @@ typedef struct {
 gecnd_t *gecnd_new(lua_State* L);
 gecnd_t *gecnd_new2(lua_State* L, int argc, char* argv[]);
 void gecnd_destroy(gecnd_t *gly);
+// signal
+void gecnd_handler(int sig);
 // configure
 gecnd_enum_error_code_t gecnd_lua_openlibs(gecnd_t *gly);
 gecnd_enum_error_code_t gecnd_set_game_file(gecnd_t *gly, const char *const path, const char *const file);

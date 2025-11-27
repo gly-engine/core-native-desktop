@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
 #include <locale.h>
@@ -8,6 +9,14 @@
 
 #include <lua.h>
 #include <lauxlib.h>
+
+bool gecnd_want_exit = false;
+
+static int lua_native_system_exit(lua_State *L) {
+    (void) L;
+    gecnd_want_exit = true;
+    return 0;
+}
 
 static int lua_native_system_get_language(lua_State *L) {
     const char *raw = NULL;
@@ -64,5 +73,6 @@ static int lua_native_system_get_env(lua_State *L) {
 const luaL_Reg frontend_api_system[] = {
     {"native_system_get_language", lua_native_system_get_language},
     {"native_system_get_env", lua_native_system_get_env},
+    {"native_system_exit", lua_native_system_exit},
     {NULL, NULL}
 };

@@ -1,3 +1,5 @@
+#include <signal.h>
+
 #include "gecnd.h"
 #include "lauxlib.h"
 #include "lua.h"
@@ -8,6 +10,7 @@ int main(int argc, char* argv[]) {
     gecnd_t *gly = gecnd_new2(L, argc, argv);
 
     luaL_openlibs(L);
+    signal(SIGINT, gecnd_handler);
 
     if (gly && gecnd_native_callback_init(gly, gly->width, gly->height) == GECND_OK) {
         static char *key;
