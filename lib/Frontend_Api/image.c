@@ -9,10 +9,10 @@
 #include "gehook.h"
 
 KHASH_MAP_INIT_STR(str2int, int32_t)
+static khash_t(str2int) *cache = NULL;
+static int32_t next_id = 1;
 
 static int32_t image_load(const char *src) {
-    static khash_t(str2int) *cache = NULL;
-    static int32_t next_id = 1;
     bool success = false;
 
     if (!cache)
@@ -53,6 +53,48 @@ static int32_t image_load(const char *src) {
     return new_id;
 }
 
+static int lua_native_image_unload(lua_State *L) {
+    int32_t img_id = -1;
+    bool success = false;
+    khiter_t k = kh_end(cache);
+
+    if (!cache) {
+        return 0;
+    }
+
+    if (lua_type(L, 1) == LUA_TSTRING) {
+        const char *img_src = lua_tostring(L, 1);
+        k = kh_get(str2int, cache, img_src);
+        if (k != kh_end(cache)) {
+            img_id = kh_value(cache, k);
+        }
+    } 
+    else if (lua_type(L, 1) == LUA_TNUMBER) {
+        img_id = (int32_t) lua_tointeger(L, 1);
+        khiter_t iter;
+        for (iter = kh_begin(cache); iter != kh_end(cache); ++iter) {
+            if (kh_exist(cache, iter) && kh_value(cache, iter) == img_id) {
+                k = iter;
+                break;
+            }
+        }
+    } 
+    else {
+        return luaL_error(L, "expected string or integer for image unload");
+    }
+
+    if (img_id != -1 && k != kh_end(cache)) {
+        native_image_unload(img_id, &success);
+        if (success) {
+            free((char *)kh_key(cache, k));
+            kh_del(str2int, cache, k);
+        }
+    }
+
+    lua_pushboolean(L, success);
+    return 1;
+}
+
 static int lua_native_image_load(lua_State *L) {
     const char *img_src = luaL_checkstring(L, 1);
     int32_t img_id = image_load(img_src);
@@ -88,7 +130,8 @@ static int lua_native_image_draw(lua_State *L) {
     }
 
     lua_settop(L, 0);
-    return 0;
+    lua_pushinteger(L, img_id);
+    return 1;
 }
 
 static int lua_native_image_mensure(lua_State *L) {
@@ -120,4 +163,5 @@ const luaL_Reg frontend_api_image[] = {
                {"native_image_draw", lua_native_image_draw},
                {"native_image_exists", lua_native_image_exists},
                {"native_image_mensure", lua_native_image_mensure},
+               {"native_image_unload", lua_native_image_unload},
                {NULL, NULL}};

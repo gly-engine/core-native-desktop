@@ -19,6 +19,7 @@ static kvec_t(Texture2D) gly_textures;
 
 #include <stdio.h>
 void gly_hook_display_init(uint16_t width, uint16_t height) {
+    SetTraceLogLevel(4);
     if (!IsWindowReady()) {
         InitWindow(width, height, "GlyDisplay (Raylib)");
     }
@@ -168,4 +169,9 @@ void native_image_mensure(int32_t image_id, int16_t *w, int16_t *h) {
             *h = texture.height;
         }
     }
+}
+
+void native_image_unload(int32_t image_id, bool *const success) {
+    (void) success;
+    printf("TODO: implements native_image_unload! (%d)\n", image_id);
 }
