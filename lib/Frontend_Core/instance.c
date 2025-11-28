@@ -40,6 +40,9 @@ gecnd_t *gecnd_new(lua_State* L) {
 
         (void) memset(gly, 0, sizeof(gecnd_t));
 
+        lua_pushlightuserdata(L, gly);
+        lua_rawseti(L, LUA_REGISTRYINDEX, GLY_REGISTRYINDEX);
+
         gly->L = L;
         gly->width = GECND_DEFAULT_WIDTH;
         gly->height = GECND_DEFAULT_HEIGHT;

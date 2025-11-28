@@ -1,6 +1,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define GLY_REGISTRYINDEX ((uint32_t)(uintptr_t)(gecnd_new))
+
 //! @cond
 typedef struct lua_State lua_State;
 //! @endcond
@@ -24,6 +26,7 @@ typedef struct {
     lua_State *L;
     int16_t width;
     int16_t height;
+    bool want_exit;
     int ref_code_game;
     int ref_code_engine;
     int ref_native_callback_init;

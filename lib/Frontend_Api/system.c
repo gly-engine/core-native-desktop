@@ -10,11 +10,13 @@
 #include <lua.h>
 #include <lauxlib.h>
 
-bool gecnd_want_exit = false;
+#include "gecnd.h"
 
 static int lua_native_system_exit(lua_State *L) {
-    (void) L;
-    gecnd_want_exit = true;
+    lua_rawgeti(L, LUA_REGISTRYINDEX, GLY_REGISTRYINDEX);
+    gecnd_t *gly = lua_touserdata(L, -1);
+    lua_settop(L, 0);
+    gly->want_exit = true;
     return 0;
 }
 

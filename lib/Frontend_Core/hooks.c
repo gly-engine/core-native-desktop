@@ -3,18 +3,16 @@
 
 #include "gecnd.h"
 
-extern bool gecnd_want_exit;
 extern int gecnd_signal;
 
 bool gecnd_is_running(gecnd_t *gly) {
-    (void) gly;
     bool should_close = false;
     
     do {
         gly_hook_should_close(&should_close);
         if (should_close) break;
 
-        should_close = gecnd_want_exit;
+        should_close = gly->want_exit;
         if (should_close) break;
 
         should_close = gecnd_signal != 0;
