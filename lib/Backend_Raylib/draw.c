@@ -68,11 +68,30 @@ void native_draw_clear(uint32_t color) {
     ClearBackground(color_from_u32(color));
 }
 
-void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h) {
-    if (mode == 0)
+void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r) {
+    /// @todo fix radius in raylib backend
+    float radius = r;
+
+    if (radius > 0) {
+        float maxRadius = fminf((float) w / 2.0f, (float) h / 2.0f);
+        if (radius > maxRadius) radius = maxRadius;
+        radius = radius / maxRadius;
+    }
+
+    if (mode == 0 && r == 0) {
         DrawRectangle(x, y, w, h, gly_current_color);
-    else
-        DrawRectangleLines(x, y, w, h, gly_current_color);
+    }
+    else if (mode == 1 && r == 0) {
+      DrawRectangleLines(x, y, w, h, gly_current_color);
+    }
+    else if (mode == 0 && r > 0) {
+        Rectangle shape = { x, y, w, h };
+        DrawRectangleRounded(shape, radius, 32, gly_current_color);
+    }
+    else if (mode == 1 && r > 0) {
+        Rectangle shape = { x, y, w, h };
+        DrawRectangleRoundedLines(shape, radius, 32, gly_current_color);
+    } 
 }
 
 void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
