@@ -52,5 +52,7 @@ gecnd_enum_error_code_t gecnd_native_callback_keyboard(gecnd_t *gly, char *const
 bool gecnd_is_running(gecnd_t *gly);
 bool gecnd_next_input(gecnd_t *gly, char **key, bool *pressed);
 
+// utils
+uint32_t gecnd_get_delta_ms(void);
 const char *gecnd_utils_get_cwd(void);
 const char *gecnd_utils_get_exe_cwd(void);
