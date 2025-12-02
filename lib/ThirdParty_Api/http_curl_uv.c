@@ -1,8 +1,6 @@
-/* http_libuv_curl.c
- *
- * Integra libuv + libcurl (multi) para múltiplas requisições assíncronas.
- *
- * Compilar com: -lcurl -luv -llua (ajuste conforme seu ambiente)
+/**
+ * @author chat-gpt
+ * @todo rewrite this
  */
 
 #include <stdlib.h>
@@ -13,6 +11,8 @@
 #include <lauxlib.h>
 #include <lua.h>
 #include <uv.h>
+
+#include "http_common.h"
 
 /* --- estrutura do request --- */
 typedef struct {
@@ -34,36 +34,6 @@ static uv_timer_t *g_timeout_timer = NULL;
 static void check_multi_info(void);
 
 /* --- reutilizei suas funções JS/Lua helpers (com pequenas adaptações) --- */
-static void native_callback_http(lua_State* L, int64_t req_id, const char *const evt_key)
-{
-    static int native_http_callback_ref = 0;
-    if (!native_http_callback_ref) {
-        lua_getglobal(L, "native_callback_http");
-        if (lua_isfunction(L, -1)) {
-            native_http_callback_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-        } else {
-            lua_pop(L, 1);
-            native_http_callback_ref = 0;
-            return;
-        }
-    }
-    lua_rawgeti(L, LUA_REGISTRYINDEX, native_http_callback_ref);
-    lua_pushinteger(L, req_id);
-    lua_pushstring(L, evt_key);
-}
-
-static const char* native_http_get_str(lua_State* L, int64_t req_id, const char *const evt_key)
-{
-    native_callback_http(L, req_id, evt_key);
-    if (lua_pcall(L, 2, 1, 0) != LUA_OK) {
-        const char *err = lua_tostring(L, -1);
-        lua_pop(L, 1);
-        return NULL;
-    }
-    const char *s = luaL_checkstring(L, -1);
-    lua_pop(L, 1);
-    return s;
-}
 
 /* --- callbacks para curl easy (chamados durante a transferência) --- */
 static size_t curl_write_cb(void *contents, size_t size, size_t nmemb, void *userp)
@@ -187,6 +157,17 @@ static void free_sock_info(void *ptr)
     uv_close((uv_handle_t*)&si->poll_handle, (uv_close_cb)free);
 }
 
+/* chama-se quando o uv_poll foi fechado; libera toda a struct */
+static void on_poll_close(uv_handle_t *handle)
+{
+    /* handle->data foi definido como apontando para a sock_info_t */
+    sock_info_t *si = (sock_info_t*) handle->data;
+    if (!si) return;
+    /* garantir que não tentem usar o poll_handle depois de free */
+    handle->data = NULL;
+    free(si);
+}
+
 /* callback que o curl chama quando o estado do socket muda */
 static int on_socket(CURL *easy, curl_socket_t s, int what, void *userp, void *sockp)
 {
@@ -208,7 +189,7 @@ static int on_socket(CURL *easy, curl_socket_t s, int what, void *userp, void *s
         if (si) {
             uv_poll_stop(&si->poll_handle);
             /* free later via uv_close so no race */
-            uv_close((uv_handle_t*)&si->poll_handle, (uv_close_cb)free);
+            uv_close((uv_handle_t*)&si->poll_handle, on_poll_close);
             curl_multi_assign(g_curl_multi, s, NULL);
         }
     }
@@ -233,11 +214,7 @@ static void check_multi_info(void)
                         lua_pop(r->L, 1);
                     }
                 } else {
-                    /* sucesso: notificar completo */
-                    native_callback_http(r->L, r->id, "completed");
-                    if (lua_pcall(r->L, 2, 0, 0) != LUA_OK) {
-                        lua_pop(r->L, 1);
-                    }
+                    native_http_resolve(r->L, r->id);
                 }
             }
 
@@ -330,6 +307,7 @@ static int start_multi_request(lua_State* L)
     curl_multi_socket_action(g_curl_multi, CURL_SOCKET_TIMEOUT, 0, &running_handles);
     check_multi_info();
 
+    native_http_promise(L, req_id);
     return 0;
 }
 
