@@ -24,6 +24,7 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
         InitWindow(width, height, "GlyDisplay (Raylib)");
     }
     SetTargetFPS(60);
+    SetExitKey(0);
     gly_current_color = WHITE;
     gly_current_font = GetFontDefault();
     gly_font_loaded = false;

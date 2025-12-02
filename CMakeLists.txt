@@ -6,7 +6,7 @@ endif()
 project("${GECND_PROJECT_NAME}" LANGUAGES C)
 include(FetchContent)
 
-include_directories("${CMAKE_CURRENT_LIST_DIR}/inc")
+include_directories("${CMAKE_CURRENT_LIST_DIR}/include")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/lua")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/klib")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
@@ -45,6 +45,8 @@ else()
     endif()
     add_executable(${PROJECT_NAME} "${GECND_ENTRYPOINT};${SOURCES}")
 endif()
+separate_arguments(GECND_CC_FLAGS)
+target_compile_options(${PROJECT_NAME} PRIVATE ${GECND_CC_FLAGS})
 
 # Zig
 set(ZIG_VERSION "0.13.0")

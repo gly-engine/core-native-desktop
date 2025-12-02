@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
     uv_loop_init(&loop);
     gecnd_set_loop(gly, (void*) &loop);
     gly_http_set_loop(&loop); // remote this
-    //signal(SIGINT, gecnd_handler); // use in libuv
+    signal(SIGINT, gecnd_handler);
 
     if (gly && gecnd_native_callback_init(gly, gly->width, gly->height) == GECND_OK) {
         uv_timer_init(&loop, &timer);
