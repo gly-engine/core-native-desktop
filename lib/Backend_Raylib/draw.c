@@ -31,6 +31,11 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     kv_init(gly_textures);
 }
 
+void gly_hook_disable_delay() {
+    ClearWindowState(FLAG_VSYNC_HINT);
+    SetTargetFPS(0);
+}
+
 void gly_hook_should_close(bool *should_close) {
     *should_close = WindowShouldClose();
 }

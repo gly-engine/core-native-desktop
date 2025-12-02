@@ -24,8 +24,10 @@ typedef enum {
 
 typedef struct {
     lua_State *L;
+    void* loop;
     int16_t width;
     int16_t height;
+    bool running;
     bool want_exit;
     int ref_code_game;
     int ref_code_engine;
@@ -43,7 +45,7 @@ void gecnd_destroy(gecnd_t *gly);
 // signal
 void gecnd_handler(int sig);
 // configure
-gecnd_enum_error_code_t gecnd_lua_openlibs(gecnd_t *gly);
+void gecnd_set_loop(gecnd_t *gly, void* loop);
 gecnd_enum_error_code_t gecnd_set_game_file(gecnd_t *gly, const char *const path, const char *const file);
 gecnd_enum_error_code_t gecnd_set_engine_file(gecnd_t *gly, const char *const path, const char *const file);
 // callbacks
