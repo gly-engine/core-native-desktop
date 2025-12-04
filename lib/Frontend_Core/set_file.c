@@ -20,7 +20,7 @@ static gecnd_enum_error_code_t file_loader(lua_State *L, int* ref, const char *c
 
     snprintf(full_path, total_len, "%s/%s", path, file);
 
-    if (luaL_loadfile(L, full_path) != LUA_OK) {
+    if (luaL_loadfile(L, full_path)) {
         free(full_path);
         return GECND_ERROR_NO_GAME;
     }

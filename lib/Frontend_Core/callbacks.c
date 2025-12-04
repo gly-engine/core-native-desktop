@@ -10,12 +10,13 @@ gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, 
     gly_hook_display_init(width, height);
 
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_code_engine);
-    if (lua_pcall(gly->L, 0, 0, 0) != LUA_OK) {
+    if (lua_pcall(gly->L, 0, 0, 0)) {
         printf("lua error: %s", luaL_checkstring(gly->L, -1));
         exit(1);
     }
 
-    if (lua_getglobal(gly->L, "native_callback_init") != LUA_TFUNCTION) {
+    lua_getglobal(gly->L, "native_callback_init");
+    if (lua_type(gly->L, -1) != LUA_TFUNCTION) {
         printf("native_callback_init");
         exit(1);
     }
@@ -24,29 +25,32 @@ gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, 
     lua_pushnumber(gly->L, height);
 
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_code_game);
-    if(lua_pcall(gly->L, 0, 1, 0) != LUA_OK) {
+    if(lua_pcall(gly->L, 0, 1, 0)) {
         printf("lua error: %s", luaL_checkstring(gly->L, -1));
         exit(1);
     }
 
-    if(lua_pcall(gly->L, 3, 0, 0) != LUA_OK) {
+    if(lua_pcall(gly->L, 3, 0, 0)) {
         printf("lua error: %s", luaL_checkstring(gly->L, -1));
         exit(1);
     }
 
-    if (lua_getglobal(gly->L, "native_callback_draw") != LUA_TFUNCTION) {
+    lua_getglobal(gly->L, "native_callback_draw");
+    if (lua_type(gly->L, -1) != LUA_TFUNCTION) {
         printf("native_callback_draw");
         exit(1);
     }
     gly->ref_native_callback_draw = luaL_ref(gly->L, LUA_REGISTRYINDEX);
 
-    if (lua_getglobal(gly->L, "native_callback_loop") != LUA_TFUNCTION) {
+    lua_getglobal(gly->L, "native_callback_loop");
+    if (lua_type(gly->L, -1) != LUA_TFUNCTION) {
         printf("native_callback_loop");
         exit(1);
     }
     gly->ref_native_callback_loop = luaL_ref(gly->L, LUA_REGISTRYINDEX);
 
-    if (lua_getglobal(gly->L, "native_callback_keyboard") != LUA_TFUNCTION) {
+    lua_getglobal(gly->L, "native_callback_keyboard");
+    if (lua_type(gly->L, -1) != LUA_TFUNCTION) {
         printf("native_callback_keyboard");
         exit(1);
     }
@@ -57,7 +61,7 @@ gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, 
 
 gecnd_enum_error_code_t gecnd_native_callback_draw(gecnd_t *gly) {
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_draw);
-    if (lua_pcall(gly->L, 0, 0, 0) != LUA_OK) {
+    if (lua_pcall(gly->L, 0, 0, 0)) {
         printf("lua error: %s\n", luaL_checkstring(gly->L, -1));
     }
     return GECND_OK;
@@ -66,7 +70,7 @@ gecnd_enum_error_code_t gecnd_native_callback_draw(gecnd_t *gly) {
 gecnd_enum_error_code_t gecnd_native_callback_loop(gecnd_t *gly, int16_t delta_time) {
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_loop);
     lua_pushnumber(gly->L, delta_time);
-    if (lua_pcall(gly->L, 1, 0, 0) != LUA_OK) {
+    if (lua_pcall(gly->L, 1, 0, 0)) {
         printf("lua error: %s\n", luaL_checkstring(gly->L, -1));
     }
     return GECND_OK;
@@ -76,7 +80,7 @@ gecnd_enum_error_code_t gecnd_native_callback_keyboard(gecnd_t *gly, char *key, 
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_keyboard);
     lua_pushstring(gly->L, key);
     lua_pushboolean(gly->L, pressed);
-    if (lua_pcall(gly->L, 2, 0, 0) != LUA_OK) {
+    if (lua_pcall(gly->L, 2, 0, 0)) {
         printf("lua error: %s\n", luaL_checkstring(gly->L, -1));
     }
     return GECND_OK;
