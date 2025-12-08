@@ -17,19 +17,6 @@
 typedef struct lua_State lua_State;
 //! @endcond
 
-typedef enum {
-    GECND_OK = 0,
-    GECND_ERROR_LUA,
-    GECND_ERROR_FLAG_INVALID_SIZE,
-    GECND_ERROR_NO_GLY,
-    GECND_ERROR_NO_GAME,
-    GECND_ERROR_NO_ENGINE,
-    GECND_ERROR_NO_LUA_VM,
-    GECND_ERROR_NO_PATH_STR,
-    GECND_ERROR_NO_FILE_STR,
-    GECND_ERROR_MALLOC_FAIL
-} gecnd_enum_error_code_t;
-
 typedef struct {
     lua_State *L;
     void* loop;
@@ -47,7 +34,7 @@ typedef struct {
     int ref_native_callback_loop;
     int ref_native_callback_draw;
     int ref_native_callback_keyboard;
-    gecnd_enum_error_code_t error;
+    const char* error_string;
 } gecnd_t;
 
 // instance

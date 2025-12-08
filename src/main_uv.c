@@ -16,17 +16,12 @@ static void cb_frame(uv_timer_t *t) {
     gecnd_t *gly = t->data;
     last = now;
 
-    while (gecnd_next_input(gly, &key, &pressed)) {
-        gecnd_native_callback_keyboard(gly, key, pressed);
-    }
-
-    gecnd_set_delta(gly, delta_ms);
-    gecnd_native_callback_loop(gly);
-    gecnd_native_callback_draw(gly);
-
     if (!gecnd_is_running(gly)) {
         uv_stop(t->loop);
     }
+
+    gecnd_set_delta(gly, delta_ms);
+    gecnd_update(gly);
 }
 
 int main(int argc, char* argv[]) {
@@ -34,20 +29,24 @@ int main(int argc, char* argv[]) {
     static uv_timer_t timer;
     lua_State *L = luaL_newstate();
     gecnd_t *gly = gecnd_new(L);
+    int exit_code = 0;
     
     luaL_openlibs(L);
     uv_loop_init(&loop);
+    uv_timer_init(&loop, &timer);
     gecnd_set_args(gly, argc, argv);
     gecnd_set_loop(gly, (void*) &loop);
 
-    if (gly && gecnd_native_callback_init(gly) == GECND_OK) {
-        uv_timer_init(&loop, &timer);
-        timer.data = gly;
+    timer.data = gly;
+    uv_timer_start(&timer, cb_frame, 0, gecnd_get_sleep(gly));
+    uv_run(&loop, UV_RUN_DEFAULT);
 
-        uv_timer_start(&timer, cb_frame, 0, gecnd_get_sleep(gly));
-        uv_run(&loop, UV_RUN_DEFAULT);
+    if (gecnd_has_errors(gly)) {
+        const char* message = gecnd_get_error_string(gly);
+        printf("%s", message);
+        exit_code = 1;
     }
-
+    
     uv_loop_close(&loop);
     gecnd_destroy(gly);
     lua_close(L);
