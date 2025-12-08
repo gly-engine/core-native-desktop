@@ -5,17 +5,23 @@
 
 #include "gecnd.h"
 
-static void frame(uv_timer_t *t) {
+static void cb_frame(uv_timer_t *t) {
     static char *key;
     static bool pressed;
-    
+    static uint64_t last = 0;
+
+    uint64_t now = uv_hrtime();
+    uint64_t delta_ms = (last == 0) ? 16: (now - last) / 1000000;  
+
     gecnd_t *gly = t->data;
+    last = now;
 
     while (gecnd_next_input(gly, &key, &pressed)) {
         gecnd_native_callback_keyboard(gly, key, pressed);
     }
 
-    gecnd_native_callback_loop(gly, 16);
+    gecnd_set_delta(gly, delta_ms);
+    gecnd_native_callback_loop(gly);
     gecnd_native_callback_draw(gly);
 
     if (!gecnd_is_running(gly)) {
@@ -38,7 +44,7 @@ int main(int argc, char* argv[]) {
         uv_timer_init(&loop, &timer);
         timer.data = gly;
 
-        uv_timer_start(&timer, frame, 0, 16);
+        uv_timer_start(&timer, cb_frame, 0, gecnd_get_sleep(gly));
         uv_run(&loop, UV_RUN_DEFAULT);
     }
 

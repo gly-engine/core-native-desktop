@@ -16,6 +16,10 @@
 #define GECND_DEFAULT_HEIGHT 720
 #endif
 
+#ifndef GECND_DEFAULT_FPS
+#define GECND_DEFAULT_FPS 60
+#endif
+
 extern const luaL_Reg frontend_api_log[];
 extern const luaL_Reg frontend_api_draw[];
 extern const luaL_Reg frontend_api_text[];
@@ -50,6 +54,8 @@ gecnd_t *gecnd_new(lua_State* L) {
         gly->L = L;
         gly->width = GECND_DEFAULT_WIDTH;
         gly->height = GECND_DEFAULT_HEIGHT;
+        gly->target_fps = GECND_DEFAULT_FPS;
+        gly->flags = GECND_FLAG_TIMER_PREFER_BACKEND;
         gecnd_set_game_file(gly, cwd, "game.lua");
         gecnd_set_engine_file(gly, cwd, "main.lua");
 
