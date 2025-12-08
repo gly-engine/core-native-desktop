@@ -24,6 +24,7 @@ extern const luaL_Reg frontend_api_log[];
 extern const luaL_Reg frontend_api_draw[];
 extern const luaL_Reg frontend_api_text[];
 extern const luaL_Reg frontend_api_image[];
+extern const luaL_Reg frontend_api_media[];
 extern const luaL_Reg frontend_api_system[];
 
 void gecnd_global_signal_init();
@@ -67,6 +68,9 @@ gecnd_t *gecnd_new(lua_State* L) {
         }
         for (int i = 0; frontend_api_text[i].name != NULL; i++) {
             lua_register(L, frontend_api_text[i].name, frontend_api_text[i].func);
+        }
+        for (int i = 0; frontend_api_media[i].name != NULL; i++) {
+            lua_register(L, frontend_api_media[i].name, frontend_api_media[i].func);
         }
         for (int i = 0; frontend_api_image[i].name != NULL; i++) {
             lua_register(L, frontend_api_image[i].name, frontend_api_image[i].func);
