@@ -95,6 +95,23 @@ static int lua_native_image_unload(lua_State *L) {
     return 1;
 }
 
+static int lua_native_image_unload_all(lua_State* L) {
+    bool success = false;
+    native_image_unload_all(&success);
+    if (success) {
+        for (khiter_t k = kh_begin(cache); k != kh_end(cache); k++) {
+            if (kh_exist(cache, k)) {
+                free((char*)kh_key(cache, k));
+            }
+        }
+        kh_destroy(str2int, cache);
+        cache = NULL;
+        next_id = 1;
+    }
+    lua_pushboolean(L, success);
+    return 1;
+}
+
 static int lua_native_image_load(lua_State *L) {
     const char *img_src = luaL_checkstring(L, 1);
     int32_t img_id = image_load(img_src);
@@ -164,4 +181,5 @@ const luaL_Reg frontend_api_image[] = {
                {"native_image_exists", lua_native_image_exists},
                {"native_image_mensure", lua_native_image_mensure},
                {"native_image_unload", lua_native_image_unload},
+               {"native_image_unload_all", lua_native_image_unload_all},
                {NULL, NULL}};
