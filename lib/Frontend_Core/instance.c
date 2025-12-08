@@ -22,10 +22,14 @@ extern const luaL_Reg frontend_api_text[];
 extern const luaL_Reg frontend_api_image[];
 extern const luaL_Reg frontend_api_system[];
 
+void gecnd_global_signal_init();
+
 gecnd_t *gecnd_new(lua_State* L) {
     gecnd_t *gly = NULL;
     bool native_keyboard_has_media = false;
     const char *const cwd = gecnd_utils_get_exe_cwd();
+
+    gecnd_global_signal_init();
 
     do {
         if (!L) {

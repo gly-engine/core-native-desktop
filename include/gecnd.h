@@ -41,15 +41,14 @@ typedef struct {
 
 // instance
 gecnd_t *gecnd_new(lua_State* L);
-gecnd_t *gecnd_new2(lua_State* L, int argc, char* argv[]);
 void gecnd_destroy(gecnd_t *gly);
-// signal
-void gecnd_handler(int sig);
 // configure
 void gecnd_set_loop(gecnd_t *gly, void* loop);
+void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]);
+// legacy:
 gecnd_enum_error_code_t gecnd_set_game_file(gecnd_t *gly, const char *const path, const char *const file);
 gecnd_enum_error_code_t gecnd_set_engine_file(gecnd_t *gly, const char *const path, const char *const file);
-// callbacks
+// legacy: callbacks
 gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, int16_t height);
 gecnd_enum_error_code_t gecnd_native_callback_loop(gecnd_t *gly, int16_t delta_time);
 gecnd_enum_error_code_t gecnd_native_callback_draw(gecnd_t *gly);

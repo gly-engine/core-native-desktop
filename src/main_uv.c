@@ -1,5 +1,3 @@
-#include <signal.h>
-
 #include <lauxlib.h>
 #include <lualib.h>
 #include <lua.h>
@@ -29,12 +27,12 @@ int main(int argc, char* argv[]) {
     static uv_loop_t loop;
     static uv_timer_t timer;
     lua_State *L = luaL_newstate();
-    gecnd_t *gly = gecnd_new2(L, argc, argv);
+    gecnd_t *gly = gecnd_new(L);
     
     luaL_openlibs(L);
     uv_loop_init(&loop);
+    gecnd_set_args(gly, argc, argv);
     gecnd_set_loop(gly, (void*) &loop);
-    signal(SIGINT, gecnd_handler);
 
     if (gly && gecnd_native_callback_init(gly, gly->width, gly->height) == GECND_OK) {
         uv_timer_init(&loop, &timer);
