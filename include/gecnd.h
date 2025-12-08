@@ -9,6 +9,12 @@
 #define GECND_FLAG_TIMER_BACKEND        (2u)
 #define GECND_FLAG_TIMER_PREFER_BACKEND (3u)
 
+#ifndef DOXYGEN
+#define GECND_INTERNAL_MALLOC           (1u)
+#define GECND_INTERNAL_RUNNING          (2u)
+#define GECND_INTERNAL_WANT_EXIT        (4u)
+#endif
+
 // alias:
 #define gecnd_add_flags(gly)  gecnd_set_flags(gly, gecnd_get_flags(gly) | FLAG_A)
 #define gecnd_del_flags(gly)  gecnd_set_flags(gly, gecnd_get_flags(gly) & ~FLAG_A); 
@@ -20,14 +26,12 @@ typedef struct lua_State lua_State;
 typedef struct {
     lua_State *L;
     void* loop;
-    uint8_t key_index;
     uint8_t target_fps;
+    uint8_t flags;
+    uint8_t internal;
     int16_t width;
     int16_t height;
     int16_t delta_time;
-    bool running;
-    bool want_exit;
-    int32_t flags;
     int ref_code_game;
     int ref_code_engine;
     int ref_native_callback_init;
@@ -49,17 +53,17 @@ void gecnd_set_screensize(gecnd_t *gly, int16_t width, int16_t height);
 // status
 uint32_t gecnd_get_flags(gecnd_t *gly);
 uint32_t gecnd_get_sleep(gecnd_t *gly);
+// error
+bool gecnd_has_errors(gecnd_t *gly);
+const char* gecnd_get_errors(gecnd_t *gly);
+// tick
+void gecnd_update(gecnd_t * gly);
 // legacy:
-gecnd_enum_error_code_t gecnd_set_game_file(gecnd_t *gly, const char *const path, const char *const file);
-gecnd_enum_error_code_t gecnd_set_engine_file(gecnd_t *gly, const char *const path, const char *const file);
+void gecnd_set_game_file(gecnd_t *gly, const char *const path, const char *const file);
+void gecnd_set_engine_file(gecnd_t *gly, const char *const path, const char *const file);
 // legacy: callbacks
-gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly);
-gecnd_enum_error_code_t gecnd_native_callback_loop(gecnd_t *gly);
-gecnd_enum_error_code_t gecnd_native_callback_draw(gecnd_t *gly);
-gecnd_enum_error_code_t gecnd_native_callback_keyboard(gecnd_t *gly, char *const key, bool pressed);
 // iterators
 bool gecnd_is_running(gecnd_t *gly);
-bool gecnd_next_input(gecnd_t *gly, char **key, bool *pressed);
 
 // utils
 uint32_t gecnd_get_delta_ms(void);

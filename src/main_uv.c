@@ -6,10 +6,7 @@
 #include "gecnd.h"
 
 static void cb_frame(uv_timer_t *t) {
-    static char *key;
-    static bool pressed;
     static uint64_t last = 0;
-
     uint64_t now = uv_hrtime();
     uint64_t delta_ms = (last == 0) ? 16: (now - last) / 1000000;  
 
@@ -42,7 +39,7 @@ int main(int argc, char* argv[]) {
     uv_run(&loop, UV_RUN_DEFAULT);
 
     if (gecnd_has_errors(gly)) {
-        const char* message = gecnd_get_error_string(gly);
+        const char* message = gecnd_get_errors(gly);
         printf("%s", message);
         exit_code = 1;
     }
@@ -51,5 +48,5 @@ int main(int argc, char* argv[]) {
     gecnd_destroy(gly);
     lua_close(L);
 
-    return 0;
+    return exit_code;
 }
