@@ -13,12 +13,10 @@ static void cb_frame(uv_timer_t *t) {
     gecnd_t *gly = t->data;
     last = now;
 
-    if (!gecnd_is_running(gly)) {
+    gecnd_set_delta(gly, delta_ms);
+    if (!gecnd_update(gly)) {
         uv_stop(t->loop);
     }
-
-    gecnd_set_delta(gly, delta_ms);
-    gecnd_update(gly);
 }
 
 int main(int argc, char* argv[]) {

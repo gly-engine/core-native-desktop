@@ -3,8 +3,11 @@
 #include <lauxlib.h>
 #include <lua.h>
 
-#include "gecnd.h"
+#define GLY_HOOK_IMPL
 #include "gehook.h"
+#include "gecnd.h"
+
+extern int gecnd_signal;
 
 static void callback_init(gecnd_t *gly) {
     do {
@@ -58,24 +61,24 @@ static void callback_init(gecnd_t *gly) {
 
 static void callback_keyboard(gecnd_t *gly) {
     uint8_t index = 0;
-    char* key = NULL;
-    bool pressed = false;
 
     do {
+        char* key = NULL;
+        bool pressed = false;
         gly_hook_input_keyboard(index, &key, &pressed);
 
         if (!key && !pressed) break;
         index++;
 
-        if (!key) break;
-
-        lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_keyboard);
-        lua_pushstring(gly->L, key);
-        lua_pushboolean(gly->L, pressed);
-        if (lua_pcall(gly->L, 2, 0, 0) != LUA_OK) {
-            gly->error_string = luaL_checkstring(gly->L, -1);
-            break;
-        }
+        if (key) {
+            lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_keyboard);
+            lua_pushstring(gly->L, key);
+            lua_pushboolean(gly->L, pressed);
+            if (lua_pcall(gly->L, 2, 0, 0) != LUA_OK) {
+                gly->error_string = luaL_checkstring(gly->L, -1);
+                break;
+            }
+        }        
     }
     while(index < 100);
 }
@@ -95,8 +98,10 @@ static void callback_draw(gecnd_t *gly) {
     }
 }
 
-void gecnd_update(gecnd_t * gly)
+bool gecnd_update(gecnd_t * gly)
 {
+    bool should_close = false;
+
     do {
         if (!(gly && !gly->error_string)) break;
 
@@ -116,4 +121,21 @@ void gecnd_update(gecnd_t * gly)
         if (gly->error_string) break;
     }
     while(0);
+
+    do {
+        should_close = gly->error_string != 0;
+        if (should_close) break;
+
+        gly_hook_should_close(&should_close);
+        if (should_close) break;
+
+        should_close = gly->internal & GECND_INTERNAL_WANT_EXIT;
+        if (should_close) break;
+
+        should_close = gecnd_signal != 0;
+        if (should_close) break;
+    }
+    while(0);
+
+    return !should_close;
 }

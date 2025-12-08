@@ -57,14 +57,10 @@ uint32_t gecnd_get_sleep(gecnd_t *gly);
 bool gecnd_has_errors(gecnd_t *gly);
 const char* gecnd_get_errors(gecnd_t *gly);
 // tick
-void gecnd_update(gecnd_t * gly);
+bool gecnd_update(gecnd_t * gly);
 // legacy:
 void gecnd_set_game_file(gecnd_t *gly, const char *const path, const char *const file);
 void gecnd_set_engine_file(gecnd_t *gly, const char *const path, const char *const file);
-// legacy: callbacks
-// iterators
-bool gecnd_is_running(gecnd_t *gly);
-
 // utils
 uint32_t gecnd_get_delta_ms(void);
 const char *gecnd_utils_get_cwd(void);
