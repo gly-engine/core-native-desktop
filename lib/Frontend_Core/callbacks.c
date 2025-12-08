@@ -6,8 +6,8 @@
 #include "gecnd.h"
 #include "gehook.h"
 
-gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, int16_t height) {
-    gly_hook_display_init(width, height);
+gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly) {
+    gly_hook_display_init(gly->width, gly->height);
 
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_code_engine);
     if (lua_pcall(gly->L, 0, 0, 0) != LUA_OK) {
@@ -20,8 +20,8 @@ gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, 
         exit(1);
     }
 
-    lua_pushnumber(gly->L, width);
-    lua_pushnumber(gly->L, height);
+    lua_pushnumber(gly->L, gly->width);
+    lua_pushnumber(gly->L, gly->height);
 
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_code_game);
     if(lua_pcall(gly->L, 0, 1, 0) != LUA_OK) {

@@ -45,11 +45,12 @@ void gecnd_destroy(gecnd_t *gly);
 // configure
 void gecnd_set_loop(gecnd_t *gly, void* loop);
 void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]);
+void gecnd_set_screensize(gecnd_t *gly, int16_t width, int16_t height);
 // legacy:
 gecnd_enum_error_code_t gecnd_set_game_file(gecnd_t *gly, const char *const path, const char *const file);
 gecnd_enum_error_code_t gecnd_set_engine_file(gecnd_t *gly, const char *const path, const char *const file);
 // legacy: callbacks
-gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly, int16_t width, int16_t height);
+gecnd_enum_error_code_t gecnd_native_callback_init(gecnd_t *gly);
 gecnd_enum_error_code_t gecnd_native_callback_loop(gecnd_t *gly, int16_t delta_time);
 gecnd_enum_error_code_t gecnd_native_callback_draw(gecnd_t *gly);
 gecnd_enum_error_code_t gecnd_native_callback_keyboard(gecnd_t *gly, char *const key, bool pressed);

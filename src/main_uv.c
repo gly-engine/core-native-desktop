@@ -34,7 +34,7 @@ int main(int argc, char* argv[]) {
     gecnd_set_args(gly, argc, argv);
     gecnd_set_loop(gly, (void*) &loop);
 
-    if (gly && gecnd_native_callback_init(gly, gly->width, gly->height) == GECND_OK) {
+    if (gly && gecnd_native_callback_init(gly) == GECND_OK) {
         uv_timer_init(&loop, &timer);
         timer.data = gly;
 
