@@ -7,24 +7,23 @@
 
 int main(int argc, char* argv[]) {
     lua_State *L = luaL_newstate();
-    gecnd_t *gly = gecnd_new2(L, argc, argv);
+    gecnd_t *gly = gecnd_new(L);
+    int exit_code = 0;
 
     luaL_openlibs(L);
-    signal(SIGINT, gecnd_handler);
+    gecnd_set_args(gly, argc, argv);
 
-    if (gly && gecnd_native_callback_init(gly, gly->width, gly->height) == GECND_OK) {
-        static char *key;
-        static bool pressed;
+    while(gecnd_update(gly)) {
+        continue;
+    }
 
-        while (gecnd_is_running(gly)) {
-            while (gecnd_next_input(gly, &key, &pressed)) {
-                gecnd_native_callback_keyboard(gly, key, pressed);
-            }
-            gecnd_native_callback_loop(gly, 16);
-            gecnd_native_callback_draw(gly);
-        }
+    if (gecnd_has_errors(gly)) {
+        const char* message = gecnd_get_errors(gly);
+        printf("%s", message);
+        exit_code = 1;
     }
 
     gecnd_destroy(gly);
-    return 0;
+    lua_close(L);
+    return exit_code;
 }

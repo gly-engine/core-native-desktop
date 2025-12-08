@@ -19,7 +19,7 @@ static kvec_t(Texture2D) gly_textures;
 
 #include <stdio.h>
 void gly_hook_display_init(uint16_t width, uint16_t height) {
-    SetTraceLogLevel(4);
+    SetTraceLogLevel(5);
     if (!IsWindowReady()) {
         InitWindow(width, height, "GlyDisplay (Raylib)");
     }
@@ -32,9 +32,15 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     kv_init(gly_textures);
 }
 
-void gly_hook_disable_delay() {
-    ClearWindowState(FLAG_VSYNC_HINT);
-    SetTargetFPS(0);
+void gly_hook_display_fps(uint8_t fps) {
+    if (fps == 0) {
+        ClearWindowState(FLAG_VSYNC_HINT);
+    }
+    SetTargetFPS(fps);
+}
+
+void gly_hook_display_dt(int16_t* delta_time) {
+    *delta_time = (int16_t) (int32_t) (GetFrameTime() * 1000.0f);
 }
 
 void gly_hook_should_close(bool *should_close) {

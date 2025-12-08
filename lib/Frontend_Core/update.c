@@ -12,6 +12,12 @@ extern int gecnd_signal;
 static void callback_init(gecnd_t *gly) {
     do {
         gly_hook_display_init(gly->width, gly->height);
+
+        if (gly->loop) {
+            gly_hook_display_fps(0);
+        } else {
+            gly_hook_display_fps(gly->target_fps);
+        }
         
         lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_code_engine);
         if (lua_pcall(gly->L, 0, 0, 0) != LUA_OK) {
@@ -84,8 +90,25 @@ static void callback_keyboard(gecnd_t *gly) {
 }
 
 static void callback_loop(gecnd_t *gly) {
+    int16_t delta_time = gly->delta_time;
+
+    if (gly->flags & GECND_FLAG_TIMER_PREFER_BACKEND) {
+        int16_t new_dt = -1;
+        gly_hook_display_dt(&new_dt);
+        if (gly->flags & GECND_FLAG_TIMER_BACKEND && new_dt != -1) {
+            delta_time = new_dt;
+        }
+        else if (gly->flags & GECND_FLAG_TIMER_INTERNAL) {
+            delta_time = gecnd_get_sleep(gly);
+        }
+        else {
+            gly->error_string = "backend not has provider delta time";
+            return;
+        }
+    }
+
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_loop);
-    lua_pushnumber(gly->L, gly->delta_time);
+    lua_pushnumber(gly->L, delta_time);
     if (lua_pcall(gly->L, 1, 0, 0) != LUA_OK) {
         gly->error_string = luaL_checkstring(gly->L, -1);
     }
