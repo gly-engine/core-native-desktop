@@ -25,6 +25,7 @@ typedef enum {
 typedef struct {
     lua_State *L;
     void* loop;
+    uint8_t key_index;
     int16_t width;
     int16_t height;
     bool running;

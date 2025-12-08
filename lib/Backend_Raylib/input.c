@@ -17,24 +17,22 @@ static const struct {
     { KEY_LEFT_SHIFT,  "menu" }
 //    { KEY_H,           "ch_down" },
 //    { KEY_L,           "vol_up" },
-//    { KEY_I,           "ch_up" },
+//    { KEY_COMMA,           "ch_up" },
 //    { KEY_K,           "vol_down" }
 };
 
 #define KEYMAP_COUNT (sizeof(keymap) / sizeof(keymap[0]))
 
 static bool old_state[KEYMAP_COUNT];
-static uint8_t index;
 
 void gly_hook_keyboard_has_media(bool *enable)
 {
     *enable = true;
 }
 
-void gly_hook_input_keyboard(char** key, bool* press)
+void gly_hook_input_keyboard(uint8_t index, char** key, bool* press)
 {
     if (index >= KEYMAP_COUNT) {
-        index = 0;
         return;
     }
 
@@ -44,7 +42,8 @@ void gly_hook_input_keyboard(char** key, bool* press)
         old_state[index] = new_state;
         *key = (char*) keymap[index].name;
         *press = new_state;
+        return;
     }
 
-    index++;
+    *press = true;
 }

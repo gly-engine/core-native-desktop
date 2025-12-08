@@ -64,6 +64,7 @@ gecnd_enum_error_code_t gecnd_native_callback_draw(gecnd_t *gly) {
 }
 
 gecnd_enum_error_code_t gecnd_native_callback_loop(gecnd_t *gly, int16_t delta_time) {
+    gly->key_index = 0;
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_loop);
     lua_pushnumber(gly->L, delta_time);
     if (lua_pcall(gly->L, 1, 0, 0) != LUA_OK) {
