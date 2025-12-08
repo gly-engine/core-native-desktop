@@ -2,22 +2,11 @@
 #include <lauxlib.h>
 #include <lua.h>
 
+#include "http_common.h"
+
 static int lua_native_http_handler(lua_State* L)
 {
-    lua_getfield(L, 1, "set");
-    lua_pushstring(L, "body");
-    lua_pushstring(L, "");
-    lua_pcall(L, 2, 0, 0);
-
-    lua_getfield(L, 1, "set");
-    lua_pushstring(L, "ok");
-    lua_pushboolean(L, 0);
-    lua_pcall(L, 2, 0, 0);
-
-    lua_getfield(L, 1, "set");
-    lua_pushstring(L, "error");
-    lua_pushstring(L, "mock http!");
-    lua_pcall(L, 2, 0, 0);
+    native_http_immediate_error(L, "mock http!");
     return 0;
 }
 

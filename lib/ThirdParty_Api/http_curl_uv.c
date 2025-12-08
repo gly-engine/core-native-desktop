@@ -12,6 +12,7 @@
 #include <lua.h>
 #include <uv.h>
 
+#include "gecnd.h"
 #include "http_common.h"
 
 /* --- estrutura do request --- */
@@ -232,13 +233,10 @@ static void check_multi_info(void)
     }
 }
 
-/* --- inicia um easy handle e adiciona ao multi (assíncrono) --- */
 static int start_multi_request(lua_State* L)
 {
-    /* stack: func, req_id, ... (conforme sua chamada original) */
     int64_t req_id = luaL_checkinteger(L, 2);
 
-    /* criar req_t dinamicamente */
     req_t *r = calloc(1, sizeof(req_t));
     if (!r) {
         native_callback_http(L, req_id, "set-error");
@@ -249,7 +247,6 @@ static int start_multi_request(lua_State* L)
     r->L = L;
     r->id = req_id;
 
-    /* pegar dados de Lua via seu mecanismo native_http_get_str */
     const char *url = native_http_get_str(L, req_id, "get-fullurl");
     const char *method = native_http_get_str(L, req_id, "get-method");
     const char *body = native_http_get_str(L, req_id, "get-body-data");
@@ -264,7 +261,6 @@ static int start_multi_request(lua_State* L)
     }
     r->easy = easy;
 
-    /* opções básicas */
     curl_easy_setopt(easy, CURLOPT_URL, url);
     curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, curl_write_cb);
     curl_easy_setopt(easy, CURLOPT_WRITEDATA, r);
@@ -272,11 +268,9 @@ static int start_multi_request(lua_State* L)
     curl_easy_setopt(easy, CURLOPT_HEADERDATA, r);
     curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(easy, CURLOPT_MAXREDIRS, 10L);
-    /* opcional: ajustar SSL conforme sua política */
     curl_easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, 0L);
 
-    /* método */
     if (method && strcmp(method, "GET") == 0) {
         curl_easy_setopt(easy, CURLOPT_HTTPGET, 1L);
     } else if (method && strcmp(method, "HEAD") == 0) {
@@ -296,68 +290,62 @@ static int start_multi_request(lua_State* L)
         }
     }
 
-    /* anexa nosso req_t no easy */
+    int temp;
     curl_easy_setopt(easy, CURLOPT_PRIVATE, (void*)r);
-
-    /* adiciona ao multi */
     curl_multi_add_handle(g_curl_multi, easy);
+    curl_multi_socket_action(g_curl_multi, CURL_SOCKET_TIMEOUT, 0, &temp);
 
-    /* acionar uma rodada imediata (pode ser opcional) */
-    int running_handles;
-    curl_multi_socket_action(g_curl_multi, CURL_SOCKET_TIMEOUT, 0, &running_handles);
     check_multi_info();
 
     native_http_promise(L, req_id);
     return 0;
 }
 
-/* --- Lua binding: native_http_handler -> agora apenas agenda o request --- */
+static const char* startup_curl(gecnd_t *gly)
+{
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    g_curl_multi = curl_multi_init();
+
+    if (!g_curl_multi) {
+        return "[core:error] failed to init curl!";
+    }
+
+    if (!gly->loop) {
+        return "[core:error] libuv is not started!";
+    }
+
+    g_uv_loop = gly->loop;
+
+    g_timeout_timer = malloc(sizeof(uv_timer_t));
+    uv_timer_init(g_uv_loop, g_timeout_timer);
+    uv_timer_start(g_timeout_timer, timeout_cb, 0, 0);
+    uv_timer_stop(g_timeout_timer); 
+
+    curl_multi_setopt(g_curl_multi, CURLMOPT_SOCKETFUNCTION, on_socket);
+    curl_multi_setopt(g_curl_multi, CURLMOPT_SOCKETDATA, NULL);
+
+    curl_multi_setopt(g_curl_multi, CURLMOPT_TIMERFUNCTION, (curl_multi_timer_callback)NULL);
+    return NULL;
+}
+
 static int lua_native_http_handler(lua_State* L)
 {
     if (!g_curl_multi) {
-        luaL_error(L, "http multi not initialized");
-        return 0;
-    }
-    /* cria e agenda o request */
-    return start_multi_request(L);
-}
+        lua_rawgeti(L, LUA_REGISTRYINDEX, GLY_REGISTRYINDEX);
+        gecnd_t *gly = lua_touserdata(L, -1);
+        const char* err = startup_curl(gly);
 
-/* --- inicialização / finalização --- */
-void gly_http_set_loop(uv_loop_t *loop)
-{
-    g_uv_loop = loop;
+        if (err) {
+            native_http_immediate_error(L, err);
+            return 0;
+        }
+    }
+
+    return start_multi_request(L);
 }
 
 void gly_hook_luaopen_http(lua_State* L)
 {
-    /* inicializa libcurl multi */
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-    g_curl_multi = curl_multi_init();
-    if (!g_curl_multi) {
-        luaL_error(L, "failed to init curl multi");
-        return;
-    }
-
-    /* libuv loop: se não foi passado, pega o default */
-    if (!g_uv_loop) g_uv_loop = uv_default_loop();
-
-    /* cria timer para manejar timeout do multi */
-    g_timeout_timer = malloc(sizeof(uv_timer_t));
-    uv_timer_init(g_uv_loop, g_timeout_timer);
-    uv_timer_start(g_timeout_timer, timeout_cb, 0, 0);
-    uv_timer_stop(g_timeout_timer); /* parado inicialmente */
-
-    /* configurar callbacks do curl multi */
-    curl_multi_setopt(g_curl_multi, CURLMOPT_SOCKETFUNCTION, on_socket);
-    curl_multi_setopt(g_curl_multi, CURLMOPT_SOCKETDATA, NULL);
-
-    /* configurar timer function (usamos timeout_cb via uv_timer) */
-    curl_multi_setopt(g_curl_multi, CURLMOPT_TIMERFUNCTION,
-        (curl_multi_timer_callback)NULL); /* não usamos diretamente aqui */
-    /* Em alguns ambientes você pode usar CURLMOPT_TIMERSOCKETFUNCTION / TIMERDATA, mas simplificamos
-       e gerenciamos tempo via curl_multi_socket_action com CURL_SOCKET_TIMEOUT no timer_cb. */
-
-    /* expõe função para Lua (mesmo nome que você tinha) */
     lua_pushcfunction(L, lua_native_http_handler);
     lua_setglobal(L, "native_http_handler");
 
@@ -368,8 +356,7 @@ void gly_hook_luaopen_http(lua_State* L)
     lua_setglobal(L, "native_http_has_callback");
 }
 
-/* cleanup (opcional) */
-void gly_http_cleanup(void)
+void gly_hook_luaclose_http(lua_State* L)
 {
     if (g_curl_multi) {
         curl_multi_cleanup(g_curl_multi);
@@ -377,10 +364,7 @@ void gly_http_cleanup(void)
     }
     curl_global_cleanup();
     if (g_timeout_timer) {
-        /* uv_close e free */
         uv_close((uv_handle_t*)g_timeout_timer, (uv_close_cb)free);
         g_timeout_timer = NULL;
     }
 }
-
-/* --- fim do arquivo --- */

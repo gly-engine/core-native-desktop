@@ -33,3 +33,20 @@ void native_http_resolve(lua_State* L, int64_t req_id) {
     native_callback_http(L, req_id, "async-resolve");
     lua_pcall(L, 2, 0, 0);
 }
+
+void native_http_immediate_error(lua_State* L, char* message) {
+    lua_getfield(L, 1, "set");
+    lua_pushstring(L, "body");
+    lua_pushstring(L, "");
+    lua_pcall(L, 2, 0, 0);
+
+    lua_getfield(L, 1, "set");
+    lua_pushstring(L, "ok");
+    lua_pushboolean(L, 0);
+    lua_pcall(L, 2, 0, 0);
+
+    lua_getfield(L, 1, "set");
+    lua_pushstring(L, "error");
+    lua_pushstring(L, message);
+    lua_pcall(L, 2, 0, 0);
+}
