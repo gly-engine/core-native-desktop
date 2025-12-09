@@ -98,7 +98,7 @@ static int lua_native_image_unload(lua_State *L) {
 static int lua_native_image_unload_all(lua_State* L) {
     bool success = false;
     native_image_unload_all(&success);
-    if (success) {
+    if (success && cache) {
         for (khiter_t k = kh_begin(cache); k != kh_end(cache); k++) {
             if (kh_exist(cache, k)) {
                 free((char*)kh_key(cache, k));
