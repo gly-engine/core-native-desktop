@@ -35,7 +35,7 @@ void file_loader(gecnd_t *gly, int* ref, const char *const path, const char *con
 
         snprintf(full_path, total_len, "%s/%s", path, file);
 
-        if (luaL_loadfile(L, full_path) != LUA_OK) {
+        if (luaL_loadfile(L, full_path)) {
             gly->error_string = luaL_checkstring(gly->L, -1);
             break;
         }

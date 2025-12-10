@@ -46,7 +46,7 @@ static size_t curl_write_cb(void *contents, size_t size, size_t nmemb, void *use
     /* evento para Lua: add-body-data(req_id, data) */
     native_callback_http(r->L, r->id, "add-body-data");
     lua_pushlstring(r->L, (char*)contents, total_size);
-    if (lua_pcall(r->L, 3, 0, 0) != LUA_OK) {
+    if (lua_pcall(r->L, 3, 0, 0)) {
         lua_pop(r->L, 1); /* descartar erro */
     }
     return total_size;
@@ -66,7 +66,7 @@ static size_t curl_header_cb(void *contents, size_t size, size_t nmemb, void *us
 
         native_callback_http(r->L, r->id, "set-status");
         lua_pushinteger(r->L, status);
-        if (lua_pcall(r->L, 3, 0, 0) != LUA_OK) {
+        if (lua_pcall(r->L, 3, 0, 0)) {
             lua_pop(r->L, 1);
         }
     }
@@ -211,7 +211,7 @@ static void check_multi_info(void)
                     const char *err = curl_easy_strerror(msg->data.result);
                     native_callback_http(r->L, r->id, "set-error");
                     lua_pushstring(r->L, err);
-                    if (lua_pcall(r->L, 3, 0, 0) != LUA_OK) {
+                    if (lua_pcall(r->L, 3, 0, 0)) {
                         lua_pop(r->L, 1);
                     }
                 } else {

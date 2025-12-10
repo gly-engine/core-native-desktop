@@ -7,7 +7,6 @@ project("${GECND_PROJECT_NAME}" LANGUAGES C)
 include(FetchContent)
 
 include_directories("${CMAKE_CURRENT_LIST_DIR}/include")
-include_directories("${CMAKE_SOURCE_DIR}/vendor/lua")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/klib")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/sqlite3")
@@ -15,6 +14,11 @@ include_directories("${CMAKE_SOURCE_DIR}/vendor/hv/include")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/curl/include")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/raylib/include")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/libb64/include")
+if(GECND_USE_LUA51)
+    include_directories("${CMAKE_SOURCE_DIR}/vendor/lua51")
+else()
+    include_directories("${CMAKE_SOURCE_DIR}/vendor/lua54")
+endif()
 
 # EXE
 option(GECND_AS_LIBRARY "build static lib gecnd intead binary" OFF)
@@ -22,7 +26,7 @@ file(MAKE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin")
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/lib")
 file(GLOB_RECURSE SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/lib/Frontend_*/*.c"
-    "${CMAKE_CURRENT_LIST_DIR}/lib/Common_*/*.c"
+    "${CMAKE_CURRENT_LIST_DIR}/lib/Common_Utils/*.c"
 )
 if(GECND_AS_LIBRARY)
     add_library(${PROJECT_NAME} STATIC "${SOURCES}")
@@ -67,28 +71,36 @@ endif()
 find_program(ZIGC zig PATHS ${ZIG_DIR} REQUIRED NO_DEFAULT_PATH)
 set(ZIGC "${ZIGC}" CACHE INTERNAL "ZIG COMPILER")
 
-# Lua
-set(LUA_VERSION "5.4.7")
-set(LUA_DIR "${CMAKE_SOURCE_DIR}/vendor/lua")
-set(LUA_DOWNLOAD "https://github.com/lua/lua/archive/refs/tags/v${LUA_VERSION}.tar.gz")
-set(LUA_OPTMIZE FALSE)
-if(NOT EXISTS "${LUA_DIR}/lua")
-    set(LUA_OPTMIZE TRUE)
-    FetchContent_Populate(dep_lua URL "${LUA_DOWNLOAD}" SOURCE_DIR ${LUA_DIR})
+# Lua 5.4
+set(LUA54_VERSION "5.4.7")
+set(LUA54_DIR "${CMAKE_SOURCE_DIR}/vendor/lua54")
+set(LUA54_DOWNLOAD "https://github.com/lua/lua/archive/refs/tags/v${LUA54_VERSION}.tar.gz")
+set(LUA54_OPTMIZE FALSE)
+if(NOT EXISTS "${LUA54_DIR}/lua")
+    set(LUA54_OPTMIZE TRUE)
+    FetchContent_Populate(dep_lua54 URL "${LUA54_DOWNLOAD}" SOURCE_DIR ${LUA54_DIR})
     execute_process(
-        WORKING_DIRECTORY ${LUA_DIR}
+        WORKING_DIRECTORY ${LUA54_DIR}
         COMMAND ${ZIGC} cc -DMAKE_LUA onelua.c -o lua
             -target ${CMAKE_HOST_SYSTEM_PROCESSOR}-${CMAKE_HOST_SYSTEM_NAME_LOWER}
     )
 endif()
-file(GLOB lua_files "${LUA_DIR}/*.c")
-list(REMOVE_ITEM lua_files "${LUA_DIR}/lua.c")
-list(REMOVE_ITEM lua_files "${LUA_DIR}/onelua.c")
-add_library(lua-static STATIC ${lua_files})
-find_program(LUAC lua PATHS ${LUA_DIR} REQUIRED NO_DEFAULT_PATH)
-target_link_libraries(${PROJECT_NAME} PRIVATE lua-static)
-target_link_libraries("lua-static" PRIVATE GECND_CC_FLAGS)
+file(GLOB lua_files "${LUA54_DIR}/*.c")
+list(REMOVE_ITEM lua_files "${LUA54_DIR}/lua.c")
+list(REMOVE_ITEM lua_files "${LUA54_DIR}/onelua.c")
 set(LUAC "${LUAC}" CACHE INTERNAL "LUA COMPILER")
+if(NOT GECND_USE_LUA51)
+    add_library(lua-static STATIC ${lua_files})
+    find_program(LUAC lua PATHS ${LUA54_DIR} REQUIRED NO_DEFAULT_PATH)
+    target_link_libraries(${PROJECT_NAME} PRIVATE lua-static)
+    target_link_libraries("lua-static" PRIVATE GECND_CC_FLAGS)
+endif()
+
+# Lua 5.1
+set(LUA51_VERSION "5.1")
+set(LUA51_DIR "${CMAKE_SOURCE_DIR}/vendor/lua51")
+set(LUA51_DOWNLOAD "https://github.com/lua/lua/archive/refs/tags/v${LUA51_VERSION}.tar.gz")
+option(GECND_USE_LUA51 "prefer lua 5.1 instead lua 5.4" OFF)
 
 # Klib
 set(KLIB_DIR "${CMAKE_SOURCE_DIR}/vendor/klib")
@@ -170,6 +182,16 @@ option(GECND_USE_CURL "use curl" ON)
 
 # Mock
 option(GECND_MOCK_HTTP "add package http but raise error on request" OFF)
+
+if(GECND_USE_LUA51)
+    FetchContent_Populate(dep_lua51 URL "${LUA51_DOWNLOAD}" SOURCE_DIR ${LUA51_DIR})
+    file(GLOB lua_files "${LUA51_DIR}/*.c")
+    list(REMOVE_ITEM lua_files "${LUA54_DIR}/lua.c")
+    add_library(lua-static STATIC ${lua_files})
+    find_program(LUAC lua PATHS ${LUA51_DIR} REQUIRED NO_DEFAULT_PATH)
+    target_link_libraries(${PROJECT_NAME} PRIVATE lua-static)
+    target_link_libraries("lua-static" PRIVATE GECND_CC_FLAGS)
+endif()
 
 if(GECND_USE_JSON)
     if(NOT EXISTS ${LUACJSON_DIR})
