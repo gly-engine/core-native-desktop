@@ -140,7 +140,10 @@ bool gecnd_update(gecnd_t * gly)
         callback_loop(gly);
         if (gly->error_string) break;
 
-        callback_draw(gly);
+        if (gly->frameskip_count++ >= gly->frameskip) {
+            gly->frameskip_count = 0;
+            callback_draw(gly);
+        }
         if (gly->error_string) break;
     }
     while(0);

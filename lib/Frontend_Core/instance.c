@@ -20,6 +20,10 @@
 #define GECND_DEFAULT_FPS 60
 #endif
 
+#ifndef GECND_DEFAULT_FRAMESKIP
+#define GECND_DEFAULT_FRAMESKIP 0
+#endif
+
 extern const luaL_Reg frontend_api_log[];
 extern const luaL_Reg frontend_api_draw[];
 extern const luaL_Reg frontend_api_text[];
@@ -56,6 +60,7 @@ gecnd_t *gecnd_new(lua_State* L) {
         gly->width = GECND_DEFAULT_WIDTH;
         gly->height = GECND_DEFAULT_HEIGHT;
         gly->target_fps = GECND_DEFAULT_FPS;
+        gly->frameskip = GECND_DEFAULT_FRAMESKIP;
         gly->flags = GECND_FLAG_TIMER_PREFER_BACKEND;
         gecnd_set_game_file(gly, cwd, "game.lua");
         gecnd_set_engine_file(gly, cwd, "main.lua");

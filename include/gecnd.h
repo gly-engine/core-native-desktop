@@ -27,6 +27,8 @@ typedef struct {
     lua_State *L;
     void* loop;
     uint8_t target_fps;
+    uint8_t frameskip;
+    uint8_t frameskip_count;
     uint8_t flags;
     uint8_t internal;
     int16_t width;

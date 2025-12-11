@@ -131,7 +131,7 @@ option(GECND_USE_FFMPEG "fetch ffmpeg" OFF)
 set(LIBUV_VERSION "v1.48.0")
 set(LIBUV_REPO "https://github.com/libuv/libuv.git")
 set(LIBUV_DIR "${CMAKE_SOURCE_DIR}/vendor/libuv")
-option(GECND_USE_LIBUV "fetch libuv" OFF)
+option(GECND_USE_LIBUV "fetch libuv" ON)
 
 # Zlib
 set(ZLIB_VERSION "v1.3.1")
