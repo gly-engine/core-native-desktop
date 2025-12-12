@@ -34,12 +34,12 @@ typedef struct {
     int16_t width;
     int16_t height;
     int16_t delta_time;
-    int ref_code_game;
-    int ref_code_engine;
     int ref_native_callback_init;
     int ref_native_callback_loop;
     int ref_native_callback_draw;
     int ref_native_callback_keyboard;
+    char *lua_game_code;
+    char *lua_engine_code;
     const char* error_string;
 } gecnd_t;
 
@@ -65,5 +65,5 @@ void gecnd_set_game_file(gecnd_t *gly, const char *const path, const char *const
 void gecnd_set_engine_file(gecnd_t *gly, const char *const path, const char *const file);
 // utils
 uint32_t gecnd_get_delta_ms(void);
-const char *gecnd_utils_get_cwd(void);
-const char *gecnd_utils_get_exe_cwd(void);
+char *gecnd_utils_get_cwd(void);
+char *gecnd_utils_get_exe_cwd(void);

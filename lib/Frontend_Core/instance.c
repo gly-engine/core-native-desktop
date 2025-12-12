@@ -36,7 +36,6 @@ void gecnd_global_signal_init();
 gecnd_t *gecnd_new(lua_State* L) {
     gecnd_t *gly = NULL;
     bool native_keyboard_has_media = false;
-    const char *const cwd = gecnd_utils_get_exe_cwd();
 
     gecnd_global_signal_init();
 
@@ -62,8 +61,6 @@ gecnd_t *gecnd_new(lua_State* L) {
         gly->target_fps = GECND_DEFAULT_FPS;
         gly->frameskip = GECND_DEFAULT_FRAMESKIP;
         gly->flags = GECND_FLAG_TIMER_PREFER_BACKEND;
-        gecnd_set_game_file(gly, cwd, "game.lua");
-        gecnd_set_engine_file(gly, cwd, "main.lua");
 
         for (int i = 0; frontend_api_log[i].name != NULL; i++) {
             lua_register(L, frontend_api_log[i].name, frontend_api_log[i].func);

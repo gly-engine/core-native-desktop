@@ -9,6 +9,51 @@
 
 extern int gecnd_signal;
 
+#define CHUNK 128
+typedef struct {
+    FILE *fp;
+    char buf[CHUNK];
+} ReaderData;
+
+static const char *reader(lua_State *L, void *ud, size_t *size) {
+    (void) L;
+    ReaderData *R = (ReaderData*)ud;
+    size_t n = fread(R->buf, 1, CHUNK, R->fp);
+    *size = n;
+    return n ? R->buf : NULL;
+}
+
+/**
+ * @todo make thread safe:
+ */
+static const char* open_script(gecnd_t *gly, char** lua_code, char* lua_name, int lua_ret) {
+    char *default_code = gecnd_utils_get_exe_cwd();
+
+    if (!*lua_code) {
+        (void) snprintf(default_code, 1024, "%s/%s.lua", default_code, lua_name);
+        *lua_code = default_code;
+    }
+
+    static ReaderData R;
+    R.fp = fopen(*lua_code, "rb");
+
+    if (!R.fp) {
+        (void) snprintf(default_code, 1024, "file not found: %s.lua", lua_name);
+        return default_code;
+    }
+
+    if (lua_load(gly->L, reader, &R, lua_name, "t")) {
+        return luaL_checkstring(gly->L, -1);
+    }
+
+
+    if (lua_pcall(gly->L, 0, lua_ret, 0)) {
+        return luaL_checkstring(gly->L, -1);
+    }
+
+    return NULL;
+}
+
 static void callback_init(gecnd_t *gly) {
     do {
         gly_hook_display_init(gly->width, gly->height);
@@ -19,9 +64,8 @@ static void callback_init(gecnd_t *gly) {
             gly_hook_display_fps(gly->target_fps);
         }
         
-        lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_code_engine);
-        if (lua_pcall(gly->L, 0, 0, 0) != LUA_OK) {
-            gly->error_string = luaL_checkstring(gly->L, -1);
+        gly->error_string = open_script(gly, &gly->lua_engine_code, "engine", 0);
+        if (gly->error_string) {
             break;
         }
     
@@ -33,9 +77,8 @@ static void callback_init(gecnd_t *gly) {
         lua_pushnumber(gly->L, gly->width);
         lua_pushnumber(gly->L, gly->height);
 
-        lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_code_game);
-        if(lua_pcall(gly->L, 0, 1, 0) != LUA_OK) {
-            gly->error_string = luaL_checkstring(gly->L, -1);
+        gly->error_string = open_script(gly, &gly->lua_game_code, "game", 1);
+        if (gly->error_string) {
             break;
         }
 

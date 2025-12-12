@@ -13,11 +13,11 @@
 #endif
 
 //! @cond
-#define PATH_MAX_SIZE 1024
+#define PATH_MAX_SIZE (1024 - 8)
 //! @endcond
 
 const char *gecnd_utils_get_exe_cwd() {
-    static char path[PATH_MAX_SIZE];
+    static char path[PATH_MAX_SIZE + 8];
     static bool initialized = false;
     if (initialized)
         return path[0] ? path : NULL;
@@ -53,7 +53,7 @@ const char *gecnd_utils_get_exe_cwd() {
 }
 
 const char *gecnd_utils_get_cwd() {
-    static char cwd[PATH_MAX_SIZE];
+    static char cwd[PATH_MAX_SIZE + 8];
 
 #if defined(_WIN32)
     DWORD len = GetCurrentDirectoryA(sizeof(cwd), cwd);
