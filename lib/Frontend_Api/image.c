@@ -30,14 +30,15 @@ static int32_t image_load(const char *src) {
         if (success)
             break;
 
-        const char *cwd = gecnd_utils_get_exe_cwd();
-        if (cwd == NULL)
+        char cwd[1024];
+        size_t len = gecnd_utils_get_exe_cwd(cwd, sizeof(cwd));
+
+        if (!len)
             break;
 
-        char full_path[1024];
-        snprintf(full_path, sizeof(full_path), "%s/%s", cwd, src);
+        (void) snprintf(cwd + len, sizeof(cwd) - len, "/%s", src);
 
-        native_image_load(full_path, new_id, &success);
+        native_image_load(cwd, new_id, &success);
     } while (0);
 
     if (!success) {

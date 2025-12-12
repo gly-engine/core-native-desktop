@@ -12,57 +12,51 @@
 #include <mach-o/dyld.h>
 #endif
 
-//! @cond
-#define PATH_MAX_SIZE (1024 - 8)
-//! @endcond
-
-const char *gecnd_utils_get_exe_cwd() {
-    static char path[PATH_MAX_SIZE + 8];
-    static bool initialized = false;
-    if (initialized)
-        return path[0] ? path : NULL;
+size_t gecnd_utils_get_exe_cwd(char *buffer, size_t max_size) {
+    if (!buffer || max_size == 0)
+        return -1;
 
 #if defined(_WIN32)
-    DWORD len = GetModuleFileNameA(NULL, path, sizeof(path));
-    if (len == 0 || len >= sizeof(path))
-        return NULL;
+    DWORD len = GetModuleFileNameA(NULL, buffer, (DWORD)max_size);
+    if (len == 0 || len >= max_size)
+        return -1;
 #elif defined(__linux__)
-    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
-    if (len <= 0 || len >= (ssize_t)sizeof(path))
-        return NULL;
-    path[len] = '\0';
+    ssize_t len = readlink("/proc/self/exe", buffer, max_size - 1);
+    if (len <= 0 || len >= (ssize_t)max_size)
+        return -1;
+    buffer[len] = '\0';
 #elif defined(__APPLE__)
-    uint32_t size = sizeof(path);
-    if (_NSGetExecutablePath(path, &size) != 0)
-        return NULL;
+    uint32_t size = (uint32_t)max_size;
+    if (_NSGetExecutablePath(buffer, &size) != 0)
+        return -1;
 #else
-    return NULL;
+    return -1;
 #endif
 
     char *last_sep =
 #if defined(_WIN32)
-        strrchr(path, '\\');
+        strrchr(buffer, '\\');
 #else
-        strrchr(path, '/');
+        strrchr(buffer, '/');
 #endif
     if (last_sep)
         *last_sep = '\0';
 
-    initialized = true;
-    return (const char*) (path[0] ? path : NULL);
+    return (ssize_t)strlen(buffer);
 }
 
-const char *gecnd_utils_get_cwd() {
-    static char cwd[PATH_MAX_SIZE + 8];
+ssize_t gecnd_utils_get_cwd(char *buffer, size_t max_size) {
+    if (!buffer || max_size == 0)
+        return -1;
 
 #if defined(_WIN32)
-    DWORD len = GetCurrentDirectoryA(sizeof(cwd), cwd);
-    if (len == 0 || len >= sizeof(cwd))
-        return NULL;
+    DWORD len = GetCurrentDirectoryA((DWORD)max_size, buffer);
+    if (len == 0 || len >= max_size)
+        return -1;
 #else
-    if (getcwd(cwd, sizeof(cwd)) == NULL)
-        return NULL;
+    if (getcwd(buffer, max_size) == NULL)
+        return -1;
 #endif
 
-    return (const char*) cwd;
+    return (ssize_t)strlen(buffer);
 }

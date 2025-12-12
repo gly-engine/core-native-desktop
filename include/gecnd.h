@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 #define GLY_REGISTRYINDEX ((uint32_t)(uintptr_t)(gecnd_new))
 
@@ -65,5 +66,5 @@ void gecnd_set_game_file(gecnd_t *gly, const char *const path, const char *const
 void gecnd_set_engine_file(gecnd_t *gly, const char *const path, const char *const file);
 // utils
 uint32_t gecnd_get_delta_ms(void);
-char *gecnd_utils_get_cwd(void);
-char *gecnd_utils_get_exe_cwd(void);
+size_t gecnd_utils_get_exe_cwd(char *buffer, size_t max_size);
+size_t gecnd_utils_get_cwd(char *buffer, size_t max_size);

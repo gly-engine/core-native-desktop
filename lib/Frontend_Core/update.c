@@ -7,45 +7,41 @@
 #include "gehook.h"
 #include "gecnd.h"
 
-extern int gecnd_signal;
-
-#define CHUNK 128
 typedef struct {
     FILE *fp;
-    char buf[CHUNK];
-} ReaderData;
+    char buf[256];
+} gecnd_buffer_t;
+
+extern int gecnd_signal;
 
 static const char *reader(lua_State *L, void *ud, size_t *size) {
     (void) L;
-    ReaderData *R = (ReaderData*)ud;
-    size_t n = fread(R->buf, 1, CHUNK, R->fp);
+    gecnd_buffer_t *data = (gecnd_buffer_t*)ud;
+    size_t n = fread(data->buf, 1, sizeof(data->buf), data->fp);
     *size = n;
-    return n ? R->buf : NULL;
+    return n ? data->buf : NULL;
 }
 
-/**
- * @todo make thread safe:
- */
 static const char* open_script(gecnd_t *gly, char** lua_code, char* lua_name, int lua_ret) {
-    char *default_code = gecnd_utils_get_exe_cwd();
+    gecnd_buffer_t data;
 
     if (!*lua_code) {
-        (void) snprintf(default_code, 1024, "%s/%s.lua", default_code, lua_name);
-        *lua_code = default_code;
+        size_t len = gecnd_utils_get_exe_cwd(data.buf, sizeof(data.buf));
+        (void) snprintf(data.buf + len, sizeof(data.buf) - len, "/%s.lua", lua_name);
+        printf("[%s]\n", data.buf);
+        *lua_code = data.buf;
     }
 
-    static ReaderData R;
-    R.fp = fopen(*lua_code, "rb");
+    data.fp = fopen(*lua_code, "rb");
 
-    if (!R.fp) {
-        (void) snprintf(default_code, 1024, "file not found: %s.lua", lua_name);
-        return default_code;
+    if (!data.fp) {
+        (void) snprintf(data.buf, sizeof(data.buf), "file not found: %s.lua", lua_name);
+        return strdup(data.buf); /** @todo causes leaks */
     }
 
-    if (lua_load(gly->L, reader, &R, lua_name, "t")) {
+    if (lua_load(gly->L, reader, &data, lua_name, "t")) {
         return luaL_checkstring(gly->L, -1);
     }
-
 
     if (lua_pcall(gly->L, 0, lua_ret, 0)) {
         return luaL_checkstring(gly->L, -1);
@@ -64,7 +60,7 @@ static void callback_init(gecnd_t *gly) {
             gly_hook_display_fps(gly->target_fps);
         }
         
-        gly->error_string = open_script(gly, &gly->lua_engine_code, "engine", 0);
+        gly->error_string = open_script(gly, &gly->lua_engine_code, "main", 0);
         if (gly->error_string) {
             break;
         }
