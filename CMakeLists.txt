@@ -16,6 +16,8 @@ include_directories("${CMAKE_SOURCE_DIR}/vendor/raylib/include")
 include_directories("${CMAKE_SOURCE_DIR}/vendor/libb64/include")
 if(GECND_USE_LUA51)
     include_directories("${CMAKE_SOURCE_DIR}/vendor/lua51")
+elseif(GECND_USE_LUAJIT)
+    include_directories("${CMAKE_SOURCE_DIR}/vendor/luajit/src")
 else()
     include_directories("${CMAKE_SOURCE_DIR}/vendor/lua54")
 endif()
@@ -89,18 +91,19 @@ file(GLOB lua_files "${LUA54_DIR}/*.c")
 list(REMOVE_ITEM lua_files "${LUA54_DIR}/lua.c")
 list(REMOVE_ITEM lua_files "${LUA54_DIR}/onelua.c")
 set(LUAC "${LUAC}" CACHE INTERNAL "LUA COMPILER")
-if(NOT GECND_USE_LUA51)
-    add_library(lua-static STATIC ${lua_files})
-    find_program(LUAC lua PATHS ${LUA54_DIR} REQUIRED NO_DEFAULT_PATH)
-    target_link_libraries(${PROJECT_NAME} PRIVATE lua-static)
-    target_link_libraries("lua-static" PRIVATE GECND_CC_FLAGS)
-endif()
 
 # Lua 5.1
 set(LUA51_VERSION "5.1")
 set(LUA51_DIR "${CMAKE_SOURCE_DIR}/vendor/lua51")
 set(LUA51_DOWNLOAD "https://github.com/lua/lua/archive/refs/tags/v${LUA51_VERSION}.tar.gz")
 option(GECND_USE_LUA51 "prefer lua 5.1 instead lua 5.4" OFF)
+
+# Lua JIT
+set(LUAJIT_VERSION "2.0.5")
+set(LUAJIT_DIR "${CMAKE_SOURCE_DIR}/vendor/luajit")
+set(LUAJIT_LIB "${CMAKE_SOURCE_DIR}/vendor/luajit/src/libluajit.a")
+set(LUAJIT_DOWNLOAD "https://github.com/luajit/luajit/archive/refs/tags/v${LUAJIT_VERSION}.tar.gz")
+option(GECND_USE_LUAJIT "prefer lua jit instead lua 5.4" OFF)
 
 # Klib
 set(KLIB_DIR "${CMAKE_SOURCE_DIR}/vendor/klib")
@@ -188,7 +191,34 @@ if(GECND_USE_LUA51)
     file(GLOB lua_files "${LUA51_DIR}/*.c")
     list(REMOVE_ITEM lua_files "${LUA54_DIR}/lua.c")
     add_library(lua-static STATIC ${lua_files})
-    find_program(LUAC lua PATHS ${LUA51_DIR} REQUIRED NO_DEFAULT_PATH)
+    target_link_libraries(${PROJECT_NAME} PRIVATE lua-static)
+    target_link_libraries("lua-static" PRIVATE GECND_CC_FLAGS)
+endif()
+
+if(GECND_USE_LUAJIT)
+    FetchContent_Populate(dep_luajit URL "${LUAJIT_DOWNLOAD}" SOURCE_DIR ${LUAJIT_DIR})
+    add_custom_command(
+        OUTPUT ${LUAJIT_LIB}
+        COMMAND make
+        WORKING_DIRECTORY ${LUAJIT_DIR}
+        COMMENT "Building LuaJIT (static)"
+    )
+    add_custom_target(
+        luajit-build
+        DEPENDS ${LUAJIT_LIB}
+    )
+    add_library(luajit-static STATIC IMPORTED GLOBAL)
+    set_target_properties(luajit-static PROPERTIES
+        IMPORTED_LOCATION ${LUAJIT_LIB}
+        INTERFACE_INCLUDE_DIRECTORIES ${LUAJIT_DIR}/src
+    )
+    add_dependencies(luajit-static luajit-build)
+    target_link_libraries(${PROJECT_NAME} PRIVATE luajit-static)
+endif()
+
+if(NOT GECND_USE_LUA51 AND NOT GECND_USE_LUA51)
+    add_library(lua-static STATIC ${lua_files})
+    find_program(LUAC lua PATHS ${LUA54_DIR} REQUIRED NO_DEFAULT_PATH)
     target_link_libraries(${PROJECT_NAME} PRIVATE lua-static)
     target_link_libraries("lua-static" PRIVATE GECND_CC_FLAGS)
 endif()

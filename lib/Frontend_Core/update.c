@@ -39,7 +39,11 @@ static const char* open_script(gecnd_t *gly, char** lua_code, char* lua_name, in
         return strdup(data.buf); /** @todo causes leaks */
     }
 
-    if (lua_load(gly->L, reader, &data, lua_name, "t")) {
+    #if LUA_VERSION_NUM >= 502
+        if (lua_load(gly->L, reader, &data, lua_name, "t")) {
+    #else
+        if (lua_load(gly->L, reader, &data, lua_name)) {
+    #endif
         return luaL_checkstring(gly->L, -1);
     }
 
