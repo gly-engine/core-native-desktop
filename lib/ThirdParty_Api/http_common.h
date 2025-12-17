@@ -15,7 +15,7 @@ void native_callback_http(lua_State* L, int64_t req_id, const char *const evt_ke
 const char* native_http_get_str(lua_State* L, int64_t req_id, const char *const evt_key)
 {
     native_callback_http(L, req_id, evt_key);
-    if (lua_pcall(L, 2, 1, 0) != LUA_OK) {
+    if (lua_pcall(L, 2, 1, 0)) {
         lua_pop(L, 1);
         return NULL;
     }
