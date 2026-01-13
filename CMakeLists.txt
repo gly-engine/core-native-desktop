@@ -136,6 +136,21 @@ set(RAYLIB_DIR "${CMAKE_SOURCE_DIR}/vendor/raylib")
 set(RAYLIB_DOWNLOAD "https://github.com/raysan5/raylib/releases/download/${RAYLIB_VERSION}/raylib-${RAYLIB_VERSION}_linux_amd64.tar.gz")
 option(GECND_USE_RAYLIB "Use Raylib backend" OFF)
 
+# SDL2
+set(SDL_VERSION "2.30.6")
+set(SDLTTF_VERSION "2.22.0")
+set(SDL_DIR "${CMAKE_SOURCE_DIR}/vendor/SDL2")
+set(SDLTTF_DIR "${CMAKE_SOURCE_DIR}/vendor/SDL_ttf")
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(SDL2_TEST OFF CACHE BOOL "" FORCE)
+set(SDL2_SHARED OFF CACHE BOOL "" FORCE)
+set(SDL2_STATIC ON CACHE BOOL "" FORCE)
+set(SDL2TTF_VENDORED ON CACHE BOOL "" FORCE)
+set(SDL2TTF_HARFBUZZ OFF CACHE BOOL "" FORCE)
+set(SDL2TTF_INSTALL OFF CACHE BOOL "" FORCE)
+set(SDL2TTF_SAMPLES OFF CACHE BOOL "" FORCE)
+option(GECND_USE_SDL2 "Use SDL backend" OFF)
+
 # FFMPEG
 set(FFMPEG_VERSION "7.0.2")
 set(FFMPEG_DOWNLOAD "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz")
@@ -264,6 +279,27 @@ if(GECND_USE_RAYLIB)
     set_target_properties(raylib-static PROPERTIES IMPORTED_LOCATION "${RAYLIB_DIR}/lib/libraylib.a")
     target_link_libraries(${PROJECT_NAME} PRIVATE raylib-static)
     #todo cross linking
+endif()
+
+if(GECND_USE_SDL2)
+    if(NOT "${GECND_BACKEND}" STREQUAL "SDL2")
+        message(FATAL_ERROR "You must define -DGECND_BACKEND=\"SDL2\" when running cmake")
+    endif()
+    FetchContent_Declare(
+        dep_sdl2
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL
+        GIT_TAG "release-${SDL_VERSION}"
+        SOURCE_DIR ${SDL_DIR}
+    )
+    FetchContent_Declare(
+        dep_sdl2_ttf
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL_ttf
+        GIT_TAG "release-${SDLTTF_VERSION}"
+        SOURCE_DIR ${SDLTTF_DIR}
+    )
+    FetchContent_MakeAvailable(dep_sdl2 dep_sdl2_ttf)
+    target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2-static SDL2_ttf::SDL2_ttf-static)
+    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${SDLTTF_DIR};${SDL_DIR}/include)
 endif()
 
 if(GECND_USE_FFMPEG)
