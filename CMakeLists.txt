@@ -200,7 +200,7 @@ if(GECND_USE_LUAJIT)
     target_include_directories(gecnd_lua INTERFACE "${LUAJIT_DIR}/src")
 endif()
 
-if(NOT GECND_USE_LUA51 AND NOT GECND_USE_LUA51)
+if(NOT GECND_USE_LUA51 AND NOT GECND_USE_LUAJIT)
     FetchContent_Populate(lua54-static URL "${LUA54_DOWNLOAD}" SOURCE_DIR ${LUA54_DIR})
     file(GLOB lua_files "${LUA54_DIR}/*.c")
     list(REMOVE_ITEM lua_files "${LUA54_DIR}/lua.c")
