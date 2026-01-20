@@ -18,7 +18,7 @@ static void cb_frame(uv_timer_t *t) {
         uv_stop(t->loop);
     }
 }
-
+/*
 int main(int argc, char* argv[]) {
     static uv_loop_t loop;
     static uv_timer_t timer;
@@ -48,3 +48,4 @@ int main(int argc, char* argv[]) {
 
     return exit_code;
 }
+*/

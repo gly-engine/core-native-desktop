@@ -306,6 +306,8 @@ if(GECND_USE_FFMPEG)
     FILE(GLOB ffmpeg_files "${FFMPEG_DIR}/*/*.a")
     target_link_libraries(${PROJECT_NAME} PRIVATE "${ffmpeg_files}")
     target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${FFMPEG_DIR})
+    FILE(GLOB ffmpeg_files "${CMAKE_CURRENT_LIST_DIR}/lib/Stream_AVlib/*.c")
+    target_sources(${PROJECT_NAME} PRIVATE "${ffmpeg_files}")
 endif()
 
 if (GECND_USE_LIBUV)
