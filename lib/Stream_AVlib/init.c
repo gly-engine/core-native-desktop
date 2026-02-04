@@ -18,7 +18,6 @@
 /* ===================================================== */
 /* UTIL CLOCK                                           */
 /* ===================================================== */
-
 static inline double now_sec(void) {
     return av_gettime_relative() / 1e6;
 }
@@ -66,7 +65,6 @@ static VideoStream g_stream;
 /* ===================================================== */
 /* FRAME UTIL                                           */
 /* ===================================================== */
-
 static void frame_alloc(VideoFrame *f, int w, int h) {
     f->width = w;
     f->height = h;
@@ -98,59 +96,62 @@ static void threadworker(void *arg) {
 
         if (pkt->stream_index == s->video_index) {
             // Decodifica vídeo
-            avcodec_send_packet(s->vcodec, pkt);
-            while (avcodec_receive_frame(s->vcodec, vfrm) == 0) {
-                double pts = vfrm->best_effort_timestamp * av_q2d(s->video->time_base);
-                double target_time = s->clock_start + pts;
+            if (avcodec_send_packet(s->vcodec, pkt) == 0) {
+                while (avcodec_receive_frame(s->vcodec, vfrm) == 0) {
+                    double pts = vfrm->best_effort_timestamp * av_q2d(s->video->time_base);
+                    double target_time = s->clock_start + pts;
 
-                while ((target_time - now_sec()) > 0.0) {
-                    double diff = target_time - now_sec();
-                    if (diff > 0.01) usleep(1000);
-                    else usleep((useconds_t)(diff*1e6));
+                    while ((target_time - now_sec()) > 0.0) {
+                        double diff = target_time - now_sec();
+                        if (diff > 0.01) usleep(1000);
+                        else usleep((useconds_t)(diff*1e6));
+                    }
+
+                    int back = 1 - atomic_load(&s->front);
+                    VideoFrame *f = &s->frames[back];
+                    frame_copy(s->sws, vfrm, f);
+                    f->pts = pts;
+                    atomic_store(&f->ready, 1);
+                    atomic_store(&s->front, back);
                 }
-
-                int back = 1 - atomic_load(&s->front);
-                VideoFrame *f = &s->frames[back];
-                frame_copy(s->sws, vfrm, f);
-                f->pts = pts;
-                atomic_store(&f->ready, 1);
-                atomic_store(&s->front, back);
             }
         }
         else if (pkt->stream_index == s->audio_index) {
             // Decodifica áudio
-            avcodec_send_packet(s->acodec, pkt);
-            while (avcodec_receive_frame(s->acodec, afrm) == 0) {
-                int nb_samples = afrm->nb_samples;
-                int channels = afrm->ch_layout.nb_channels;
+            if (avcodec_send_packet(s->acodec, pkt) == 0) {
+                while (avcodec_receive_frame(s->acodec, afrm) == 0) {
+                    int nb_samples = afrm->nb_samples;
+                    int channels = afrm->ch_layout.nb_channels;
 
-                for (int i=0;i<nb_samples;i++) {
-                    for (int c=0;c<channels;c++) {
-                        int16_t *data = (int16_t*)afrm->data[c]; // supondo S16
-                        float sample = data[i]/32768.0f;
-                        s->audio_buf[s->audio_buf_pos++] = sample;
+                    for (int i = 0; i < nb_samples; i++) {
+                        for (int c = 0; c < channels; c++) {
+                            int16_t *data = (int16_t*)afrm->data[c]; // S16
+                            float sample = data[i] / 32768.0f;
+                            s->audio_buf[s->audio_buf_pos++] = sample;
 
-                        // envia se buffer cheio
-                        if (s->audio_buf_pos >= s->audio_buf_size) {
-                            while (!IsAudioStreamProcessed(s->ray_audio))
-                                usleep(500);
-                            UpdateAudioStream(s->ray_audio, s->audio_buf, s->audio_buf_pos);
-                            s->audio_buf_pos = 0;
+                            // envia se buffer cheio
+                            if (s->audio_buf_pos >= s->audio_buf_size) {
+                                while (!IsAudioStreamProcessed(s->ray_audio))
+                                    usleep(1000);
+                                UpdateAudioStream(s->ray_audio, s->audio_buf, s->audio_buf_pos);
+                                s->audio_buf_pos = 0;
+                            }
                         }
                     }
-                }
-
-                // envia restante
-                if (s->audio_buf_pos > 0) {
-                    while (!IsAudioStreamProcessed(s->ray_audio))
-                        usleep(500);
-                    UpdateAudioStream(s->ray_audio, s->audio_buf, s->audio_buf_pos);
-                    s->audio_buf_pos = 0;
                 }
             }
         }
 
         av_packet_unref(pkt);
+    }
+
+    // envia restos de áudio
+    if (s->audio_buf_pos > 0) {
+        while (!IsAudioStreamProcessed(s->ray_audio))
+                                                usleep(1000);
+
+        UpdateAudioStream(s->ray_audio, s->audio_buf, s->audio_buf_pos);
+        s->audio_buf_pos = 0;
     }
 
     av_frame_free(&vfrm);
@@ -165,8 +166,14 @@ static void threadworker(void *arg) {
 int avplay(const char *src) {
     VideoStream *s = &g_stream;
 
-    avformat_open_input(&s->fmt, src, NULL, NULL);
-    avformat_find_stream_info(s->fmt, NULL);
+    if (avformat_open_input(&s->fmt, src, NULL, NULL) < 0) {
+        fprintf(stderr,"Erro ao abrir arquivo: %s\n", src);
+        return -1;
+    }
+    if (avformat_find_stream_info(s->fmt, NULL) < 0) {
+        fprintf(stderr,"Erro ao encontrar stream info\n");
+        return -1;
+    }
 
     // VIDEO
     s->video_index = av_find_best_stream(s->fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
@@ -193,7 +200,7 @@ int avplay(const char *src) {
         s->ray_audio = LoadAudioStream(s->audio_channels, audio_rate, 32);
         PlayAudioStream(s->ray_audio);
 
-        s->audio_buf_size = 4096*s->audio_channels;
+        s->audio_buf_size = 8192 * s->audio_channels; // buffer maior
         s->audio_buf = malloc(sizeof(float)*s->audio_buf_size);
         s->audio_buf_pos = 0;
     }
@@ -228,12 +235,13 @@ VideoFrame *avplay_get_pixels(void) {
 /* ===================================================== */
 
 int main(int argc, char **argv) {
-    if (argc<2) {
+    if (argc < 2) {
         printf("uso: %s video.mp4\n", argv[0]);
         return 0;
     }
 
-    avplay(argv[1]);
+    if (avplay(argv[1]) < 0)
+        return -1;
 
     InitWindow(1280,720,"FFmpeg + Raylib (PTS sync)");
     SetTargetFPS(60);
@@ -262,7 +270,11 @@ int main(int argc, char **argv) {
         BeginDrawing();
         ClearBackground(BLACK);
         if (tex_ready)
-            DrawTexturePro(tex,(Rectangle){0,0,tex.width,tex.height},(Rectangle){0,0,GetScreenWidth(),GetScreenHeight()},(Vector2){0,0},0,WHITE);
+            DrawTexturePro(tex,
+                (Rectangle){0,0,tex.width,tex.height},
+                (Rectangle){0,0,GetScreenWidth(),GetScreenHeight()},
+                (Vector2){0,0},0,WHITE
+            );
         EndDrawing();
     }
 
@@ -271,5 +283,10 @@ int main(int argc, char **argv) {
 
     CloseAudioDevice();
     CloseWindow();
+
+    free(g_stream.audio_buf);
+    free(g_stream.frames[0].pixels);
+    free(g_stream.frames[1].pixels);
+
     return 0;
 }
