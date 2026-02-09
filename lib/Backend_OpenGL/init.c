@@ -1,11 +1,50 @@
+#include "backend_gl_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <glad/gl.h>
-#include <GLFW/glfw3.h>
 
-#define LOG(fmt, ...) \
-    printf("[dbg] " fmt "\n", ##__VA_ARGS__)
+/* =====================
+   Generated shaders
+   ===================== */
+#include <gecnd/shadder_gl_rect_vert.h>
+#include <gecnd/shadder_gl_rect_frag.h>
+#include <gecnd/shadder_gl_line_vert.h>
+#include <gecnd/shadder_gl_line_frag.h>
+#include <gecnd/shadder_es_rect_vert.h>
+#include <gecnd/shadder_es_rect_frag.h>
+#include <gecnd/shadder_es_line_vert.h>
+#include <gecnd/shadder_es_line_frag.h>
+
+/* =====================
+   Global state
+   ===================== */
+GLFWwindow *g_window = NULL;
+uint16_t g_window_width  = 1280;
+uint16_t g_window_height = 720;
+
+/* Rect drawing */
+GLuint g_shape_program;
+GLint  g_shape_loc_pos;
+GLint  g_shape_loc_proj;
+GLint  g_shape_loc_color;
+GLint  g_shape_loc_rect;
+GLint  g_shape_loc_radius;
+GLint  g_shape_loc_mode;
+
+/* Line drawing */
+GLuint g_line_program;
+GLint  g_line_loc_pos;
+GLint  g_line_loc_proj;
+GLint  g_line_loc_color;
+
+GLuint g_vbo;
+
+/* Drawing state */
+uint32_t g_current_color = 0xFFFFFFFF;
+uint32_t g_clear_color   = 0x1A2B3CFF;
+
+/* Timing */
+double g_last_frame_time = 0.0;
 
 /* =====================
    Helpers
@@ -16,10 +55,20 @@ static void die(const char *msg)
     exit(1);
 }
 
-static GLuint compile_shader(GLenum type, const char *src)
+typedef struct {
+    const char *name;
+    const char *src;
+    int len;
+} shader_src_t;
+
+#define SHADER(sym) \
+    { #sym, (const char*)(sym), (int)(sym##_len) }
+
+static GLuint compile_shader(GLenum type, const shader_src_t *sh)
 {
     GLuint s = glCreateShader(type);
-    glShaderSource(s, 1, &src, NULL);
+
+    glShaderSource(s, 1, &sh->src, &sh->len);
     glCompileShader(s);
 
     GLint ok = 0;
@@ -27,21 +76,27 @@ static GLuint compile_shader(GLenum type, const char *src)
     if (!ok) {
         char log[1024];
         glGetShaderInfoLog(s, sizeof(log), NULL, log);
-        fprintf(stderr, "shader compile error:\n%s\n", log);
+        fprintf(stderr,
+            "[SHADER ERROR] %s (%s)\n%s\n",
+            sh->name,
+            type == GL_VERTEX_SHADER ? "vertex" : "fragment",
+            log
+        );
         exit(1);
     }
     return s;
 }
 
-static GLuint create_program(const char *vs, const char *fs)
+static GLuint create_program(const shader_src_t *vs,
+                             const shader_src_t *fs)
 {
     GLuint p = glCreateProgram();
 
-    GLuint sv = compile_shader(GL_VERTEX_SHADER, vs);
-    GLuint sf = compile_shader(GL_FRAGMENT_SHADER, fs);
+    GLuint v = compile_shader(GL_VERTEX_SHADER, vs);
+    GLuint f = compile_shader(GL_FRAGMENT_SHADER, fs);
 
-    glAttachShader(p, sv);
-    glAttachShader(p, sf);
+    glAttachShader(p, v);
+    glAttachShader(p, f);
     glLinkProgram(p);
 
     GLint ok = 0;
@@ -49,65 +104,33 @@ static GLuint create_program(const char *vs, const char *fs)
     if (!ok) {
         char log[1024];
         glGetProgramInfoLog(p, sizeof(log), NULL, log);
-        fprintf(stderr, "program link error:\n%s\n", log);
+        fprintf(stderr,
+            "[PROGRAM LINK ERROR]\nVS: %s\nFS: %s\n%s\n",
+            vs->name, fs->name, log
+        );
         exit(1);
     }
 
-    glDeleteShader(sv);
-    glDeleteShader(sf);
+    glDeleteShader(v);
+    glDeleteShader(f);
     return p;
 }
 
-/* =====================
-   Shader sources
-   ===================== */
-
-/* OpenGL 2.1 (desktop) */
-static const char *vs_gl =
-    "#version 120\n"
-    "attribute vec2 a_pos;\n"
-    "void main() {\n"
-    "    gl_Position = vec4(a_pos, 0.0, 1.0);\n"
-    "}\n";
-
-static const char *fs_gl =
-    "#version 120\n"
-    "void main() {\n"
-    "    gl_FragColor = vec4(1.0, 0.2, 0.2, 1.0);\n"
-    "}\n";
-
-/* OpenGL ES 2.0 */
-static const char *vs_gles =
-    "attribute vec2 a_pos;\n"
-    "void main() {\n"
-    "    gl_Position = vec4(a_pos, 0.0, 1.0);\n"
-    "}\n";
-
-static const char *fs_gles =
-    "precision mediump float;\n"
-    "void main() {\n"
-    "    gl_FragColor = vec4(1.0, 0.2, 0.2, 1.0);\n"
-    "}\n";
-
-/* =====================
-   Geometry
-   ===================== */
-static float vertices[] = {
-    -0.5f, -0.5f,
-     0.5f, -0.5f,
-     0.5f,  0.5f,
-
-    -0.5f, -0.5f,
-     0.5f,  0.5f,
-    -0.5f,  0.5f,
-};
-
-/* =====================
-   Main
-   ===================== */
-int main(void)
+static inline const shader_src_t *
+pick_shader(bool is_gles,
+            const shader_src_t *gl,
+            const shader_src_t *es)
 {
-    LOG("program start");
+    return is_gles ? es : gl;
+}
+
+/* =====================
+   Hooks
+   ===================== */
+void gly_hook_display_init(uint16_t width, uint16_t height)
+{
+    g_window_width  = width;
+    g_window_height = height;
 
     if (!glfwInit())
         die("GLFW init failed");
@@ -115,59 +138,116 @@ int main(void)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
-    GLFWwindow *window =
-        glfwCreateWindow(1280, 720, "GL 2.0 / GLES 2.0 Square", NULL, NULL);
+    g_window = glfwCreateWindow(
+        g_window_width,
+        g_window_height,
+        "gecnd (OpenGL)",
+        NULL, NULL
+    );
 
-    if (!window)
+    if (!g_window)
         die("window creation failed");
 
-    glfwMakeContextCurrent(window);
+    glfwMakeContextCurrent(g_window);
 
     if (!gladLoadGL((GLADloadfunc)glfwGetProcAddress))
         die("GLAD load failed");
 
-    const char *version = (const char *)glGetString(GL_VERSION);
-    int is_gles = version && strstr(version, "OpenGL ES");
+    const char *ver = (const char*)glGetString(GL_VERSION);
+    bool is_gles = ver && strstr(ver, "OpenGL ES");
 
-    LOG("GL_VERSION: %s", version);
+    /* ===== Rect program ===== */
+    shader_src_t rect_vs_gl = SHADER(shadder_gl_rect_vert);
+    shader_src_t rect_fs_gl = SHADER(shadder_gl_rect_frag);
+    shader_src_t rect_vs_es = SHADER(shadder_es_rect_vert);
+    shader_src_t rect_fs_es = SHADER(shadder_es_rect_frag);
 
-    const char *vs = is_gles ? vs_gles : vs_gl;
-    const char *fs = is_gles ? fs_gles : fs_gl;
+    g_shape_program = create_program(
+        pick_shader(is_gles, &rect_vs_gl, &rect_vs_es),
+        pick_shader(is_gles, &rect_fs_gl, &rect_fs_es)
+    );
 
-    GLuint program = create_program(vs, fs);
+    g_shape_loc_pos    = glGetAttribLocation (g_shape_program, "a_pos");
+    g_shape_loc_proj   = glGetUniformLocation(g_shape_program, "u_projection");
+    g_shape_loc_color  = glGetUniformLocation(g_shape_program, "u_color");
+    g_shape_loc_rect   = glGetUniformLocation(g_shape_program, "u_rect");
+    g_shape_loc_radius = glGetUniformLocation(g_shape_program, "u_radius");
+    g_shape_loc_mode   = glGetUniformLocation(g_shape_program, "u_mode");
 
-    GLuint vbo;
-    glGenBuffers(1, &vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    /* ===== Line program ===== */
+    shader_src_t line_vs_gl = SHADER(shadder_gl_line_vert);
+    shader_src_t line_fs_gl = SHADER(shadder_gl_line_frag);
+    shader_src_t line_vs_es = SHADER(shadder_es_line_vert);
+    shader_src_t line_fs_es = SHADER(shadder_es_line_frag);
 
-    GLint loc_pos = glGetAttribLocation(program, "a_pos");
+    g_line_program = create_program(
+        pick_shader(is_gles, &line_vs_gl, &line_vs_es),
+        pick_shader(is_gles, &line_fs_gl, &line_fs_es)
+    );
 
-    while (!glfwWindowShouldClose(window)) {
-        glClearColor(0.1f, 0.2f, 0.3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+    g_line_loc_pos   = glGetAttribLocation (g_line_program, "a_pos");
+    g_line_loc_proj  = glGetUniformLocation(g_line_program, "u_projection");
+    g_line_loc_color = glGetUniformLocation(g_line_program, "u_color");
 
-        glUseProgram(program);
+    /* ===== VBO ===== */
+    glGenBuffers(1, &g_vbo);
 
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glEnableVertexAttribArray(loc_pos);
-        glVertexAttribPointer(
-            loc_pos,
-            2,
-            GL_FLOAT,
-            GL_FALSE,
-            2 * sizeof(float),
-            (void*)0
-        );
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+}
 
-        glDrawArrays(GL_TRIANGLES, 0, 6);
+void gly_hook_display_fps(uint8_t fps)
+{
+    glfwSwapInterval(fps == 0 ? 0 : 1);
+}
 
-        glDisableVertexAttribArray(loc_pos);
+void gly_hook_display_dt(int16_t *delta_time)
+{
+    double t = glfwGetTime();
+    *delta_time = (int16_t)((t - g_last_frame_time) * 1000.0);
+    g_last_frame_time = t;
+}
 
-        glfwSwapBuffers(window);
-        glfwPollEvents();
-    }
+void gly_hook_should_close(bool *should_close)
+{
+    *should_close = glfwWindowShouldClose(g_window);
+}
 
+void gly_hook_display_close(void)
+{
+    glDeleteProgram(g_shape_program);
+    glDeleteProgram(g_line_program);
+    glDeleteBuffers(1, &g_vbo);
     glfwTerminate();
-    return 0;
+}
+
+/* =====================
+   Native drawing
+   ===================== */
+void native_draw_start(void)
+{
+    glfwPollEvents();
+
+    float r = ((g_clear_color >> 24) & 0xFF) / 255.0f;
+    float g = ((g_clear_color >> 16) & 0xFF) / 255.0f;
+    float b = ((g_clear_color >>  8) & 0xFF) / 255.0f;
+    float a = ( g_clear_color        & 0xFF) / 255.0f;
+
+    glClearColor(r, g, b, a);
+    glClear(GL_COLOR_BUFFER_BIT);
+}
+
+void native_draw_flush(void)
+{
+    glfwSwapBuffers(g_window);
+}
+
+void native_draw_color(uint32_t color)
+{
+    g_current_color = color;
+}
+
+void native_draw_clear(uint32_t color)
+{
+    g_clear_color = color;
 }
