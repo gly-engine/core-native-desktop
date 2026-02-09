@@ -8,8 +8,8 @@ include(FetchContent)
 
 # EXE
 option(GECND_AS_LIBRARY "build static lib gecnd intead binary" OFF)
-file(MAKE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin")
-file(MAKE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/lib")
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include/gecnd)
 file(GLOB_RECURSE SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/lib/Frontend_*/*.c"
     "${CMAKE_CURRENT_LIST_DIR}/lib/Common_Utils/*.c"
@@ -40,7 +40,7 @@ add_library(gecnd_header INTERFACE)
 if(NOT TARGET gecnd_cc_flags)
     add_library(gecnd_cc_flags INTERFACE)
 endif()
-target_include_directories(gecnd_header INTERFACE "${CMAKE_CURRENT_LIST_DIR}/include")
+target_include_directories(gecnd_header INTERFACE "${CMAKE_CURRENT_LIST_DIR}/include;${CMAKE_BINARY_DIR}/include")
 target_link_libraries(${PROJECT_NAME} PRIVATE gecnd_header gecnd_lua gecnd_cc_flags)
 get_target_property(gecnd_cc_options gecnd_cc_flags INTERFACE_COMPILE_OPTIONS)
 if(NOT gecnd_cc_options)
@@ -385,9 +385,27 @@ if(GECND_USE_OPENGL)
     FetchContent_MakeAvailable(glfw)
 
     file(GLOB_RECURSE BACKEND_SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_OpenGL/*.c")
+    file(GLOB_RECURSE GLSL_SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_OpenGL/*/*")
+    foreach(GLSL ${GLSL_SOURCES})
+        string(REGEX REPLACE "^.*Backend_OpenGL/?" "" GLSL_SHORT "${GLSL}")
+        string(REGEX REPLACE "[./]" "_" GLSL_NAME "${GLSL_SHORT}")
+        set(GLSL_OUT ${CMAKE_BINARY_DIR}/include/gecnd/${GLSL_NAME}.h)
+        add_custom_command(
+            OUTPUT ${GLSL_OUT}
+            COMMAND xxd -i ${GLSL_SHORT} > ${GLSL_OUT}
+            DEPENDS ${GLSL}
+            COMMENT "Generating header ${GLSL_OUT}"
+            WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_OpenGL"
+        )
+        list(APPEND GENERATED_HEADERS ${GLSL_OUT})
+    endforeach()
+    
     target_sources(${PROJECT_NAME} PRIVATE "${BACKEND_SOURCES}")
     target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE "${X11_HEADERS};${GLAD_DIR}/include;${GLFW_DIR}/include")
     target_include_directories(glfw SYSTEM PRIVATE "${X11_HEADERS};${X11_HEADERS_EXTRA}")
+
+    add_custom_target(gecnd_glsl_headers DEPENDS ${GENERATED_HEADERS})
+    add_dependencies(${PROJECT_NAME} gecnd_glsl_headers)
 endif()
 
 if(GECND_USE_FFMPEG)
