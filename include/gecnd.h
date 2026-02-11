@@ -46,7 +46,9 @@ typedef struct {
 
 // instance
 gecnd_t *gecnd_new(lua_State* L);
+gecnd_t *gecnd_get_root();
 void gecnd_destroy(gecnd_t *gly);
+
 // configure
 void gecnd_set_loop(gecnd_t *gly, void* loop);
 void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]);
@@ -61,9 +63,7 @@ bool gecnd_has_errors(gecnd_t *gly);
 const char* gecnd_get_errors(gecnd_t *gly);
 // tick
 bool gecnd_update(gecnd_t * gly);
-// legacy:
-void gecnd_set_game_file(gecnd_t *gly, const char *const path, const char *const file);
-void gecnd_set_engine_file(gecnd_t *gly, const char *const path, const char *const file);
+void gecnd_set_btn_state(gecnd_t *gly, const char* key, bool state);
 // utils
 uint32_t gecnd_get_delta_ms(void);
 size_t gecnd_utils_get_exe_cwd(char *buffer, size_t max_size);

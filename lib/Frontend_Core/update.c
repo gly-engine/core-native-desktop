@@ -124,11 +124,8 @@ static void callback_keyboard(gecnd_t *gly) {
         index++;
 
         if (key) {
-            lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_keyboard);
-            lua_pushstring(gly->L, key);
-            lua_pushboolean(gly->L, pressed);
-            if (lua_pcall(gly->L, 2, 0, 0)) {
-                gly->error_string = luaL_checkstring(gly->L, -1);
+            gecnd_set_btn_state(gly, key, pressed);
+            if(gly->error_string) {
                 break;
             }
         }        

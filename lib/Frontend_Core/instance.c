@@ -31,6 +31,8 @@ extern const luaL_Reg frontend_api_image[];
 extern const luaL_Reg frontend_api_media[];
 extern const luaL_Reg frontend_api_system[];
 
+static gecnd_t *instance;
+
 void gecnd_global_signal_init();
 
 gecnd_t *gecnd_new(lua_State* L) {
@@ -93,6 +95,11 @@ gecnd_t *gecnd_new(lua_State* L) {
         gly_hook_luaopen_storage(L);
     }
     while(0);
+
+    if(!instance) {
+        instance = gly;
+    }
+
     return gly;   
 }
 
@@ -101,4 +108,8 @@ void gecnd_destroy(gecnd_t *gly) {
         gly_hook_luaclose_storage(gly->L);
         free(gly);
     }
+}
+
+gecnd_t *gecnd_get_root() {
+    return instance;
 }
