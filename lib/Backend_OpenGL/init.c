@@ -14,12 +14,6 @@ GLBackendState* geogl_get_state(void) {
 /* =====================
    Color Conversion
    ===================== */
-static void set_color_from_u32(float *v, uint32_t c) {
-    v[0] = ((c >> 24) & 0xFF) / 255.0f;
-    v[1] = ((c >> 16) & 0xFF) / 255.0f;
-    v[2] = ((c >>  8) & 0xFF) / 255.0f;
-    v[3] = ( c        & 0xFF) / 255.0f;
-}
 
 /* =====================
    Hooks

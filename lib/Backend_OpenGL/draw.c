@@ -1,6 +1,13 @@
 #include "backend_gl_internal.h"
 #include <math.h>
 
+static void set_color_from_u32(float *v, uint32_t c) {
+    v[0] = ((c >> 24) & 0xFF) / 255.0f;
+    v[1] = ((c >> 16) & 0xFF) / 255.0f;
+    v[2] = ((c >>  8) & 0xFF) / 255.0f;
+    v[3] = ( c        & 0xFF) / 255.0f;
+}
+
 static void mat4_ortho(float *mat, float left, float right, float bottom, float top, float near, float far) {
     mat[0] = 2.0f / (right - left);
     mat[1] = 0.0f;
