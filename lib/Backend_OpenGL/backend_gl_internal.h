@@ -4,9 +4,16 @@
 #include <glad/gl.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "kvec.h" // For kvec_t
 
 // Forward declaration for GLFW window
 struct GLFWwindow;
+
+typedef struct {
+    GLuint id;
+    int width;
+    int height;
+} GLTexture;
 
 /* =========================================
  * Backend Context
@@ -36,12 +43,22 @@ typedef struct {
     GLint line_loc_proj;
     GLint line_loc_color;
 
+    // Texture drawing program
+    GLuint texture_program;
+    GLint texture_loc_pos;
+    GLint texture_loc_texCoord;
+    GLint texture_loc_proj;
+    GLint texture_loc_sampler;
+
     // Common GL objects
     GLuint vbo;
 
     // --- Drawing State ---
     float current_color[4];
     float clear_color[4];
+
+    // --- Texture Storage ---
+    kvec_t(GLTexture) textures;
 
 } GLBackendState;
 

@@ -7,10 +7,14 @@
 #include <gecnd/shadder_gl_rect_frag.h>
 #include <gecnd/shadder_gl_line_vert.h>
 #include <gecnd/shadder_gl_line_frag.h>
+#include <gecnd/shadder_gl_tex_vert.h>
+#include <gecnd/shadder_gl_tex_frag.h>
 #include <gecnd/shadder_es_rect_vert.h>
 #include <gecnd/shadder_es_rect_frag.h>
 #include <gecnd/shadder_es_line_vert.h>
 #include <gecnd/shadder_es_line_frag.h>
+#include <gecnd/shadder_es_tex_vert.h>
+#include <gecnd/shadder_es_tex_frag.h>
 
 typedef struct {
     const char *name;
@@ -74,6 +78,9 @@ void opengl_init(void) {
     const char *ver = (const char*)glGetString(GL_VERSION);
     bool is_gles = ver && strstr(ver, "OpenGL ES");
 
+    // Initialize kvec for textures
+    kv_init(state->textures);
+
     /* ===== Rect program ===== */
     shader_src_t rect_vs_gl = SHADER(shadder_gl_rect_vert);
     shader_src_t rect_fs_gl = SHADER(shadder_gl_rect_frag);
@@ -107,6 +114,22 @@ void opengl_init(void) {
     state->line_loc_proj  = glGetUniformLocation(state->line_program, "u_projection");
     state->line_loc_color = glGetUniformLocation(state->line_program, "u_color");
 
+    /* ===== Texture program ===== */
+    shader_src_t tex_vs_gl = SHADER(shadder_gl_tex_vert);
+    shader_src_t tex_fs_gl = SHADER(shadder_gl_tex_frag);
+    shader_src_t tex_vs_es = SHADER(shadder_es_tex_vert);
+    shader_src_t tex_fs_es = SHADER(shadder_es_tex_frag);
+
+    state->texture_program = create_program(
+        pick_shader(is_gles, &tex_vs_gl, &tex_vs_es),
+        pick_shader(is_gles, &tex_fs_gl, &tex_fs_es)
+    );
+
+    state->texture_loc_pos     = glGetAttribLocation (state->texture_program, "a_pos");
+    state->texture_loc_texCoord = glGetAttribLocation (state->texture_program, "a_texCoord");
+    state->texture_loc_proj    = glGetUniformLocation(state->texture_program, "u_projection");
+    state->texture_loc_sampler = glGetUniformLocation(state->texture_program, "u_texture");
+
     /* ===== VBO ===== */
     glGenBuffers(1, &state->vbo);
 
@@ -118,5 +141,7 @@ void opengl_terminate(void) {
     GLBackendState *state = geogl_get_state();
     glDeleteProgram(state->shape_program);
     glDeleteProgram(state->line_program);
+    glDeleteProgram(state->texture_program); // Cleanup texture program
     glDeleteBuffers(1, &state->vbo);
+    kv_destroy(state->textures); // Destroy kvec for textures
 }
