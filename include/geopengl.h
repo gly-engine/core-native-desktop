@@ -16,6 +16,40 @@ typedef struct {
 } GLTexture;
 
 /* =========================================
+ * Inline Helpers
+ * ========================================= */
+
+static inline void mat4_ortho(float *mat, float left, float right, float bottom, float top, float near, float far) {
+    mat[0] = 2.0f / (right - left);
+    mat[1] = 0.0f;
+    mat[2] = 0.0f;
+    mat[3] = 0.0f;
+
+    mat[4] = 0.0f;
+    mat[5] = 2.0f / (top - bottom);
+    mat[6] = 0.0f;
+    mat[7] = 0.0f;
+
+    mat[8] = 0.0f;
+    mat[9] = 0.0f;
+    mat[10] = -2.0f / (far - near);
+    mat[11] = 0.0f;
+
+    mat[12] = -(right + left) / (right - left);
+    mat[13] = -(top + bottom) / (top - bottom);
+    mat[14] = -(far + near) / (far - near);
+    mat[15] = 1.0f;
+}
+
+static inline void set_color_from_u32(float *v, uint32_t c) {
+    v[0] = ((c >> 24) & 0xFF) / 255.0f;
+    v[1] = ((c >> 16) & 0xFF) / 255.0f;
+    v[2] = ((c >>  8) & 0xFF) / 255.0f;
+    v[3] = ( c        & 0xFF) / 255.0f;
+}
+
+
+/* =========================================
  * Backend Context
  * ========================================= */
 
@@ -62,6 +96,7 @@ typedef struct {
     GLuint vbo;
 
     // --- Drawing State ---
+    float projection[16];
     float current_color[4];
     float clear_color[4];
 

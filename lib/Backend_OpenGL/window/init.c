@@ -32,6 +32,9 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     // Set initial state
     native_draw_color(0xFFFFFFFF); // White
     native_draw_clear(0x1A2B3CFF); // Dark blue
+
+    // Cache the projection matrix
+    mat4_ortho(g_gl_state.projection, 0, width, height, 0, -1, 1);
     
     g_gl_state.last_frame_time = platform_get_time();
 }

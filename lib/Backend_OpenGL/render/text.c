@@ -40,13 +40,10 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
 	glPixelStorei(GL_UNPACK_SKIP_PIXELS, rect[0]);
 	glPixelStorei(GL_UNPACK_SKIP_ROWS, rect[1]);
     glTexSubImage2D(GL_TEXTURE_2D, 0, rect[0], rect[1], w, h, GL_ALPHA, GL_UNSIGNED_BYTE, data);
-}
-
-static void mat4_ortho(float *mat, float left, float right, float bottom, float top, float near, float far) {
-    mat[0] = 2.0f / (right - left); mat[1] = 0.0f; mat[2] = 0.0f; mat[3] = 0.0f;
-    mat[4] = 0.0f; mat[5] = 2.0f / (top - bottom); mat[6] = 0.0f; mat[7] = 0.0f;
-    mat[8] = 0.0f; mat[9] = 0.0f; mat[10] = -2.0f / (far - near); mat[11] = 0.0f;
-    mat[12] = -(right + left) / (right - left); mat[13] = -(top + bottom) / (top - bottom); mat[14] = -(far + near) / (far - near); mat[15] = 1.0f;
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+	glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
 }
 
 static void glfons__renderDraw(void* userPtr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts) {
@@ -56,9 +53,7 @@ static void glfons__renderDraw(void* userPtr, const float* verts, const float* t
 
     glUseProgram(state->font_program);
 
-    float proj[16];
-    mat4_ortho(proj, 0, state->window_width, state->window_height, 0, -1, 1);
-	glUniformMatrix4fv(state->font_loc_proj, 1, GL_FALSE, proj);
+	glUniformMatrix4fv(state->font_loc_proj, 1, GL_FALSE, state->projection);
 	glUniform1i(state->font_loc_sampler, 0);
     glUniform4fv(state->font_loc_color, 1, state->current_color);
 
@@ -184,11 +179,7 @@ void native_text_print(int16_t x, int16_t y, const char *text) {
     fonsSetColor(fs, glfonsRGBA(r,g,b,a));
     fonsSetAlign(fs, FONS_ALIGN_LEFT | FONS_ALIGN_TOP);
 
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDisable(GL_CULL_FACE);
     fonsDrawText(fs, (float)x, (float)y, text, NULL);
-    glDisable(GL_BLEND);
 }
 
 void native_text_mensure(const char *text, int16_t *w, int16_t *h) {

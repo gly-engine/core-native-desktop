@@ -3,28 +3,6 @@
 #include "gehook.h"
 #include "geopengl.h"
 
-static void mat4_ortho(float *mat, float left, float right, float bottom, float top, float near, float far) {
-    mat[0] = 2.0f / (right - left);
-    mat[1] = 0.0f;
-    mat[2] = 0.0f;
-    mat[3] = 0.0f;
-
-    mat[4] = 0.0f;
-    mat[5] = 2.0f / (top - bottom);
-    mat[6] = 0.0f;
-    mat[7] = 0.0f;
-
-    mat[8] = 0.0f;
-    mat[9] = 0.0f;
-    mat[10] = -2.0f / (far - near);
-    mat[11] = 0.0f;
-
-    mat[12] = -(right + left) / (right - left);
-    mat[13] = -(top + bottom) / (top - bottom);
-    mat[14] = -(far + near) / (far - near);
-    mat[15] = 1.0f;
-}
-
 void native_image_load(const char *path, int32_t image_id, bool *success) {
     GLBackendState *state = geogl_get_state();
     int r = 0;
@@ -146,9 +124,7 @@ void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
 
     glUseProgram(state->texture_program);
 
-    float projection[16];
-    mat4_ortho(projection, 0, state->window_width, state->window_height, 0, -1, 1);
-    glUniformMatrix4fv(state->texture_loc_proj, 1, GL_FALSE, projection);
+    glUniformMatrix4fv(state->texture_loc_proj, 1, GL_FALSE, state->projection);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture.id);
