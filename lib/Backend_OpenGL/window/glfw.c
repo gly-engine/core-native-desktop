@@ -1,10 +1,11 @@
-#include "backend_gl_internal.h"
-#include <GLFW/glfw3.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "gecnd.h"
 #include "gehook.h"
+#include "geopengl.h"
+
+#include <GLFW/glfw3.h>
 
 static void die(const char *msg) {
     fprintf(stderr, "[FATAL] %s\n", msg);

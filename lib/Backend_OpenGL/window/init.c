@@ -1,7 +1,7 @@
-#include "backend_gl_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "geopengl.h"
 /* =====================
    Global state
    ===================== */

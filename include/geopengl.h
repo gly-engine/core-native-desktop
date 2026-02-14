@@ -50,6 +50,14 @@ typedef struct {
     GLint texture_loc_proj;
     GLint texture_loc_sampler;
 
+    // Font drawing program
+    GLuint font_program;
+    GLint font_loc_pos;
+    GLint font_loc_texCoord;
+    GLint font_loc_proj;
+    GLint font_loc_sampler;
+    GLint font_loc_color;
+
     // Common GL objects
     GLuint vbo;
 
@@ -93,15 +101,5 @@ void opengl_init(void);
 // Destroys GL objects.
 void opengl_terminate(void);
 
-
-/* =========================================
- * Native Drawing API (various files)
- * ========================================= */
-void native_draw_start(void);
-void native_draw_flush(void);
-void native_draw_color(uint32_t color);
-void native_draw_clear(uint32_t color);
-void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r);
-void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2);
 
 #endif // GEC_BACKEND_GL_INTERNAL_H

@@ -200,6 +200,16 @@ set(SPNG_STATIC ON CACHE BOOL "" FORCE)
 set(SPNG_USE_MINIZ OFF CACHE BOOL "" FORCE)
 set(SPNG_INSTALL OFF CACHE BOOL "" FORCE)
 
+# FontStash
+set(FONTSTASH_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/fontstash")
+set(FONTSTASH_DOWNLOAD "https://github.com/memononen/fontstash/archive/b5ddc9741061343740d85d636d782ed3e07cf7be.tar.gz")
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE "${FONTSTASH_DIR}/src")
+
+# Fonts
+set(FONTS_DIR "${CMAKE_SOURCE_DIR}/vendor/fonts")
+set(FONTS_HEADER "${CMAKE_BINARY_DIR}/include/gecnd/notosans.h")
+set(FONTS_DOWNLOAD "https://github.com/gly-engine/archive/archive/refs/heads/fonts.zip")
+
 # Bear SSL
 set(BEARSSL_VERSION "0.6")
 set(BEARSSL_DIR "${CMAKE_SOURCE_DIR}/vendor/bearssl")
@@ -282,6 +292,18 @@ endif()
 
 if(NOT EXISTS "${STB_DIR}")
     FetchContent_Populate(stb URL "${STB_DOWNLOAD}" SOURCE_DIR ${STB_DIR})
+endif()
+
+if(NOT EXISTS "${FONTS_HEADER}")
+    FetchContent_Populate(fonts URL "${FONTS_DOWNLOAD}" SOURCE_DIR ${FONTS_DIR})
+    add_custom_command(
+        OUTPUT ${FONTS_HEADER}
+        COMMAND xxd -i "Noto_Sans/NotoSans-Regular.ttf" > ${FONTS_HEADER}
+        COMMENT "Generating default font"
+        WORKING_DIRECTORY ${FONTS_DIR}
+    )
+    add_custom_target(gecnd_fonts_headers DEPENDS ${FONTS_HEADER})
+    add_dependencies(${PROJECT_NAME} gecnd_fonts_headers)
 endif()
 
 if(GECND_USE_JSON)
@@ -393,8 +415,8 @@ if(GECND_USE_OPENGL)
     )
     FetchContent_MakeAvailable(glfw)
 
-    file(GLOB_RECURSE BACKEND_SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_OpenGL/*.c")
-    file(GLOB_RECURSE GLSL_SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_OpenGL/*/*")
+    file(GLOB_RECURSE BACKEND_SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_OpenGL/*/*.c")
+    file(GLOB_RECURSE GLSL_SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_OpenGL/shadder/*")
     foreach(GLSL ${GLSL_SOURCES})
         string(REGEX REPLACE "^.*Backend_OpenGL/?" "" GLSL_SHORT "${GLSL}")
         string(REGEX REPLACE "[./]" "_" GLSL_NAME "${GLSL_SHORT}")
@@ -464,6 +486,10 @@ if(GECND_USE_OPENGL)
     FetchContent_MakeAvailable(spng)
     target_link_libraries(${PROJECT_NAME} PRIVATE spng_static)
     target_include_directories(${PROJECT_NAME} PRIVATE ${SPNG_ROOT}/spng)
+endif()
+
+if(GECND_USE_OPENGL AND NOT EXISTS "${FONTSTASH_DIR}")
+    FetchContent_Populate(fontstash URL "${FONTSTASH_DOWNLOAD}" SOURCE_DIR ${FONTSTASH_DIR})
 endif()
 
 if(GECND_USE_CURL)

@@ -1,7 +1,8 @@
-#include "backend_gl_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "geopengl.h"
 
 #include <gecnd/shadder_gl_rect_vert.h>
 #include <gecnd/shadder_gl_rect_frag.h>
@@ -15,6 +16,10 @@
 #include <gecnd/shadder_es_line_frag.h>
 #include <gecnd/shadder_es_tex_vert.h>
 #include <gecnd/shadder_es_tex_frag.h>
+#include <gecnd/shadder_gl_font_vert.h>
+#include <gecnd/shadder_gl_font_frag.h>
+#include <gecnd/shadder_es_font_vert.h>
+#include <gecnd/shadder_es_font_frag.h>
 
 typedef struct {
     const char *name;
@@ -130,6 +135,23 @@ void opengl_init(void) {
     state->texture_loc_proj    = glGetUniformLocation(state->texture_program, "u_projection");
     state->texture_loc_sampler = glGetUniformLocation(state->texture_program, "u_texture");
 
+    /* ===== Font program ===== */
+    shader_src_t font_vs_gl = SHADER(shadder_gl_font_vert);
+    shader_src_t font_fs_gl = SHADER(shadder_gl_font_frag);
+    shader_src_t font_vs_es = SHADER(shadder_es_font_vert);
+    shader_src_t font_fs_es = SHADER(shadder_es_font_frag);
+
+    state->font_program = create_program(
+        pick_shader(is_gles, &font_vs_gl, &font_vs_es),
+        pick_shader(is_gles, &font_fs_gl, &font_fs_es)
+    );
+
+    state->font_loc_pos      = glGetAttribLocation (state->font_program, "a_pos");
+    state->font_loc_texCoord = glGetAttribLocation (state->font_program, "a_texCoord");
+    state->font_loc_proj     = glGetUniformLocation(state->font_program, "u_projection");
+    state->font_loc_sampler  = glGetUniformLocation(state->font_program, "u_texture");
+    state->font_loc_color    = glGetUniformLocation(state->font_program, "u_color");
+
     /* ===== VBO ===== */
     glGenBuffers(1, &state->vbo);
 
@@ -141,7 +163,10 @@ void opengl_terminate(void) {
     GLBackendState *state = geogl_get_state();
     glDeleteProgram(state->shape_program);
     glDeleteProgram(state->line_program);
-    glDeleteProgram(state->texture_program); // Cleanup texture program
+    glDeleteProgram(state->texture_program);
+    glDeleteProgram(state->font_program);
     glDeleteBuffers(1, &state->vbo);
     kv_destroy(state->textures); // Destroy kvec for textures
+
+    native_text_terminate();
 }
