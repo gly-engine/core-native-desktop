@@ -103,6 +103,11 @@ typedef struct {
     // --- Texture Storage ---
     kvec_t(GLTexture) textures;
 
+    // --- Video Background ---
+    GLuint video_texture_id;
+    int video_width;
+    int video_height;
+
 } GLBackendState;
 
 // Global accessor for the backend state
