@@ -51,7 +51,7 @@ static void draw_video_background(void) {
     };
 
     glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
 
     glEnableVertexAttribArray(state->texture_loc_pos);
     glVertexAttribPointer(state->texture_loc_pos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
@@ -107,7 +107,7 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
     glUniform1i(state->shape_loc_mode, mode);
 
     glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
 
     glEnableVertexAttribArray(state->shape_loc_pos);
     glVertexAttribPointer(state->shape_loc_pos, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
@@ -132,7 +132,7 @@ void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
     glUniform4fv(state->line_loc_color, 1, state->current_color);
 
     glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
 
     glEnableVertexAttribArray(state->line_loc_pos);
     glVertexAttribPointer(state->line_loc_pos, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);

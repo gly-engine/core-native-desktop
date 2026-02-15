@@ -138,7 +138,7 @@ void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
     };
 
     glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
 
     glEnableVertexAttribArray(state->texture_loc_pos);
     glVertexAttribPointer(state->texture_loc_pos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);

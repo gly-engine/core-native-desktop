@@ -46,6 +46,9 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
 	glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
 }
 
+static void* render_buffer = NULL;
+static size_t render_buffer_size = 0;
+
 static void glfons__renderDraw(void* userPtr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts) {
     if (nverts == 0) return;
 	GLFONScontext* gl = (GLFONScontext*)userPtr;
@@ -66,16 +69,20 @@ static void glfons__renderDraw(void* userPtr, const float* verts, const float* t
     size_t tcoord_size = sizeof(float) * 2;
     size_t stride = vert_size + tcoord_size;
     size_t total_size = stride * nverts;
-    void* buffer = malloc(total_size);
-    unsigned char* p = buffer;
+    
+    if (render_buffer_size < total_size) {
+        render_buffer_size = total_size;
+        render_buffer = realloc(render_buffer, render_buffer_size);
+    }
+
+    unsigned char* p = render_buffer;
 
     for (int i = 0; i < nverts; i++) {
         memcpy(p, &verts[i*2], vert_size); p += vert_size;
         memcpy(p, &tcoords[i*2], tcoord_size); p += tcoord_size;
     }
 
-	glBufferData(GL_ARRAY_BUFFER, total_size, buffer, GL_DYNAMIC_DRAW);
-    free(buffer);
+	glBufferData(GL_ARRAY_BUFFER, total_size, render_buffer, GL_STREAM_DRAW);
 
 	glEnableVertexAttribArray(state->font_loc_pos);
 	glEnableVertexAttribArray(state->font_loc_texCoord);
@@ -139,6 +146,11 @@ void native_text_terminate(void) {
     if (!initialized) return;
     glfonsDelete(fs);
     fs = NULL;
+    if (render_buffer) {
+        free(render_buffer);
+        render_buffer = NULL;
+        render_buffer_size = 0;
+    }
     initialized = 0;
 }
 
@@ -204,11 +216,15 @@ void native_text_font_name(const char *path) {
 
 void native_text_font_default(uint8_t index) {
     (void)index;
-    if (!initialized) ensure_init();
+    if (!initialized) {
+        ensure_init();
+    }
+
     if (loaded_font_mem && loaded_font_mem != default_font_mem) {
         free(loaded_font_mem);
+        loaded_font_mem = NULL;
+        fonsResetAtlas(fs, atlas_w, atlas_h);
+        fs_font = FONS_INVALID;
     }
-    fonsResetAtlas(fs, atlas_w, atlas_h);
-    fs_font = FONS_INVALID;
     ensure_font_loaded();
 }
