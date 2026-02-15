@@ -1,4 +1,7 @@
-if(NOT EXISTS "${ZIG_DIR}/zig/zig-cc")
+set(ZIG_VERSION "0.15.2")
+set(ZIG_DIR "${CMAKE_CURRENT_LIST_DIR}/vendor/zig")
+
+if(NOT EXISTS "${ZIG_DIR}/zig-cc")
     file(MAKE_DIRECTORY "${ZIG_DIR}")
 
     if(NOT CMAKE_HOST_SYSTEM_PROCESSOR)
@@ -24,8 +27,6 @@ if(NOT EXISTS "${ZIG_DIR}/zig/zig-cc")
         message(FATAL_ERROR "Unsupported platform: ${CMAKE_HOST_SYSTEM_NAME}")
     endif()
 
-    set(ZIG_VERSION "0.15.2")
-    set(ZIG_DIR "${CMAKE_CURRENT_LIST_DIR}/vendor/zig")
     set(ZIG_NAME "zig-${CMAKE_HOST_SYSTEM_PROCESSOR}-${OS}-${ZIG_VERSION}")
     set(ZIG_TAR "${ZIG_DIR}/${ZIG_NAME}.tar.xz")
     set(ZIG_DOWNLOAD "https://ziglang.org/download/${ZIG_VERSION}/${ZIG_NAME}.tar.xz")
@@ -45,7 +46,7 @@ if(NOT EXISTS "${ZIG_DIR}/zig/zig-cc")
     endif()
 
     if (NOT EXISTS "${ZIG_DIR}/${ZIG_NAME}")
-            execute_process(
+        execute_process(
             COMMAND ${CMAKE_COMMAND} -E tar xJf "${ZIG_TAR}"
             WORKING_DIRECTORY "${ZIG_DIR}"
             RESULT_VARIABLE tar_result
@@ -56,13 +57,36 @@ if(NOT EXISTS "${ZIG_DIR}/zig/zig-cc")
     endif()
 
     find_program(ZIG_EXECUTABLE zig PATHS "${ZIG_DIR}/${ZIG_NAME}" REQUIRED NO_DEFAULT_PATH)
-    function(create_zig_script name cmd)
-        file(WRITE "${ZIG_DIR}/${name}" "#!/bin/sh\n\"${ZIG_EXECUTABLE}\" ${cmd} \"\$@\"\n")
+
+    set(ZIG_TARGET_ARGS "")
+    if(DEFINED TARGET)
+        string(REPLACE "-" ";" TARGET_PARTS "${TARGET}")
+        list(LENGTH TARGET_PARTS TARGET_LEN)
+
+        if(TARGET_LEN GREATER 3)
+            list(GET TARGET_PARTS -1 TARGET_CPU)
+            list(REMOVE_AT TARGET_PARTS -1)
+        endif()
+
+        string(REPLACE ";" "-" TARGET_BASE "${TARGET_PARTS}")
+        string(REPLACE "gnueabi." "gnueabi" TARGET_BASE "${TARGET_BASE}")
+
+        set(ZIG_TARGET_ARGS "-target ${TARGET_BASE}")
+
+        if(TARGET_CPU)
+            set(ZIG_TARGET_ARGS "${ZIG_TARGET_ARGS} -mcpu=${TARGET_CPU}")
+        endif()
+    endif()
+
+    function(create_zig_script name cmd extra)
+        file(WRITE "${ZIG_DIR}/${name}" "#!/bin/sh\n\"${ZIG_EXECUTABLE}\" ${cmd} ${extra} \"\$@\"\n")
         file(CHMOD "${ZIG_DIR}/${name}" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
     endfunction()
-    create_zig_script(zig-cc cc)
-    create_zig_script(zig-ar ar)
-    create_zig_script(zig-ranlib ranlib)
+
+    create_zig_script(zig-cc cc "${ZIG_TARGET_ARGS}")
+    create_zig_script(zig-cc-host cc "")
+    create_zig_script(zig-ar ar "")
+    create_zig_script(zig-ranlib ranlib "")
 endif()
 
 set(CMAKE_C_COMPILER "${ZIG_DIR}/zig-cc" CACHE FILEPATH "C compiler")

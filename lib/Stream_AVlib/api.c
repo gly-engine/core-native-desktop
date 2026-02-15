@@ -6,6 +6,8 @@
 #include "gehook.h"
 #include "gemedia.h"
 
+bool av_load_ffmpeg(void);
+
 static VideoStream *g_background_video = NULL;
 
 void native_media_source(uint8_t channel, const char* url) {

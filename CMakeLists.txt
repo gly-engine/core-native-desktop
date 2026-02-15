@@ -1,22 +1,31 @@
 cmake_minimum_required(VERSION 3.19)
 
+if(DEFINED TARGET)
+    set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/zig-toolchain.cmake" CACHE STRING "zig cross compiler")
+endif()
 if(NOT DEFINED GECND_PROJECT_NAME)
     set(GECND_PROJECT_NAME "core")
 endif()
 project("${GECND_PROJECT_NAME}" LANGUAGES C)
 include(FetchContent)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_SKIP_INSTALL_RULES ON CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
 
-# EXE
 option(GECND_AS_LIBRARY "build static lib gecnd intead binary" OFF)
+option(GECND_NO_SANITIZE "disable UB flags on clang/llvm" OFF)
+option(GECND_MOCK_HTTP "add package http but raise error on request" OFF)
+
+# EXE
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include/gecnd)
 file(GLOB_RECURSE SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/lib/Frontend_*/*.c"
-    "${CMAKE_CURRENT_LIST_DIR}/lib/Common_Utils/*.c"
+    "${CMAKE_CURRENT_LIST_DIR}/lib/Common_*/*.c"
 )
 if(GECND_AS_LIBRARY)
     add_library(${PROJECT_NAME} STATIC "${SOURCES}")
@@ -48,6 +57,7 @@ set(LUA54_VERSION "5.4.7")
 set(LUA54_DIR "${CMAKE_SOURCE_DIR}/vendor/lua/lua54")
 set(LUA54_DOWNLOAD "https://github.com/lua/lua/archive/refs/tags/v${LUA54_VERSION}.tar.gz")
 set(LUA54_OPTMIZE FALSE)
+option(GECND_USE_LUA32BITS "lua uses float instead double" OFF)
 if(NOT EXISTS "${LUA54_DIR}/lua")
     message("TODO: building a lua interpreter.")
 endif()
@@ -124,6 +134,7 @@ set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
+option(GECND_USE_OPENGL "Use OpenGL backend" ON)
 
 # Xorg
 set(X11_VERSION "1.8.4")
@@ -238,11 +249,11 @@ set(CURL_USE_OPENSSL OFF CACHE BOOL "" FORCE)
 set(CURL_USE_BEARSSL OFF CACHE BOOL "" FORCE)
 set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
 set(CURL_USE_LIBSSH2 OFF CACHE BOOL "" FORCE)
-
 option(GECND_USE_CURL "use curl" ON)
 
-# Mock
-option(GECND_MOCK_HTTP "add package http but raise error on request" OFF)
+if(GECND_NO_SANITIZE)
+    target_compile_options(gecnd_cc_flags INTERFACE -fno-sanitize=all -fno-sanitize-recover=all)
+endif()
 
 if(GECND_USE_LUA51)
     FetchContent_Populate(lua51-static URL "${LUA51_DOWNLOAD}" SOURCE_DIR ${LUA51_DIR})

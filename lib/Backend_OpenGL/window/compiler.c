@@ -29,6 +29,8 @@ typedef struct {
 
 #define SHADER(sym) { #sym, (const char*)(sym), (int)(sym##_len) }
 
+void native_text_terminate();
+
 static GLuint compile_shader(GLenum type, const shader_src_t *sh) {
     GLuint s = glCreateShader(type);
     glShaderSource(s, 1, &sh->src, &sh->len);
