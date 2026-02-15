@@ -5,7 +5,7 @@
 #include <unistd.h>
 
 #define GECND_STREAM_AVLIB_INTERNAL
-#define GECND_FFMPEG_DYN_INTERNAL
+#define GECND_FFMPEG_LOAD_INTERNAL
 #include "gemedia.h"
 
 static inline double now_sec(void) {

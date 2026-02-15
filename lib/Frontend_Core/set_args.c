@@ -12,6 +12,7 @@ static ko_longopt_t longopts[] = {
     { "frameskip", ko_required_argument, 304 },
     { "game", ko_required_argument, 305 },
     { "engine", ko_required_argument, 306 },
+    { "play", ko_required_argument, 307 },
     { NULL, 0, 0 }
 };
 
@@ -36,6 +37,10 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
         }
         if (c == 306) {
             gly->lua_engine_code = opt.arg;
+        }
+        if (c == 307) {
+            native_media_source(0, opt.arg);
+            native_media_play(0);
         }
     }
 }
