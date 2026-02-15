@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #define GECND_STREAM_AVLIB_INTERNAL
+#define GECND_FFMPEG_DYN_INTERNAL
 #include "gehook.h"
 #include "gemedia.h"
 
@@ -9,6 +10,11 @@ static VideoStream *g_background_video = NULL;
 
 void native_media_source(uint8_t channel, const char* url) {
     if (channel != 0) return;
+
+    if (!av_load_ffmpeg()) {
+        fprintf(stderr, "[ffmpeg] Failed to load ffmpeg libraries\n");
+        return;
+    }
 
     if (g_background_video) {
         stream_destroy(g_background_video);

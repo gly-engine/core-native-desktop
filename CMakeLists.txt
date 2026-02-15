@@ -173,7 +173,8 @@ set(X11_HEADERS_EXTRA "${X11_Xinerama_INCLUDE_PATH};${X11_Xinerama_INCLUDE_PATH}
 set(FFMPEG_VERSION "7.0.2")
 set(FFMPEG_DOWNLOAD "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz")
 set(FFMPEG_DIR "${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
-option(GECND_USE_FFMPEG "fetch ffmpeg" OFF)
+option(GECND_USE_FFMPEG "fetch ffmpeg" ON)
+option(GECND_BUILD_FFMPEG "build static ffmpeg" OFF)
 
 # LibUV
 set(LIBUV_VERSION "v1.48.0")
@@ -444,25 +445,30 @@ if(GECND_USE_OPENGL)
 endif()
 
 if(GECND_USE_FFMPEG)
-    if (NOT EXISTS "${FFMPEG_DIR}/libavcodec/libavcodec.a")
-        FetchContent_Populate(dep_ffmpeg URL ${FFMPEG_DOWNLOAD} SOURCE_DIR ${FFMPEG_DIR})
-        execute_process(
-            COMMAND ./configure --prefix=${FFMPEG_DIR}/build --enable-static --disable-shared
-            --disable-bzlib --disable-lzma --disable-x86asm --disable-libdrm
-            WORKING_DIRECTORY ${FFMPEG_DIR}
-            COMMAND_ERROR_IS_FATAL ANY
-        )
-        execute_process(
-            COMMAND ${CMAKE_MAKE_PROGRAM} -j ${J}
-            WORKING_DIRECTORY ${FFMPEG_DIR}
-            COMMAND_ERROR_IS_FATAL ANY
-        )
+    FILE(GLOB gecnd_ffmpeg_files "${CMAKE_CURRENT_LIST_DIR}/lib/Stream_AVlib/*.c")
+    if(GECND_BUILD_FFMPEG)
+        if (NOT EXISTS "${FFMPEG_DIR}/libavcodec/libavcodec.a")
+            FetchContent_Populate(dep_ffmpeg URL ${FFMPEG_DOWNLOAD} SOURCE_DIR ${FFMPEG_DIR})
+            execute_process(
+                COMMAND ./configure --prefix=${FFMPEG_DIR}/build --enable-static --disable-shared
+                --disable-bzlib --disable-lzma --disable-x86asm --disable-libdrm
+                WORKING_DIRECTORY ${FFMPEG_DIR}
+                COMMAND_ERROR_IS_FATAL ANY
+            )
+            execute_process(
+                COMMAND ${CMAKE_MAKE_PROGRAM} -j ${J}
+                WORKING_DIRECTORY ${FFMPEG_DIR}
+                COMMAND_ERROR_IS_FATAL ANY
+            )
+        endif()
+        FILE(GLOB ffmpeg_files "${FFMPEG_DIR}/*/*.a")
+        target_link_libraries(${PROJECT_NAME} PRIVATE "${ffmpeg_files}")
+        list(REMOVE_ITEM gecnd_ffmpeg_files "${CMAKE_CURRENT_LIST_DIR}/lib/Stream_AVlib/open_dynamic.c")
+    else()
+        list(REMOVE_ITEM gecnd_ffmpeg_files "${CMAKE_CURRENT_LIST_DIR}/lib/Stream_AVlib/open_static.c")
     endif()
-    FILE(GLOB ffmpeg_files "${FFMPEG_DIR}/*/*.a")
-    target_link_libraries(${PROJECT_NAME} PRIVATE "${ffmpeg_files}")
     target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${FFMPEG_DIR})
-    FILE(GLOB ffmpeg_files "${CMAKE_CURRENT_LIST_DIR}/lib/Stream_AVlib/*.c")
-    target_sources(${PROJECT_NAME} PRIVATE "${ffmpeg_files}")
+    target_sources(${PROJECT_NAME} PRIVATE "${gecnd_ffmpeg_files}")
 endif()
 
 if (GECND_USE_LIBUV)
@@ -472,7 +478,7 @@ if (GECND_USE_LIBUV)
     target_compile_options(uv_a PRIVATE ${gecnd_cc_options})
 endif()
 
-if(GECND_USE_OPENGL)
+if(GECND_USE_OPENGL OR GECND_USE_CURL)
     FetchContent_Declare(zlib GIT_REPOSITORY ${ZLIB_REPO} GIT_TAG ${ZLIB_VERSION} SOURCE_DIR ${ZLIB_DIR})
     FetchContent_MakeAvailable(zlib)
     target_link_libraries(${PROJECT_NAME} PRIVATE zlib)
