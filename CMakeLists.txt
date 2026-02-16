@@ -10,7 +10,7 @@ project("${GECND_PROJECT_NAME}" LANGUAGES C)
 include(FetchContent)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS OFF)
+set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_SKIP_INSTALL_RULES ON CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -222,14 +222,6 @@ set(FONTS_DIR "${CMAKE_SOURCE_DIR}/vendor/fonts")
 set(FONTS_HEADER "${CMAKE_BINARY_DIR}/include/gecnd/notosans.h")
 set(FONTS_DOWNLOAD "https://github.com/gly-engine/archive/archive/refs/heads/fonts.zip")
 
-# Bear SSL
-set(BEARSSL_VERSION "0.6")
-set(BEARSSL_DIR "${CMAKE_SOURCE_DIR}/vendor/bearssl")
-set(USE_LIBIDN2 OFF CACHE BOOL "" FORCE)
-set(BEARSSL_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/vendor/bearssl/inc")
-set(CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/vendor/bearssl/build;${CMAKE_PREFIX_PATH}")
-option(GECND_USE_BEARSSL "use curl with bear ssl" ON)
-
 # Curl
 set(CURL_VERSION "8_9_1")
 set(CURL_DIR "${CMAKE_SOURCE_DIR}/vendor/curl")
@@ -239,7 +231,11 @@ set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
 set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
 set(BUILD_STATIC_CURL OFF CACHE BOOL "" FORCE)
 set(ENABLE_ARES OFF CACHE BOOL "" FORCE)
+set(CURL_BROTLI OFF CACHE BOOL "" FORCE)
+set(CURL_ZSTD OFF CACHE BOOL "" FORCE)
+set(USE_NGHTTP2 OFF CACHE BOOL "" FORCE)
 set(CURL_ENABLE_EXPORT_TARGET OFF CACHE BOOL "" FORCE)
+set(CURL_DISABLE_COOKIES ON CACHE BOOL "" FORCE)
 set(CURL_DISABLE_TESTS ON CACHE BOOL "" FORCE)
 set(CURL_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
 set(BUILD_LIBCURL_DOCS OFF CACHE BOOL "" FORCE)
@@ -510,23 +506,6 @@ if(GECND_USE_OPENGL AND NOT EXISTS "${FONTSTASH_DIR}")
 endif()
 
 if(GECND_USE_CURL)
-    if(GECND_USE_BEARSSL)
-        set(CURL_USE_BEARSSL ON CACHE BOOL "" FORCE)
-        FetchContent_Declare(
-            dep_bearssl
-            GIT_REPOSITORY https://www.bearssl.org/git/BearSSL
-            GIT_TAG "v${BEARSSL_VERSION}"
-            SOURCE_DIR ${BEARSSL_DIR}
-        )
-        FetchContent_MakeAvailable(dep_bearssl)
-        if (NOT EXISTS "${BEARSSL_DIR}/build/libbearssl.a")
-            execute_process(
-                COMMAND ${CMAKE_MAKE_PROGRAM} build/libbearssl.a -j ${J}
-                WORKING_DIRECTORY ${BEARSSL_DIR}
-                COMMAND_ERROR_IS_FATAL ANY
-            )
-        endif()
-    endif()
     FetchContent_Declare(
         libcurl_static
         GIT_REPOSITORY https://github.com/curl/curl
