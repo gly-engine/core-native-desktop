@@ -243,7 +243,7 @@ set(BUILD_LIBCURL_DOCS OFF CACHE BOOL "" FORCE)
 set(BUILD_MISC_DOCS OFF CACHE BOOL "" FORCE)
 set(ENABLE_CURL_MANUAL OFF CACHE BOOL "" FORCE)
 set(CURL_USE_OPENSSL OFF CACHE BOOL "" FORCE)
-set(CURL_USE_BEARSSL ON CACHE BOOL "" FORCE)
+set(CURL_USE_BEARSSL OFF CACHE BOOL "" FORCE)
 set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
 set(CURL_USE_LIBSSH2 OFF CACHE BOOL "" FORCE)
 option(GECND_USE_CURL "use curl" ON)
@@ -459,15 +459,17 @@ endif()
 
 if(GECND_USE_FFMPEG)
     FILE(GLOB gecnd_ffmpeg_files "${CMAKE_CURRENT_LIST_DIR}/lib/Stream_AVlib/*.c")
+    if (NOT EXISTS "${FFMPEG_DIR}/libavcodec")
+        FetchContent_Populate(dep_ffmpeg URL ${FFMPEG_DOWNLOAD} SOURCE_DIR ${FFMPEG_DIR})
+        execute_process(
+            COMMAND ./configure --prefix=${FFMPEG_DIR}/build --enable-static --disable-shared
+            --disable-bzlib --disable-lzma --disable-x86asm --disable-libdrm
+            WORKING_DIRECTORY ${FFMPEG_DIR}
+            COMMAND_ERROR_IS_FATAL ANY
+        )
+    endif()
     if(GECND_BUILD_FFMPEG)
         if (NOT EXISTS "${FFMPEG_DIR}/libavcodec/libavcodec.a")
-            FetchContent_Populate(dep_ffmpeg URL ${FFMPEG_DOWNLOAD} SOURCE_DIR ${FFMPEG_DIR})
-            execute_process(
-                COMMAND ./configure --prefix=${FFMPEG_DIR}/build --enable-static --disable-shared
-                --disable-bzlib --disable-lzma --disable-x86asm --disable-libdrm
-                WORKING_DIRECTORY ${FFMPEG_DIR}
-                COMMAND_ERROR_IS_FATAL ANY
-            )
             execute_process(
                 COMMAND ${CMAKE_MAKE_PROGRAM} -j ${J}
                 WORKING_DIRECTORY ${FFMPEG_DIR}
