@@ -1,13 +1,9 @@
 #ifndef GEC_BACKEND_GL_INTERNAL_H
 #define GEC_BACKEND_GL_INTERNAL_H
 
-#include <glad/gl.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include "kvec.h" // For kvec_t
-
-// Forward declaration for GLFW window
-struct GLFWwindow;
 
 typedef struct {
     GLuint id;
@@ -55,7 +51,7 @@ static inline void set_color_from_u32(float *v, uint32_t c) {
 
 typedef struct {
     // Window state from platform
-    struct GLFWwindow *window;
+    void *window; // Can be GLFWwindow* or EGLNativeWindowType
     uint16_t window_width;
     uint16_t window_height;
     double last_frame_time;
@@ -118,10 +114,7 @@ GLBackendState* geogl_get_state(void);
  * Platform Abstraction (to be implemented by glfw.c, egl.c, etc.)
  * ========================================= */
 
-// This is the main init function called by the core.
-// It's responsible for creating the window and GL context.
 int platform_init(uint16_t width, uint16_t height);
-
 void platform_terminate(void);
 void platform_swap_buffers(void);
 void platform_poll_events(void);
@@ -129,17 +122,6 @@ bool platform_should_close(void);
 void platform_set_swap_interval(int interval);
 double platform_get_time(void);
 void* platform_get_proc_address(const char *name);
-
-/* =========================================
- * OpenGL Specifics (opengl.c)
- * ========================================= */
-
-// Initializes shaders, programs, VBOs, etc.
-// Requires a valid GL context to be current.
-void opengl_init(void);
-
-// Destroys GL objects.
-void opengl_terminate(void);
 
 
 #endif // GEC_BACKEND_GL_INTERNAL_H
