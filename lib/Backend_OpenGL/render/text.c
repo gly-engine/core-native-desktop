@@ -13,6 +13,7 @@
 struct GLFONScontext {
 	GLuint tex;
 	int width, height;
+	GLuint vbo;
 };
 typedef struct GLFONScontext GLFONScontext;
 
@@ -27,94 +28,80 @@ static int glfons__renderCreate(void* userPtr, int width, int height) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, width, height, 0, GL_ALPHA, GL_UNSIGNED_BYTE, NULL);
+	glGenBuffers(1, &gl->vbo);
 	return 1;
 }
+
+static unsigned char* g_fons_update_buf = NULL;
+static int g_fons_update_buf_size = 0;
 
 static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* data) {
 	GLFONScontext* gl = (GLFONScontext*)userPtr;
 	int w = rect[2] - rect[0];
 	int h = rect[3] - rect[1];
+
+	if (gl->tex == 0) return;
+
 	glBindTexture(GL_TEXTURE_2D, gl->tex);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-#ifdef GL_ES_VERSION_2_0
-    // GLES2 doesn't support GL_UNPACK_ROW_LENGTH, etc.
-    // We need to copy the sub-image from the atlas data into a temporary buffer.
-    const unsigned char *src = data;
-    unsigned char *tmp = (unsigned char*)malloc(w * h);
-    if (tmp) {
-        for (int i = 0; i < h; i++) {
-            memcpy(tmp + i * w, src + i * gl->width, w);
-        }
-        glTexSubImage2D(GL_TEXTURE_2D, 0, rect[0], rect[1], w, h, GL_ALPHA, GL_UNSIGNED_BYTE, tmp);
-        free(tmp);
+    int required_size = w * h;
+    if (g_fons_update_buf_size < required_size) {
+        if(g_fons_update_buf) free(g_fons_update_buf);
+        g_fons_update_buf = (unsigned char*)malloc(required_size);
+        g_fons_update_buf_size = required_size;
     }
-#else
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, gl->width);
-	glPixelStorei(GL_UNPACK_SKIP_PIXELS, rect[0]);
-	glPixelStorei(GL_UNPACK_SKIP_ROWS, rect[1]);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, rect[0], rect[1], w, h, GL_ALPHA, GL_UNSIGNED_BYTE, data);
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-	glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
-	glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
-#endif
+
+    if (g_fons_update_buf) {
+        for (int i = 0; i < h; i++) {
+            memcpy(g_fons_update_buf + i * w, data + i * gl->width, w);
+        }
+        glTexSubImage2D(GL_TEXTURE_2D, 0, rect[0], rect[1], w, h, GL_ALPHA, GL_UNSIGNED_BYTE, g_fons_update_buf);
+    }
+
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
-static void* render_buffer = NULL;
-static size_t render_buffer_size = 0;
-
 static void glfons__renderDraw(void* userPtr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts) {
     if (nverts == 0) return;
-	GLFONScontext* gl = (GLFONScontext*)userPtr;
+
+    GLFONScontext* gl = (GLFONScontext*)userPtr;
     GLBackendState *state = geogl_get_state();
 
     glUseProgram(state->font_program);
-
-	glUniformMatrix4fv(state->font_loc_proj, 1, GL_FALSE, state->projection);
-	glUniform1i(state->font_loc_sampler, 0);
+    glUniformMatrix4fv(state->font_loc_proj, 1, GL_FALSE, state->projection);
+    glUniform1i(state->font_loc_sampler, 0);
     glUniform4fv(state->font_loc_color, 1, state->current_color);
 
     glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, gl->tex);
+    glBindTexture(GL_TEXTURE_2D, gl->tex);
+    glBindBuffer(GL_ARRAY_BUFFER, gl->vbo);
 
-    glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
+    size_t verts_size = sizeof(float) * 2 * nverts;
+    size_t tcoords_size = sizeof(float) * 2 * nverts;
+    size_t total_size = verts_size + tcoords_size;
 
-    size_t vert_size = sizeof(float) * 2;
-    size_t tcoord_size = sizeof(float) * 2;
-    size_t stride = vert_size + tcoord_size;
-    size_t total_size = stride * nverts;
-    
-    if (render_buffer_size < total_size) {
-        render_buffer_size = total_size;
-        render_buffer = realloc(render_buffer, render_buffer_size);
-    }
+    glBufferData(GL_ARRAY_BUFFER, total_size, NULL, GL_STREAM_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, verts_size, verts);
+    glBufferSubData(GL_ARRAY_BUFFER, verts_size, tcoords_size, tcoords);
 
-    unsigned char* p = render_buffer;
+    glEnableVertexAttribArray(state->font_loc_pos);
+    glEnableVertexAttribArray(state->font_loc_texCoord);
 
-    for (int i = 0; i < nverts; i++) {
-        memcpy(p, &verts[i*2], vert_size); p += vert_size;
-        memcpy(p, &tcoords[i*2], tcoord_size); p += tcoord_size;
-    }
+    glVertexAttribPointer(state->font_loc_pos, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glVertexAttribPointer(state->font_loc_texCoord, 2, GL_FLOAT, GL_FALSE, 0, (void*)(intptr_t)verts_size);
 
-	glBufferData(GL_ARRAY_BUFFER, total_size, render_buffer, GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, nverts);
 
-	glEnableVertexAttribArray(state->font_loc_pos);
-	glEnableVertexAttribArray(state->font_loc_texCoord);
-
-	glVertexAttribPointer(state->font_loc_pos, 2, GL_FLOAT, GL_FALSE, stride, (void*)0);
-	glVertexAttribPointer(state->font_loc_texCoord, 2, GL_FLOAT, GL_FALSE, stride, (void*)vert_size);
-
-	glDrawArrays(GL_TRIANGLES, 0, nverts);
-
-	glDisableVertexAttribArray(state->font_loc_pos);
-	glDisableVertexAttribArray(state->font_loc_texCoord);
-	glUseProgram(0);
+    glDisableVertexAttribArray(state->font_loc_pos);
+    glDisableVertexAttribArray(state->font_loc_texCoord);
+    glUseProgram(0);
 }
 
 static void glfons__renderDelete(void* userPtr) {
 	GLFONScontext* gl = (GLFONScontext*)userPtr;
     if (gl->tex != 0) glDeleteTextures(1, &gl->tex);
+	if (gl->vbo != 0) glDeleteBuffers(1, &gl->vbo);
     free(gl);
 }
 
@@ -161,10 +148,10 @@ void native_text_terminate(void) {
     if (!initialized) return;
     glfonsDelete(fs);
     fs = NULL;
-    if (render_buffer) {
-        free(render_buffer);
-        render_buffer = NULL;
-        render_buffer_size = 0;
+    if (g_fons_update_buf) {
+        free(g_fons_update_buf);
+        g_fons_update_buf = NULL;
+        g_fons_update_buf_size = 0;
     }
     initialized = 0;
 }
