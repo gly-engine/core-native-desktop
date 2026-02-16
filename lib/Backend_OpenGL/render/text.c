@@ -36,14 +36,29 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
 	int h = rect[3] - rect[1];
 	glBindTexture(GL_TEXTURE_2D, gl->tex);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+#ifdef GL_ES_VERSION_2_0
+    // GLES2 doesn't support GL_UNPACK_ROW_LENGTH, etc.
+    // We need to copy the sub-image from the atlas data into a temporary buffer.
+    const unsigned char *src = data;
+    unsigned char *tmp = (unsigned char*)malloc(w * h);
+    if (tmp) {
+        for (int i = 0; i < h; i++) {
+            memcpy(tmp + i * w, src + i * gl->width, w);
+        }
+        glTexSubImage2D(GL_TEXTURE_2D, 0, rect[0], rect[1], w, h, GL_ALPHA, GL_UNSIGNED_BYTE, tmp);
+        free(tmp);
+    }
+#else
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, gl->width);
 	glPixelStorei(GL_UNPACK_SKIP_PIXELS, rect[0]);
 	glPixelStorei(GL_UNPACK_SKIP_ROWS, rect[1]);
     glTexSubImage2D(GL_TEXTURE_2D, 0, rect[0], rect[1], w, h, GL_ALPHA, GL_UNSIGNED_BYTE, data);
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 	glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
 	glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+#endif
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
 static void* render_buffer = NULL;
