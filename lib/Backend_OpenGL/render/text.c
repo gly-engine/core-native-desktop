@@ -11,60 +11,71 @@
 #include "gecnd/notosans.h"
 
 struct GLFONScontext {
-	GLuint tex;
-	int width, height;
-	GLuint vbo;
+    GLuint tex;
+    int width, height;
+    void *scratch;
+    size_t scratch_size;
 };
 typedef struct GLFONScontext GLFONScontext;
 
 static int glfons__renderCreate(void* userPtr, int width, int height) {
-	GLFONScontext* gl = (GLFONScontext*)userPtr;
-	gl->width = width;
-	gl->height = height;
-	glGenTextures(1, &gl->tex);
-	glBindTexture(GL_TEXTURE_2D, gl->tex);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    GLFONScontext* gl = (GLFONScontext*)userPtr;
+    gl->width = width;
+    gl->height = height;
+    gl->scratch = NULL;
+    gl->scratch_size = 0;
+    glGenTextures(1, &gl->tex);
+    glBindTexture(GL_TEXTURE_2D, gl->tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, width, height, 0, GL_ALPHA, GL_UNSIGNED_BYTE, NULL);
-	glGenBuffers(1, &gl->vbo);
-	return 1;
+    return 1;
 }
 
-static unsigned char* g_fons_update_buf = NULL;
-static int g_fons_update_buf_size = 0;
-
 static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* data) {
-	GLFONScontext* gl = (GLFONScontext*)userPtr;
-	int w = rect[2] - rect[0];
-	int h = rect[3] - rect[1];
+    GLFONScontext* gl = (GLFONScontext*)userPtr;
 
-	if (gl->tex == 0) return;
+    int x = rect[0];
+    int y = rect[1];
+    int w = rect[2] - rect[0];
+    int h = rect[3] - rect[1];
 
-	glBindTexture(GL_TEXTURE_2D, gl->tex);
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    if (w <= 0 || h <= 0)
+        return;
 
-    int required_size = w * h;
-    if (g_fons_update_buf_size < required_size) {
-        if(g_fons_update_buf) free(g_fons_update_buf);
-        g_fons_update_buf = (unsigned char*)malloc(required_size);
-        g_fons_update_buf_size = required_size;
+    glBindTexture(GL_TEXTURE_2D, gl->tex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    size_t needed = (size_t)(w * h);
+
+    if (gl->scratch_size < needed) {
+        unsigned char* newbuf = (unsigned char*)realloc(gl->scratch, needed);
+        if (!newbuf)
+            return;
+
+        gl->scratch = newbuf;
+        gl->scratch_size = needed;
     }
 
-    if (g_fons_update_buf) {
-        for (int i = 0; i < h; i++) {
-            memcpy(g_fons_update_buf + i * w, data + i * gl->width, w);
-        }
-        glTexSubImage2D(GL_TEXTURE_2D, 0, rect[0], rect[1], w, h, GL_ALPHA, GL_UNSIGNED_BYTE, g_fons_update_buf);
+    const unsigned char* src = data + y * gl->width + x;
+    unsigned char* dst = gl->scratch;
+
+    for (int row = 0; row < h; row++) {
+        memcpy(dst, src, w);
+        dst += w;
+        src += gl->width;
     }
 
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_ALPHA, GL_UNSIGNED_BYTE, gl->scratch);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+
 }
 
 static void glfons__renderDraw(void* userPtr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts) {
     if (nverts == 0) return;
-
     GLFONScontext* gl = (GLFONScontext*)userPtr;
     GLBackendState *state = geogl_get_state();
 
@@ -75,21 +86,30 @@ static void glfons__renderDraw(void* userPtr, const float* verts, const float* t
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, gl->tex);
-    glBindBuffer(GL_ARRAY_BUFFER, gl->vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
 
-    size_t verts_size = sizeof(float) * 2 * nverts;
-    size_t tcoords_size = sizeof(float) * 2 * nverts;
-    size_t total_size = verts_size + tcoords_size;
+    size_t vert_size = sizeof(float) * 2;
+    size_t tcoord_size = sizeof(float) * 2;
+    size_t stride = vert_size + tcoord_size;
+    size_t total_size = stride * nverts;
 
-    glBufferData(GL_ARRAY_BUFFER, total_size, NULL, GL_STREAM_DRAW);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, verts_size, verts);
-    glBufferSubData(GL_ARRAY_BUFFER, verts_size, tcoords_size, tcoords);
+    if (gl->scratch_size < total_size) {
+        gl->scratch = realloc(gl->scratch, total_size);
+        gl->scratch_size = total_size;
+    }
+
+    unsigned char* p = (unsigned char*)gl->scratch;
+    for (int i = 0; i < nverts; i++) {
+        memcpy(p, &verts[i*2], vert_size); p += vert_size;
+        memcpy(p, &tcoords[i*2], tcoord_size); p += tcoord_size;
+    }
+
+    glBufferData(GL_ARRAY_BUFFER, total_size, gl->scratch, GL_DYNAMIC_DRAW);
 
     glEnableVertexAttribArray(state->font_loc_pos);
     glEnableVertexAttribArray(state->font_loc_texCoord);
-
-    glVertexAttribPointer(state->font_loc_pos, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    glVertexAttribPointer(state->font_loc_texCoord, 2, GL_FLOAT, GL_FALSE, 0, (void*)(intptr_t)verts_size);
+    glVertexAttribPointer(state->font_loc_pos, 2, GL_FLOAT, GL_FALSE, stride, (void*)0);
+    glVertexAttribPointer(state->font_loc_texCoord, 2, GL_FLOAT, GL_FALSE, stride, (void*)vert_size);
 
     glDrawArrays(GL_TRIANGLES, 0, nverts);
 
@@ -99,37 +119,37 @@ static void glfons__renderDraw(void* userPtr, const float* verts, const float* t
 }
 
 static void glfons__renderDelete(void* userPtr) {
-	GLFONScontext* gl = (GLFONScontext*)userPtr;
+    GLFONScontext* gl = (GLFONScontext*)userPtr;
     if (gl->tex != 0) glDeleteTextures(1, &gl->tex);
-	if (gl->vbo != 0) glDeleteBuffers(1, &gl->vbo);
+    if (gl->scratch) free(gl->scratch);
     free(gl);
 }
 
 FONScontext* glfonsCreate(int width, int height, int flags) {
-	FONSparams params;
-	GLFONScontext* gl = (GLFONScontext*)malloc(sizeof(GLFONScontext));
-	if (gl == NULL) return NULL;
-	memset(gl, 0, sizeof(GLFONScontext));
+    FONSparams params;
+    GLFONScontext* gl = (GLFONScontext*)malloc(sizeof(GLFONScontext));
+    if (gl == NULL) return NULL;
+    memset(gl, 0, sizeof(GLFONScontext));
 
-	memset(&params, 0, sizeof(params));
-	params.width = width;
-	params.height = height;
-	params.flags = (unsigned char)flags;
-	params.renderCreate = glfons__renderCreate;
-	params.renderUpdate = glfons__renderUpdate;
-	params.renderDraw = glfons__renderDraw;
-	params.renderDelete = glfons__renderDelete;
-	params.userPtr = gl;
+    memset(&params, 0, sizeof(params));
+    params.width = width;
+    params.height = height;
+    params.flags = (unsigned char)flags;
+    params.renderCreate = glfons__renderCreate;
+    params.renderUpdate = glfons__renderUpdate;
+    params.renderDraw = glfons__renderDraw;
+    params.renderDelete = glfons__renderDelete;
+    params.userPtr = gl;
 
-	return fonsCreateInternal(&params);
+    return fonsCreateInternal(&params);
 }
 
 void glfonsDelete(FONScontext* ctx) {
-	fonsDeleteInternal(ctx);
+    fonsDeleteInternal(ctx);
 }
 
 unsigned int glfonsRGBA(unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
-	return (r) | (g << 8) | (b << 16) | (a << 24);
+    return (r) | (g << 8) | (b << 16) | (a << 24);
 }
 
 static FONScontext *fs;
@@ -143,16 +163,10 @@ static size_t default_font_size;
 static unsigned char *loaded_font_mem;
 static size_t loaded_font_size;
 
-
 void native_text_terminate(void) {
     if (!initialized) return;
     glfonsDelete(fs);
     fs = NULL;
-    if (g_fons_update_buf) {
-        free(g_fons_update_buf);
-        g_fons_update_buf = NULL;
-        g_fons_update_buf_size = 0;
-    }
     initialized = 0;
 }
 
@@ -218,15 +232,11 @@ void native_text_font_name(const char *path) {
 
 void native_text_font_default(uint8_t index) {
     (void)index;
-    if (!initialized) {
-        ensure_init();
-    }
-
+    if (!initialized) ensure_init();
     if (loaded_font_mem && loaded_font_mem != default_font_mem) {
         free(loaded_font_mem);
-        loaded_font_mem = NULL;
-        fonsResetAtlas(fs, atlas_w, atlas_h);
-        fs_font = FONS_INVALID;
     }
+    fonsResetAtlas(fs, atlas_w, atlas_h);
+    fs_font = FONS_INVALID;
     ensure_font_loaded();
 }
