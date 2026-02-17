@@ -1,69 +1,8 @@
 #include "gehook.h"
 #include "geopengl.h"
-#include "gemedia.h"
 
 static void draw_video_background(void) {
-    GLBackendState *state = geogl_get_state();
-    MediaFrame *frame = avlib_get_background_frame();
-
-    if (!frame || !frame->pixels) {
-        if (state->video_texture_id != 0) {
-            glDeleteTextures(1, &state->video_texture_id);
-            state->video_texture_id = 0;
-            state->video_width = 0;
-            state->video_height = 0;
-        }
-        glClearColor(state->clear_color[0], state->clear_color[1], state->clear_color[2], state->clear_color[3]);
-        glClear(GL_COLOR_BUFFER_BIT);
-        return;
-    }
-
-    if (state->video_texture_id == 0 || state->video_width != frame->width || state->video_height != frame->height) {
-        state->video_width = frame->width;
-        state->video_height = frame->height;
-        if (state->video_texture_id == 0) {
-            glGenTextures(1, &state->video_texture_id);
-        }
-        glBindTexture(GL_TEXTURE_2D, state->video_texture_id);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frame->width, frame->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, frame->pixels);
-    } else {
-        glBindTexture(GL_TEXTURE_2D, state->video_texture_id);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame->width, frame->height, GL_RGBA, GL_UNSIGNED_BYTE, frame->pixels);
-    }
-
-    glUseProgram(state->texture_program);
-    glUniformMatrix4fv(state->texture_loc_proj, 1, GL_FALSE, state->projection);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, state->video_texture_id);
-    glUniform1i(state->texture_loc_sampler, 0);
-
-    float w = (float)state->window_width;
-    float h = (float)state->window_height;
-    float vertices[] = {
-        0.0f, 0.0f, 0.0f, 0.0f,
-        w,    0.0f, 1.0f, 0.0f,
-        w,    h,    1.0f, 1.0f,
-        0.0f, h,    0.0f, 1.0f
-    };
-
-    glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
-
-    glEnableVertexAttribArray(state->texture_loc_pos);
-    glVertexAttribPointer(state->texture_loc_pos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(state->texture_loc_texCoord);
-    glVertexAttribPointer(state->texture_loc_texCoord, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-
-    glDisableVertexAttribArray(state->texture_loc_pos);
-    glDisableVertexAttribArray(state->texture_loc_texCoord);
-    
-    glClear(GL_DEPTH_BUFFER_BIT);
+    native_draw_background_video();
 }
 
 

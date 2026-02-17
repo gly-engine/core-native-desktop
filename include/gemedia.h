@@ -6,10 +6,11 @@
 #include <stdatomic.h>
 
 typedef struct {
-    uint8_t *pixels;
+    uint8_t *data[4];
+    int linesize[4];
     int width;
     int height;
-    int linesize;
+    int format;
     double pts;
     atomic_bool ready;
 } MediaFrame;

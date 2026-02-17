@@ -12,25 +12,48 @@ static inline double now_sec(void) {
     return AV.av_gettime_relative() / 1e6;
 }
 
-static void frame_alloc(MediaFrame *f, int w, int h) {
+static void frame_alloc(MediaFrame *f, int w, int h, int format) {
     f->width = w;
     f->height = h;
-    f->linesize = w * 4;
-    f->pixels = malloc((size_t)f->linesize * h);
+    f->format = format;
+    
+    int size = AV.av_image_get_buffer_size(format, w, h, 1);
+    if (size < 0) {
+        fprintf(stderr, "[ffmpeg] Failed to get buffer size for format %d\n", format);
+        f->data[0] = NULL;
+        return;
+    }
+    f->data[0] = malloc(size);
+    AV.av_image_fill_arrays(f->data, f->linesize, f->data[0], format, w, h, 1);
+    
     atomic_store(&f->ready, false);
 }
 
 static void frame_free(MediaFrame *f) {
-    if(f->pixels) {
-        free(f->pixels);
-        f->pixels = NULL;
+    if(f->data[0]) {
+        free(f->data[0]);
     }
+    memset(f->data, 0, sizeof(f->data));
+    memset(f->linesize, 0, sizeof(f->linesize));
 }
 
-static void frame_copy(struct SwsContext *sws, AVFrame *src, MediaFrame *dst) {
-    uint8_t *dst_data[4] = { dst->pixels, NULL, NULL, NULL };
-    int dst_linesize[4] = { dst->linesize, 0, 0, 0 };
-    AV.sws_scale(sws, (const uint8_t * const*)src->data, src->linesize, 0, src->height, dst_data, dst_linesize);
+// Custom copy to handle potential padding issues.
+static void frame_copy(AVFrame *src, MediaFrame *dst) {
+    // av_image_copy_to_buffer is a good candidate, but let's do it manually
+    // to be sure about plane layout.
+    for (int i = 0; i < 4; ++i) {
+        if (!src->data[i] || !dst->data[i]) continue;
+        
+        int h = (i == 1 || i == 2) ? src->height / 2 : src->height;
+        if (src->linesize[i] == dst->linesize[i]) {
+            memcpy(dst->data[i], src->data[i], src->linesize[i] * h);
+        } else {
+            // Copy row by row if linesizes are different
+            for (int y = 0; y < h; ++y) {
+                memcpy(dst->data[i] + y * dst->linesize[i], src->data[i] + y * src->linesize[i], dst->linesize[i]);
+            }
+        }
+    }
 }
 
 static void threadworker(void *arg) {
@@ -38,11 +61,17 @@ static void threadworker(void *arg) {
 
     AV.avformat_network_init();
 
-    if (AV.avformat_open_input(&s->fmt, s->url, NULL, NULL) < 0) {
+    AVDictionary* opts = NULL;
+    AV.av_dict_set(&opts, "timeout", "5000000", 0); // 5 seconds timeout
+
+    if (AV.avformat_open_input(&s->fmt, s->url, NULL, &opts) < 0) {
         fprintf(stderr, "[ffmpeg] Error opening file: %s\n", s->url);
         atomic_store(&s->running, 0);
+        AV.av_dict_free(&opts);
         return;
     }
+    AV.av_dict_free(&opts);
+
     if (AV.avformat_find_stream_info(s->fmt, NULL) < 0) {
         fprintf(stderr, "[ffmpeg] Error finding stream info for %s\n", s->url);
         goto cleanup_format;
@@ -56,6 +85,10 @@ static void threadworker(void *arg) {
     
     s->video = s->fmt->streams[s->video_index];
     const AVCodec *vdec = AV.avcodec_find_decoder(s->video->codecpar->codec_id);
+    if (!vdec) {
+        fprintf(stderr, "[ffmpeg] Failed to find codec id %d\n", s->video->codecpar->codec_id);
+        goto cleanup_format;
+    }
     s->vcodec = AV.avcodec_alloc_context3(vdec);
     AV.avcodec_parameters_to_context(s->vcodec, s->video->codecpar);
     if(AV.avcodec_open2(s->vcodec, vdec, NULL) < 0) {
@@ -63,14 +96,8 @@ static void threadworker(void *arg) {
         goto cleanup_codec;
     }
 
-    s->sws = AV.sws_getContext(
-        s->vcodec->width, s->vcodec->height, s->vcodec->pix_fmt,
-        s->vcodec->width, s->vcodec->height, AV_PIX_FMT_RGBA,
-        SWS_BILINEAR, NULL, NULL, NULL
-    );
-
-    frame_alloc(&s->frames[0], s->vcodec->width, s->vcodec->height);
-    frame_alloc(&s->frames[1], s->vcodec->width, s->vcodec->height);
+    frame_alloc(&s->frames[0], s->vcodec->width, s->vcodec->height, s->vcodec->pix_fmt);
+    frame_alloc(&s->frames[1], s->vcodec->width, s->vcodec->height, s->vcodec->pix_fmt);
     atomic_store(&s->front, 0);
 
     AVPacket *pkt = AV.av_packet_alloc();
@@ -89,24 +116,18 @@ static void threadworker(void *arg) {
             if (AV.avcodec_send_packet(s->vcodec, pkt) == 0) {
                 while (AV.avcodec_receive_frame(s->vcodec, vfrm) == 0) {
                     int64_t pts_val = vfrm->pts;
-                    if (pts_val == AV_NOPTS_VALUE) {
-                        pts_val = vfrm->best_effort_timestamp;
-                    }
-                    if (pts_val == AV_NOPTS_VALUE) {
-                        pts_val = vfrm->pkt_dts;
-                    }
+                    if (pts_val == AV_NOPTS_VALUE) pts_val = vfrm->best_effort_timestamp;
+                    if (pts_val == AV_NOPTS_VALUE) pts_val = vfrm->pkt_dts;
 
                     double pts = (pts_val == AV_NOPTS_VALUE) ? 0 : pts_val * gly_av_q2d(s->video->time_base);
 
                     double target_time = s->clock_start + pts;
                     double delay = target_time - now_sec();
-                    if (delay > 0.001) {
-                        usleep((useconds_t)(delay * 1e6));
-                    }
+                    if (delay > 0.001) usleep((useconds_t)(delay * 1e6));
                     
                     int back = 1 - atomic_load(&s->front);
                     MediaFrame *f = &s->frames[back];
-                    frame_copy(s->sws, vfrm, f);
+                    frame_copy(vfrm, f);
                     f->pts = pts;
                     atomic_store(&f->ready, true);
                     atomic_store(&s->front, back);
@@ -123,7 +144,6 @@ static void threadworker(void *arg) {
     frame_free(&s->frames[0]);
     frame_free(&s->frames[1]);
 
-    if (s->sws) AV.sws_freeContext(s->sws);
 cleanup_codec:
     if (s->vcodec) AV.avcodec_free_context(&s->vcodec);
 cleanup_format:
@@ -167,7 +187,7 @@ MediaFrame* stream_get_frame(VideoStream *s) {
     int front_idx = atomic_load(&s->front);
     MediaFrame *f = &s->frames[front_idx];
 
-    if (f->pixels && atomic_load(&f->ready)) {
+    if (f->data[0] && atomic_load(&f->ready)) {
         return f;
     }
     return NULL;

@@ -29,6 +29,8 @@
 #include <gecnd/shadder_gl_font_frag.h>
 #include <gecnd/shadder_es_font_vert.h>
 #include <gecnd/shadder_es_font_frag.h>
+#include <gecnd/shadder_es_video_vert.h>
+#include <gecnd/shadder_es_video_frag.h>
 
 static GLBackendState g_gl_state;
 static EGLDisplay egl_display = EGL_NO_DISPLAY;
@@ -100,6 +102,7 @@ static void opengl_terminate(void) {
     glDeleteProgram(state->shape_program);
     glDeleteProgram(state->line_program);
     glDeleteProgram(state->texture_program);
+    glDeleteProgram(state->video_program);
     glDeleteProgram(state->font_program);
     glDeleteBuffers(1, &state->vbo);
     kv_destroy(state->textures);
@@ -164,6 +167,8 @@ static int opengl_init(void) {
     state->texture_loc_texCoord = glGetAttribLocation (state->texture_program, "a_texCoord");
     state->texture_loc_proj    = glGetUniformLocation(state->texture_program, "u_projection");
     state->texture_loc_sampler = glGetUniformLocation(state->texture_program, "u_texture");
+
+    init_video_program(true); // is_gles = true
 
     shader_src_t font_vs = SHADER(shadder_es_font_vert);
     shader_src_t font_fs = SHADER(shadder_es_font_frag);
@@ -316,6 +321,7 @@ void gly_hook_input_keyboard(uint8_t index, char** key, bool* press) {
     *key = NULL;
 }
 
+#include "render/media.c"
 #include "render/draw.c"
 #include "render/image.c"
 #include "render/text.c"

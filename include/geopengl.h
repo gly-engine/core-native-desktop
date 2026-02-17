@@ -80,6 +80,17 @@ typedef struct {
     GLint texture_loc_proj;
     GLint texture_loc_sampler;
 
+    // Unified Video/Texture drawing program
+    GLuint video_program;
+    GLint video_loc_pos;
+    GLint video_loc_texCoord;
+    GLint video_loc_proj;
+    GLint video_loc_tex_rgba;
+    GLint video_loc_tex_y;
+    GLint video_loc_tex_u;
+    GLint video_loc_tex_v;
+    GLint video_loc_format;
+
     // Font drawing program
     GLuint font_program;
     GLint font_loc_pos;
@@ -100,15 +111,22 @@ typedef struct {
     kvec_t(GLTexture) textures;
 
     // --- Video Background ---
-    GLuint video_texture_id;
+    GLuint video_textures[3]; // 0: Y/RGBA, 1: U, 2: V
     int video_width;
     int video_height;
+    int video_format;
 
 } GLBackendState;
 
 // Global accessor for the backend state
 GLBackendState* geogl_get_state(void);
 
+
+/* =========================================
+ * Render Functions
+ * ========================================= */
+
+void native_draw_background_video(void);
 
 /* =========================================
  * Platform Abstraction (to be implemented by glfw.c, egl.c, etc.)

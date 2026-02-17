@@ -16,7 +16,7 @@ CMakeUserPresets.json
 cobertura.xml
 
 # Project Files
-build
+build*/
 vendor
 html
 latex

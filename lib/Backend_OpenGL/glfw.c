@@ -26,6 +26,10 @@
 #include <gecnd/shadder_gl_font_frag.h>
 #include <gecnd/shadder_es_font_vert.h>
 #include <gecnd/shadder_es_font_frag.h>
+#include <gecnd/shadder_gl_video_vert.h>
+#include <gecnd/shadder_gl_video_frag.h>
+#include <gecnd/shadder_es_video_vert.h>
+#include <gecnd/shadder_es_video_frag.h>
 
 
 /* =========================================
@@ -247,6 +251,25 @@ static void opengl_init(void) {
     state->texture_loc_proj    = glGetUniformLocation(state->texture_program, "u_projection");
     state->texture_loc_sampler = glGetUniformLocation(state->texture_program, "u_texture");
 
+    shader_src_t video_vs_gl = SHADER(shadder_gl_video_vert);
+    shader_src_t video_fs_gl = SHADER(shadder_gl_video_frag);
+    shader_src_t video_vs_es = SHADER(shadder_es_video_vert);
+    shader_src_t video_fs_es = SHADER(shadder_es_video_frag);
+
+    state->video_program = create_program(
+        pick_shader(is_gles, &video_vs_gl, &video_vs_es),
+        pick_shader(is_gles, &video_fs_gl, &video_fs_es)
+    );
+
+    state->video_loc_pos      = glGetAttribLocation(state->video_program, "a_pos");
+    state->video_loc_texCoord = glGetAttribLocation(state->video_program, "a_texCoord");
+    state->video_loc_proj     = glGetUniformLocation(state->video_program, "u_projection");
+    state->video_loc_tex_rgba = glGetUniformLocation(state->video_program, "tex_rgba");
+    state->video_loc_tex_y    = glGetUniformLocation(state->video_program, "tex_y");
+    state->video_loc_tex_u    = glGetUniformLocation(state->video_program, "tex_u");
+    state->video_loc_tex_v    = glGetUniformLocation(state->video_program, "tex_v");
+    state->video_loc_format   = glGetUniformLocation(state->video_program, "format");
+
     shader_src_t font_vs_gl = SHADER(shadder_gl_font_vert);
     shader_src_t font_fs_gl = SHADER(shadder_gl_font_frag);
     shader_src_t font_vs_es = SHADER(shadder_es_font_vert);
@@ -274,7 +297,9 @@ static void opengl_terminate(void) {
     glDeleteProgram(state->shape_program);
     glDeleteProgram(state->line_program);
     glDeleteProgram(state->texture_program);
+    glDeleteProgram(state->video_program);
     glDeleteProgram(state->font_program);
+
     glDeleteBuffers(1, &state->vbo);
     kv_destroy(state->textures);
 
@@ -333,6 +358,7 @@ void gly_hook_input_keyboard(uint8_t index, char** key, bool* press) {
  * Render Implementation Files
  * ========================================= */
 
+#include "render/media.c"
 #include "render/draw.c"
 #include "render/image.c"
 #include "render/text.c"

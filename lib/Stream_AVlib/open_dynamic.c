@@ -24,7 +24,6 @@ static bool g_av_loaded = false;
 
 static LIB_HANDLE libavcodec = NULL;
 static LIB_HANDLE libavformat = NULL;
-static LIB_HANDLE libswscale = NULL;
 static LIB_HANDLE libavutil = NULL;
 
 #define LOAD_SYM(lib, sym) \
@@ -44,7 +43,6 @@ static LIB_HANDLE libavutil = NULL;
 static void close_libs(void) {
     if (libavcodec) { close_library(libavcodec); libavcodec = NULL; }
     if (libavformat) { close_library(libavformat); libavformat = NULL; }
-    if (libswscale) { close_library(libswscale); libswscale = NULL; }
     if (libavutil) { close_library(libavutil); libavutil = NULL; }
 }
 
@@ -52,30 +50,29 @@ typedef struct {
     const char* avcodec;
     const char* avformat;
     const char* avutil;
-    const char* swscale;
 } FFMpegVersionSet;
 
 static FFMpegVersionSet version_sets[] = {
 #ifdef _WIN32
     // FFmpeg 7
-    {"avcodec-61.dll", "avformat-61.dll", "avutil-59.dll", "swscale-8.dll"},
+    {"avcodec-61.dll", "avformat-61.dll", "avutil-59.dll"},
     // FFmpeg 6
-    {"avcodec-60.dll", "avformat-60.dll", "avutil-58.dll", "swscale-7.dll"},
+    {"avcodec-60.dll", "avformat-60.dll", "avutil-58.dll"},
     // FFmpeg 5
-    {"avcodec-59.dll", "avformat-59.dll", "avutil-57.dll", "swscale-6.dll"},
+    {"avcodec-59.dll", "avformat-59.dll", "avutil-57.dll"},
     // FFmpeg 4
-    {"avcodec-58.dll", "avformat-58.dll", "avutil-56.dll", "swscale-5.dll"},
+    {"avcodec-58.dll", "avformat-58.dll", "avutil-56.dll"},
 #else
     // FFmpeg 7
-    {"libavcodec.so.61", "libavformat.so.61", "libavutil.so.59", "libswscale.so.7"},
+    {"libavcodec.so.61", "libavformat.so.61", "libavutil.so.59"},
     // FFmpeg 6
-    {"libavcodec.so.60", "libavformat.so.60", "libavutil.so.58", "libswscale.so.7"},
+    {"libavcodec.so.60", "libavformat.so.60", "libavutil.so.58"},
     // FFmpeg 5
-    {"libavcodec.so.59", "libavformat.so.59", "libavutil.so.57", "libswscale.so.6"},
+    {"libavcodec.so.59", "libavformat.so.59", "libavutil.so.57"},
     // FFmpeg 4
-    {"libavcodec.so.58", "libavformat.so.58", "libavutil.so.56", "libswscale.so.5"},
+    {"libavcodec.so.58", "libavformat.so.58", "libavutil.so.56"},
     // Unversioned fallback
-    {"libavcodec.so", "libavformat.so", "libavutil.so", "libswscale.so"},
+    {"libavcodec.so", "libavformat.so", "libavutil.so"},
 #endif
     {NULL, NULL, NULL, NULL}
 };
@@ -85,13 +82,26 @@ bool av_load_ffmpeg(void) {
     
     memset(&AV, 0, sizeof(AV));
 
+    bool found_codec = false;
+    bool found_format = false;
+    bool found_util = false;
+    bool found_scale = false;
+
     for (int i = 0; version_sets[i].avcodec != NULL; i++) {
         libavcodec = load_library(version_sets[i].avcodec);
         libavformat = load_library(version_sets[i].avformat);
         libavutil = load_library(version_sets[i].avutil);
-        libswscale = load_library(version_sets[i].swscale);
 
-        if (libavcodec && libavformat && libavutil && libswscale) {
+        if (libavcodec) found_codec = true;
+        if (libavformat) found_format = true;
+        if (libavutil) found_util = true;
+
+        if (libavcodec && libavformat && libavutil) {
+            fprintf(stderr, "[ffmpeg] Successfully loaded FFmpeg libraries:\n");
+            fprintf(stderr, "  avcodec:  %s\n", version_sets[i].avcodec);
+            fprintf(stderr, "  avformat: %s\n", version_sets[i].avformat);
+            fprintf(stderr, "  avutil:   %s\n", version_sets[i].avutil);
+
             // libavcodec
             LOAD_SYM(libavcodec, avcodec_find_decoder);
             LOAD_SYM(libavcodec, avcodec_alloc_context3);
@@ -117,11 +127,6 @@ bool av_load_ffmpeg(void) {
             LOAD_SYM(libavformat, av_seek_frame);
             LOAD_SYM(libavformat, avformat_network_init);
             LOAD_SYM(libavformat, avformat_network_deinit);
-
-            // libswscale
-            LOAD_SYM(libswscale, sws_getContext);
-            LOAD_SYM(libswscale, sws_scale);
-            LOAD_SYM(libswscale, sws_freeContext);
         
             // libavutil
             LOAD_SYM(libavutil, av_gettime_relative);
@@ -142,5 +147,8 @@ bool av_load_ffmpeg(void) {
     }
 
     fprintf(stderr, "[ffmpeg] Failed to load a compatible set of FFmpeg libraries.\n");
+    fprintf(stderr, "  avcodec: %s\n", found_codec ? "found, but not in a compatible set" : "not found");
+    fprintf(stderr, "  avformat: %s\n", found_format ? "found, but not in a compatible set" : "not found");
+    fprintf(stderr, "  avutil: %s\n", found_util ? "found, but not in a compatible set" : "not found");
     return false;
 }
