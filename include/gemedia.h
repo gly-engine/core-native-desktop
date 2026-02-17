@@ -61,6 +61,7 @@ MediaFrame* stream_get_frame(VideoStream *stream);
 typedef struct {
     // libavcodec
     const AVCodec* (*avcodec_find_decoder)(enum AVCodecID id);
+    const AVCodec* (*avcodec_find_decoder_by_name)(const char *name);
     AVCodecContext* (*avcodec_alloc_context3)(const AVCodec *codec);
     int (*avcodec_parameters_to_context)(AVCodecContext *context, const AVCodecParameters *par);
     int (*avcodec_open2)(AVCodecContext *avctx, const AVCodec *codec, AVDictionary **options);
@@ -75,16 +76,22 @@ typedef struct {
     void (*av_frame_free)(AVFrame **frame);
     void (*av_frame_unref)(AVFrame *frame);
     int (*av_hwframe_transfer_data)(AVFrame *dst, const AVFrame *src, int flags);
+    const AVCodec* (*av_codec_iterate)(void **opaque);
+    const char* (*avcodec_get_name)(enum AVCodecID id);
+    int (*av_codec_is_encoder)(const AVCodec *codec);
+    int (*av_codec_is_decoder)(const AVCodec *codec);
 
     // libavformat
     int (*avformat_open_input)(AVFormatContext **ps, const char *url, const AVInputFormat *fmt, AVDictionary **options);
     int (*avformat_find_stream_info)(AVFormatContext *ic, AVDictionary **options);
+    void (*av_dump_format)(AVFormatContext *ic, int index, const char *url, int is_output);
     void (*avformat_close_input)(AVFormatContext **s);
     int (*av_find_best_stream)(AVFormatContext *ic, enum AVMediaType type, int wanted_stream_nb, int related_stream, const AVCodec **decoder_ret, int flags);
     int (*av_read_frame)(AVFormatContext *s, AVPacket *pkt);
     int (*av_seek_frame)(AVFormatContext *s, int stream_index, int64_t timestamp, int flags);
     void (*avformat_network_init)(void);
     void (*avformat_network_deinit)(void);
+    AVInputFormat* (*av_find_input_format)(const char *short_name);
 
     // libswscale
     struct SwsContext* (*sws_getContext)(int srcW, int srcH, enum AVPixelFormat srcFormat, int dstW, int dstH, enum AVPixelFormat dstFormat, int flags, SwsFilter *srcFilter, SwsFilter *dstFilter, const double *param);

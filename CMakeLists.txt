@@ -182,7 +182,7 @@ set(X11_HEADERS "${X11_DIR}/include;${XPROTO_DIR}/include")
 set(X11_HEADERS_EXTRA "${X11_Xinerama_INCLUDE_PATH};${X11_Xinerama_INCLUDE_PATH};${X11_Xkb_INCLUDE_PATH};${X11_Xcursor_INCLUDE_PATH};${X11_Xi_INCLUDE_PATH};${X11_Xshape_INCLUDE_PATH};${X11_Xrender_INCLUDE_PATH};${X11_Xfixes_INCLUDE_PATH}")
 
 # FFMPEG
-set(FFMPEG_VERSION "7.0.2")
+set(FFMPEG_VERSION "4.4.6")
 set(FFMPEG_DOWNLOAD "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz")
 set(FFMPEG_DIR "${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
 option(GECND_USE_FFMPEG "fetch ffmpeg" ON)

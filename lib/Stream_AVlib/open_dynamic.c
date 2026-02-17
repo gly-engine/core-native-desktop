@@ -104,6 +104,7 @@ bool av_load_ffmpeg(void) {
 
             // libavcodec
             LOAD_SYM(libavcodec, avcodec_find_decoder);
+            LOAD_SYM(libavcodec, avcodec_find_decoder_by_name);
             LOAD_SYM(libavcodec, avcodec_alloc_context3);
             LOAD_SYM(libavcodec, avcodec_parameters_to_context);
             LOAD_SYM(libavcodec, avcodec_open2);
@@ -117,16 +118,22 @@ bool av_load_ffmpeg(void) {
             LOAD_SYM(libavcodec, av_frame_alloc);
             LOAD_SYM(libavcodec, av_frame_free);
             LOAD_SYM(libavcodec, av_frame_unref);
+            LOAD_SYM(libavcodec, av_codec_iterate);
+            LOAD_SYM(libavcodec, avcodec_get_name);
+            LOAD_SYM(libavcodec, av_codec_is_encoder);
+            LOAD_SYM(libavcodec, av_codec_is_decoder);
 
             // libavformat
             LOAD_SYM(libavformat, avformat_open_input);
             LOAD_SYM(libavformat, avformat_find_stream_info);
+            LOAD_SYM(libavformat, av_dump_format);
             LOAD_SYM(libavformat, avformat_close_input);
             LOAD_SYM(libavformat, av_find_best_stream);
             LOAD_SYM(libavformat, av_read_frame);
             LOAD_SYM(libavformat, av_seek_frame);
             LOAD_SYM(libavformat, avformat_network_init);
             LOAD_SYM(libavformat, avformat_network_deinit);
+            LOAD_SYM(libavformat, av_find_input_format);
         
             // libavutil
             LOAD_SYM(libavutil, av_gettime_relative);
