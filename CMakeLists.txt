@@ -182,10 +182,10 @@ set(X11_HEADERS "${X11_DIR}/include;${XPROTO_DIR}/include")
 set(X11_HEADERS_EXTRA "${X11_Xinerama_INCLUDE_PATH};${X11_Xinerama_INCLUDE_PATH};${X11_Xkb_INCLUDE_PATH};${X11_Xcursor_INCLUDE_PATH};${X11_Xi_INCLUDE_PATH};${X11_Xshape_INCLUDE_PATH};${X11_Xrender_INCLUDE_PATH};${X11_Xfixes_INCLUDE_PATH}")
 
 # FFMPEG
-set(FFMPEG_VERSION "4.4.6")
-set(FFMPEG_DOWNLOAD "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz")
-set(FFMPEG_DIR "${CMAKE_SOURCE_DIR}/vendor/ffmpeg")
+set(FFMPEG_VERSION "7.0.2")
+set(FFMPEG4_VERSION "4.4.6")
 option(GECND_USE_FFMPEG "fetch ffmpeg" ON)
+option(GECND_USE_FFMPEG4 "use ffmpeg 4 instead 7" OFF)
 option(GECND_BUILD_FFMPEG "build static ffmpeg" OFF)
 
 # LibUV
@@ -455,6 +455,14 @@ if(GECND_USE_OPENGL)
     add_custom_target(gecnd_glsl_headers DEPENDS ${GENERATED_HEADERS})
     add_dependencies(${PROJECT_NAME} gecnd_glsl_headers)
     target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE "${GLAD_DIR}/include;${GLFW_DIR}/include")
+endif()
+
+if(GECND_USE_FFMPEG4)
+    set(FFMPEG_DOWNLOAD "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG4_VERSION}.tar.gz")
+    set(FFMPEG_DIR "${CMAKE_SOURCE_DIR}/vendor/avlib/ffmpeg4")
+else()
+    set(FFMPEG_DOWNLOAD "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz")
+    set(FFMPEG_DIR "${CMAKE_SOURCE_DIR}/vendor/avlib/ffmpeg7")
 endif()
 
 if(GECND_USE_FFMPEG)
