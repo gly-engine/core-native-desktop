@@ -111,6 +111,20 @@ static void init_all_shaders(bool is_gles) {
     state->line_loc_proj  = glGetUniformLocation(state->line_program, "u_projection");
     state->line_loc_color = glGetUniformLocation(state->line_program, "u_color");
 
+    // Texture Program
+    shader_src_t tex_vs_gl = SHADER(shadder_gl_tex_vert);
+    shader_src_t tex_fs_gl = SHADER(shadder_gl_tex_frag);
+    shader_src_t tex_vs_es = SHADER(shadder_es_tex_vert);
+    shader_src_t tex_fs_es = SHADER(shadder_es_tex_frag);
+    state->texture_program = create_program(
+        pick_shader(is_gles, &tex_vs_gl, &tex_vs_es),
+        pick_shader(is_gles, &tex_fs_gl, &tex_fs_es)
+    );
+    state->texture_loc_pos      = glGetAttribLocation (state->texture_program, "a_pos");
+    state->texture_loc_texCoord = glGetAttribLocation (state->texture_program, "a_texCoord");
+    state->texture_loc_proj     = glGetUniformLocation(state->texture_program, "u_projection");
+    state->texture_loc_sampler  = glGetUniformLocation(state->texture_program, "u_texture");
+
     // Unified Video/Texture Program
     shader_src_t video_vs_gl = SHADER(shadder_gl_video_vert);
     shader_src_t video_fs_gl = SHADER(shadder_gl_video_frag);
@@ -149,6 +163,7 @@ static void terminate_all_shaders(void) {
     GLBackendState *state = geogl_get_state();
     glDeleteProgram(state->shape_program);
     glDeleteProgram(state->line_program);
+    glDeleteProgram(state->texture_program);
     glDeleteProgram(state->video_program);
     glDeleteProgram(state->font_program);
 }

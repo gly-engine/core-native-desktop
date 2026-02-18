@@ -122,14 +122,13 @@ void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
         return; // Texture not loaded
     }
 
-    glUseProgram(state->video_program);
+    glUseProgram(state->texture_program);
 
-    glUniformMatrix4fv(state->video_loc_proj, 1, GL_FALSE, state->projection);
-    glUniform1i(state->video_loc_format, 0); // 0 = RGBA format
+    glUniformMatrix4fv(state->texture_loc_proj, 1, GL_FALSE, state->projection);
+    glUniform1i(state->texture_loc_sampler, 0);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture.id);
-    glUniform1i(state->video_loc_tex_rgba, 0);
 
     float vertices[] = {
         (float)x, (float)y,             0.0f, 0.0f, // Top-left
@@ -141,16 +140,16 @@ void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
     glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
 
-    glEnableVertexAttribArray(state->video_loc_pos);
-    glVertexAttribPointer(state->video_loc_pos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(state->texture_loc_pos);
+    glVertexAttribPointer(state->texture_loc_pos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
 
-    glEnableVertexAttribArray(state->video_loc_texCoord);
-    glVertexAttribPointer(state->video_loc_texCoord, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(state->texture_loc_texCoord);
+    glVertexAttribPointer(state->texture_loc_texCoord, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
 
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-    glDisableVertexAttribArray(state->video_loc_pos);
-    glDisableVertexAttribArray(state->video_loc_texCoord);
+    glDisableVertexAttribArray(state->texture_loc_pos);
+    glDisableVertexAttribArray(state->texture_loc_texCoord);
 }
 
 void native_image_mensure(int32_t image_id, int16_t *w, int16_t *h) {
