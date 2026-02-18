@@ -5,6 +5,8 @@
 
 #include "gecnd.h"
 
+void main_rc(uv_loop_t* loop);
+
 static void cb_frame(uv_timer_t *t) {
     static uint64_t last = 0;
     uint64_t now = uv_hrtime();
@@ -31,6 +33,9 @@ int main(int argc, char* argv[]) {
     uv_timer_init(&loop, &timer);
     gecnd_set_args(gly, argc, argv);
     gecnd_set_loop(gly, (void*) &loop);
+
+    /** @todo move */
+    main_rc(&loop);
 
     timer.data = gly;
     uv_timer_start(&timer, cb_frame, 0, gecnd_get_sleep(gly));

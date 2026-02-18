@@ -248,6 +248,11 @@ set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
 set(CURL_USE_LIBSSH2 OFF CACHE BOOL "" FORCE)
 option(GECND_USE_CURL "use curl" ON)
 
+# Pico HTTP Parser
+set(PHP_DOWNLOAD "https://github.com/h2o/picohttpparser/archive/f8326098f63eefabfa2b6ec595d90e9ed5ed958a.tar.gz")
+set(PHP_DIR "${CMAKE_SOURCE_DIR}/vendor/web/php")
+option(GECND_USE_RC "use remote control in web server" ON)
+
 if(GECND_NO_SANITIZE)
     target_compile_options(gecnd_cc_flags INTERFACE -fno-sanitize=all -fno-sanitize-recover=all)
 endif()
@@ -537,6 +542,15 @@ if(GECND_USE_CURL)
     else()
         target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Api/http_curl.c")
     endif()
+endif()
+
+if(GECND_USE_RC)
+    FetchContent_Populate(php_static URL ${PHP_DOWNLOAD} SOURCE_DIR ${PHP_DIR})
+    add_library(php_static STATIC ${PHP_DIR}/picohttpparser.c)
+    target_link_libraries(php_static PRIVATE gecnd_cc_flags)
+    target_link_libraries(${PROJECT_NAME} PRIVATE php_static)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${PHP_DIR})
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Rc/rc.c")
 endif()
 
 if(GECND_MOCK_HTTP)
