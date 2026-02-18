@@ -49,7 +49,7 @@ static inline void set_color_from_u32(float *v, uint32_t c) {
  * Backend Context
  * ========================================= */
 
-#define GE_LINE_WIDTH 3.0f
+#define GE_LINE_WIDTH 2.0f
 
 typedef struct {
     // Window state from platform

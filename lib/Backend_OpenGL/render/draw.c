@@ -64,6 +64,9 @@ void native_draw_start(void) {
         glViewport(0, 0, state->aa_fbo_width, state->aa_fbo_height);
         mat4_ortho(state->projection, 0, state->window_width, state->window_height, 0, -1, 1);
         
+        // Accumulate alpha correctly in the FBO
+        glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
     }
@@ -77,6 +80,8 @@ void native_draw_flush(void) {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, state->window_width, state->window_height);
         mat4_ortho(state->projection, 0, state->window_width, state->window_height, 0, -1, 1);
+
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
         glUseProgram(state->aa_program);
         glUniformMatrix4fv(state->aa_loc_proj, 1, GL_FALSE, state->projection);
@@ -110,6 +115,8 @@ void native_draw_flush(void) {
 
         glDisableVertexAttribArray(state->aa_loc_pos);
         glDisableVertexAttribArray(state->aa_loc_texCoord);
+
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
 
     platform_swap_buffers();
@@ -126,15 +133,16 @@ void native_draw_clear(uint32_t color) {
 void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r) {
     GLBackendState *state = geogl_get_state();
     
+    float p = 0.0f; 
     float vertices[8];
-    vertices[0] = (float)x;
-    vertices[1] = (float)y;
-    vertices[2] = (float)x + w;
-    vertices[3] = (float)y;
-    vertices[4] = (float)x + w;
-    vertices[5] = (float)y + h;
-    vertices[6] = (float)x;
-    vertices[7] = (float)y + h;
+    vertices[0] = (float)x - p;
+    vertices[1] = (float)y - p;
+    vertices[2] = (float)x + w + p;
+    vertices[3] = (float)y - p;
+    vertices[4] = (float)x + w + p;
+    vertices[5] = (float)y + h + p;
+    vertices[6] = (float)x - p;
+    vertices[7] = (float)y + h + p;
 
     glUseProgram(state->shape_program);
 
