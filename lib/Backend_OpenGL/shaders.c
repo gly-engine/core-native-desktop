@@ -94,9 +94,10 @@ static void init_all_shaders(bool is_gles) {
     state->shape_loc_pos    = glGetAttribLocation (state->shape_program, "a_pos");
     state->shape_loc_proj   = glGetUniformLocation(state->shape_program, "u_projection");
     state->shape_loc_color  = glGetUniformLocation(state->shape_program, "u_color");
-    state->shape_loc_rect   = glGetUniformLocation(state->shape_program, "u_rect");
-    state->shape_loc_radius = glGetUniformLocation(state->shape_program, "u_radius");
-    state->shape_loc_mode   = glGetUniformLocation(state->shape_program, "u_mode");
+    state->shape_loc_rect      = glGetUniformLocation(state->shape_program, "u_rect");
+    state->shape_loc_radius    = glGetUniformLocation(state->shape_program, "u_radius");
+    state->shape_loc_mode      = glGetUniformLocation(state->shape_program, "u_mode");
+    state->shape_loc_thickness = glGetUniformLocation(state->shape_program, "u_thickness");
 
     // Line Program
     shader_src_t line_vs_gl = SHADER(shadder_gl_line_vert);

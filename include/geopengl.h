@@ -49,6 +49,8 @@ static inline void set_color_from_u32(float *v, uint32_t c) {
  * Backend Context
  * ========================================= */
 
+#define GE_LINE_WIDTH 2.0f
+
 typedef struct {
     // Window state from platform
     void *window; // Can be GLFWwindow* or EGLNativeWindowType
@@ -66,6 +68,7 @@ typedef struct {
     GLint shape_loc_rect;
     GLint shape_loc_radius;
     GLint shape_loc_mode;
+    GLint shape_loc_thickness;
 
     // Line drawing program
     GLuint line_program;

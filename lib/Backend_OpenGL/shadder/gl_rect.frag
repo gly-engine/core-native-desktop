@@ -2,6 +2,7 @@
 uniform vec4 u_color;
 uniform vec4 u_rect;      // x, y, width, height
 uniform float u_radius;
+uniform float u_thickness;
 uniform int u_mode;      // 0 for filled, 1 for line
 varying vec2 v_pos;
 
@@ -20,8 +21,7 @@ void main() {
     float alpha = 1.0 - smoothstep(0.0, smooth_edge, dist);
     
     if (u_mode == 1) { // line
-        float line_width = 1.0;
-        alpha -= 1.0 - smoothstep(0.0, smooth_edge, dist + line_width);
+        alpha -= 1.0 - smoothstep(0.0, smooth_edge, dist + u_thickness);
     }
 
     if (alpha <= 0.0) {

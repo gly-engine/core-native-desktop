@@ -40,10 +40,15 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
     glUniformMatrix4fv(state->shape_loc_proj, 1, GL_FALSE, state->projection);
     glUniform4fv(state->shape_loc_color, 1, state->current_color);
 
+    // Cap radius to half of the smallest dimension to ensure a perfect circle when r is large
+    float max_r = (w < h ? (float)w : (float)h) / 2.0f;
+    float final_r = (float)r > max_r ? max_r : (float)r;
+
     float rect_uniform[4] = {(float)x, (float)y, (float)w, (float)h};
     glUniform4fv(state->shape_loc_rect, 1, rect_uniform);
-    glUniform1f(state->shape_loc_radius, (float)r);
+    glUniform1f(state->shape_loc_radius, final_r);
     glUniform1i(state->shape_loc_mode, mode);
+    glUniform1f(state->shape_loc_thickness, GE_LINE_WIDTH);
 
     glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
@@ -69,6 +74,8 @@ void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
 
     glUniformMatrix4fv(state->line_loc_proj, 1, GL_FALSE, state->projection);
     glUniform4fv(state->line_loc_color, 1, state->current_color);
+
+    glLineWidth(GE_LINE_WIDTH);
 
     glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
