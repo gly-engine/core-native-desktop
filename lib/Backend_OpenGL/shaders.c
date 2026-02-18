@@ -27,6 +27,10 @@
 #include <gecnd/shadder_gl_video_frag.h>
 #include <gecnd/shadder_es_video_vert.h>
 #include <gecnd/shadder_es_video_frag.h>
+#include <gecnd/shadder_gl_aa_vert.h>
+#include <gecnd/shadder_gl_aa_frag.h>
+#include <gecnd/shadder_es_aa_vert.h>
+#include <gecnd/shadder_es_aa_frag.h>
 
 typedef struct {
     const char *name;
@@ -158,6 +162,24 @@ static void init_all_shaders(bool is_gles) {
     state->font_loc_proj     = glGetUniformLocation(state->font_program, "u_projection");
     state->font_loc_sampler  = glGetUniformLocation(state->font_program, "u_texture");
     state->font_loc_color    = glGetUniformLocation(state->font_program, "u_color");
+
+    // AA Program
+    shader_src_t aa_vs_gl = SHADER(shadder_gl_aa_vert);
+    shader_src_t aa_fs_gl = SHADER(shadder_gl_aa_frag);
+    shader_src_t aa_vs_es = SHADER(shadder_es_aa_vert);
+    shader_src_t aa_fs_es = SHADER(shadder_es_aa_frag);
+    state->aa_program = create_program(
+        pick_shader(is_gles, &aa_vs_gl, &aa_vs_es),
+        pick_shader(is_gles, &aa_fs_gl, &aa_fs_es)
+    );
+    state->aa_loc_pos      = glGetAttribLocation (state->aa_program, "a_pos");
+    state->aa_loc_texCoord = glGetAttribLocation (state->aa_program, "a_texCoord");
+    state->aa_loc_proj     = glGetUniformLocation(state->aa_program, "u_projection");
+    state->aa_loc_sampler  = glGetUniformLocation(state->aa_program, "u_texture");
+    state->aa_loc_texelSize = glGetUniformLocation(state->aa_program, "u_texelSize");
+    state->aa_loc_blur      = glGetUniformLocation(state->aa_program, "u_blur");
+    state->aa_loc_weightCenter   = glGetUniformLocation(state->aa_program, "u_weightCenter");
+    state->aa_loc_weightNeighbor = glGetUniformLocation(state->aa_program, "u_weightNeighbor");
 }
 
 static void terminate_all_shaders(void) {
@@ -167,4 +189,5 @@ static void terminate_all_shaders(void) {
     glDeleteProgram(state->texture_program);
     glDeleteProgram(state->video_program);
     glDeleteProgram(state->font_program);
+    glDeleteProgram(state->aa_program);
 }

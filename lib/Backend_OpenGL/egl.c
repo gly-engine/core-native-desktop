@@ -158,6 +158,8 @@ static void opengl_terminate(void) {
     GLBackendState *state = geogl_get_state();
     terminate_all_shaders();
     glDeleteBuffers(1, &state->vbo);
+    if (state->aa_fbo) glDeleteFramebuffers(1, &state->aa_fbo);
+    if (state->aa_fbo_texture) glDeleteTextures(1, &state->aa_fbo_texture);
     if (state->video_textures[0]) glDeleteTextures(3, state->video_textures);
     kv_destroy(state->textures);
     native_text_terminate();

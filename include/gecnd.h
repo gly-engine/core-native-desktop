@@ -1,9 +1,11 @@
+#ifndef GECND_H
+#define GECND_H
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
 
 #define GLY_REGISTRYINDEX ((uint32_t)(uintptr_t)(gecnd_new))
-
 #define GECND_FLAG_NONE   (0u)
 #define GECND_FLAG_TIMER_FIXED          (0u)
 #define GECND_FLAG_TIMER_INTERNAL       (1u)
@@ -35,6 +37,7 @@ typedef struct {
     int16_t width;
     int16_t height;
     int16_t delta_time;
+    float filter_aa[3];
     int ref_native_callback_init;
     int ref_native_callback_loop;
     int ref_native_callback_draw;
@@ -68,3 +71,5 @@ void gecnd_set_btn_state(gecnd_t *gly, const char* key, bool state);
 uint32_t gecnd_get_delta_ms(void);
 size_t gecnd_utils_get_exe_cwd(char *buffer, size_t max_size);
 size_t gecnd_utils_get_cwd(char *buffer, size_t max_size);
+
+#endif

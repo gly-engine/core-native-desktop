@@ -13,6 +13,7 @@ static ko_longopt_t longopts[] = {
     { "game", ko_required_argument, 305 },
     { "engine", ko_required_argument, 306 },
     { "play", ko_required_argument, 307 },
+    { "aa", ko_required_argument, 308 },
     { NULL, 0, 0 }
 };
 
@@ -41,6 +42,12 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
         if (c == 307) {
             native_media_source(0, opt.arg);
             native_media_play(0);
+        }
+        if (c == 308) {
+            if (sscanf(opt.arg, "%f,%f,%f", &gly->filter_aa[0], &gly->filter_aa[1], &gly->filter_aa[2]) == 1) {
+                gly->filter_aa[1] = 0.8f;
+                gly->filter_aa[2] = 0.05f;
+            }
         }
     }
 }

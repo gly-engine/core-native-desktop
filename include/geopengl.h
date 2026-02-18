@@ -49,7 +49,7 @@ static inline void set_color_from_u32(float *v, uint32_t c) {
  * Backend Context
  * ========================================= */
 
-#define GE_LINE_WIDTH 2.0f
+#define GE_LINE_WIDTH 3.0f
 
 typedef struct {
     // Window state from platform
@@ -102,8 +102,23 @@ typedef struct {
     GLint font_loc_sampler;
     GLint font_loc_color;
 
+    // AA / Post-process program
+    GLuint aa_program;
+    GLint aa_loc_pos;
+    GLint aa_loc_texCoord;
+    GLint aa_loc_proj;
+    GLint aa_loc_sampler;
+    GLint aa_loc_texelSize;
+    GLint aa_loc_blur;
+    GLint aa_loc_weightCenter;
+    GLint aa_loc_weightNeighbor;
+
     // Common GL objects
     GLuint vbo;
+    GLuint aa_fbo;
+    GLuint aa_fbo_texture;
+    int aa_fbo_width;
+    int aa_fbo_height;
 
     // --- Drawing State ---
     float projection[16];

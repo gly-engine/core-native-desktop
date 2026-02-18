@@ -1,5 +1,46 @@
 #include "gehook.h"
 #include "geopengl.h"
+#include "gecnd.h"
+
+static void ensure_fbo(void) {
+    GLBackendState *state = geogl_get_state();
+    gecnd_t *gly = gecnd_get_root();
+    
+    if (gly->filter_aa[0] <= 0.0f) {
+        if (state->aa_fbo != 0) {
+            glDeleteFramebuffers(1, &state->aa_fbo);
+            glDeleteTextures(1, &state->aa_fbo_texture);
+            state->aa_fbo = 0;
+            state->aa_fbo_texture = 0;
+        }
+        return;
+    }
+
+    int target_w = state->window_width;
+    int target_h = state->window_height;
+
+    if (state->aa_fbo == 0) {
+        state->aa_fbo_width = target_w;
+        state->aa_fbo_height = target_h;
+
+        glGenTextures(1, &state->aa_fbo_texture);
+        glBindTexture(GL_TEXTURE_2D, state->aa_fbo_texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, target_w, target_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        glGenFramebuffers(1, &state->aa_fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, state->aa_fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, state->aa_fbo_texture, 0);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            fprintf(stderr, "[ERROR] FBO incomplete\n");
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+}
 
 static void draw_video_background(void) {
     native_draw_background_video();
@@ -7,10 +48,70 @@ static void draw_video_background(void) {
 
 
 void native_draw_start(void) {
+    GLBackendState *state = geogl_get_state();
+    gecnd_t *gly = gecnd_get_root();
+
+    ensure_fbo();
+    
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, state->window_width, state->window_height);
+    mat4_ortho(state->projection, 0, state->window_width, state->window_height, 0, -1, 1);
+    
     draw_video_background();
+
+    if (gly->filter_aa[0] > 0.0f) {
+        glBindFramebuffer(GL_FRAMEBUFFER, state->aa_fbo);
+        glViewport(0, 0, state->aa_fbo_width, state->aa_fbo_height);
+        mat4_ortho(state->projection, 0, state->window_width, state->window_height, 0, -1, 1);
+        
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+    }
 }
 
 void native_draw_flush(void) {
+    GLBackendState *state = geogl_get_state();
+    gecnd_t *gly = gecnd_get_root();
+
+    if (gly->filter_aa[0] > 0.0f) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, state->window_width, state->window_height);
+        mat4_ortho(state->projection, 0, state->window_width, state->window_height, 0, -1, 1);
+
+        glUseProgram(state->aa_program);
+        glUniformMatrix4fv(state->aa_loc_proj, 1, GL_FALSE, state->projection);
+        glUniform1i(state->aa_loc_sampler, 0);
+        glUniform1f(state->aa_loc_blur, gly->filter_aa[0]);
+        glUniform1f(state->aa_loc_weightCenter, gly->filter_aa[1]);
+        glUniform1f(state->aa_loc_weightNeighbor, gly->filter_aa[2]);
+        glUniform2f(state->aa_loc_texelSize, 1.0f / (float)state->aa_fbo_width, 1.0f / (float)state->aa_fbo_height);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, state->aa_fbo_texture);
+
+        float w = (float)state->window_width;
+        float h = (float)state->window_height;
+        float vertices[] = {
+            0.0f, 0.0f, 0.0f, 1.0f,
+            w,    0.0f, 1.0f, 1.0f,
+            w,    h,    1.0f, 0.0f,
+            0.0f, h,    0.0f, 0.0f
+        };
+
+        glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
+
+        glEnableVertexAttribArray(state->aa_loc_pos);
+        glVertexAttribPointer(state->aa_loc_pos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(state->aa_loc_texCoord);
+        glVertexAttribPointer(state->aa_loc_texCoord, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+        glDisableVertexAttribArray(state->aa_loc_pos);
+        glDisableVertexAttribArray(state->aa_loc_texCoord);
+    }
+
     platform_swap_buffers();
 }
 
