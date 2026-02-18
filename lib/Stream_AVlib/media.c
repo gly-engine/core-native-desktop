@@ -131,7 +131,7 @@ static void threadworker(void *arg) {
 
     if (!pkt || !vfrm) {
         fprintf(stderr, "[ffmpeg] Failed to allocate packet/frame\n");
-        goto cleanup_codec;
+        goto cleanup_pkt_frame;
     }
 
     int frames_initialized = 0;
@@ -175,6 +175,15 @@ static void threadworker(void *arg) {
                                     vfrm->format);
 
                         frames_initialized = 1;
+                        
+                        // Sync clock to the first frame's PTS
+                        int64_t pts_first = vfrm->pts;
+                        if (pts_first == AV_NOPTS_VALUE) pts_first = vfrm->best_effort_timestamp;
+                        if (pts_first != AV_NOPTS_VALUE) {
+                            s->clock_start = now_sec() - (pts_first * gly_av_q2d(s->video->time_base));
+                        } else {
+                            s->clock_start = now_sec();
+                        }
                     }
 
                     int64_t pts_val = vfrm->pts;
@@ -229,8 +238,9 @@ static void threadworker(void *arg) {
         AV.av_packet_unref(pkt);
     }
 
-    AV.av_frame_free(&vfrm);
-    AV.av_packet_free(&pkt);
+cleanup_pkt_frame:
+    if (vfrm) AV.av_frame_free(&vfrm);
+    if (pkt)  AV.av_packet_free(&pkt);
 
     if (frames_initialized) {
         frame_free(&s->frames[0]);
@@ -256,8 +266,19 @@ VideoStream* stream_create(const char *url) {
     VideoStream *s = calloc(1, sizeof(VideoStream));
     if (!s) return NULL;
 
-    s->url = strdup(url);
+    if (strncmp(url, "dvb://", 6) == 0) {
+        s->url = strdup("/mnt/usb/sda1/reddresswoman-h264-mp3.mp4");
+    } else {
+        s->url = strdup(url);
+    }
+
+    if (!s->url) {
+        free(s);
+        return NULL;
+    }
+    
     atomic_store(&s->running, 1);
+    atomic_store(&s->paused, 0);
 
     if (uv_thread_create(&s->thread, threadworker, s) != 0) {
         free(s->url);

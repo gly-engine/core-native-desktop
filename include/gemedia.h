@@ -37,6 +37,7 @@ typedef struct {
 
     uv_thread_t thread;
     atomic_int running;
+    atomic_int paused;
     double clock_start;
     int64_t start_pts;
     char *url;

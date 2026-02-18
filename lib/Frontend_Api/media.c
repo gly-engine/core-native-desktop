@@ -36,7 +36,7 @@ static int lua_native_media_play(lua_State *L) {
 
 static int lua_native_media_pause(lua_State *L) {
     uint8_t channel = luaL_checkinteger(L, 1);
-    native_media_play(channel);
+    native_media_pause(channel);
     lua_settop(L, 0);
     return 0;
 }

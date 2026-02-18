@@ -34,11 +34,17 @@ void native_media_position(uint8_t channel, int16_t x, int16_t y, int16_t w, int
 }
 
 void native_media_play(uint8_t channel) {
-    (void)channel;
+    if (channel != 0) return;
+    if (g_background_video) {
+        atomic_store(&g_background_video->paused, 0);
+    }
 }
 
 void native_media_pause(uint8_t channel) {
-    (void)channel;
+    if (channel != 0) return;
+    if (g_background_video) {
+        atomic_store(&g_background_video->paused, 1);
+    }
 }
 
 void native_media_stop(uint8_t channel) {
