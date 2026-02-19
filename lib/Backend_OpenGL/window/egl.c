@@ -71,7 +71,6 @@ int platform_init(uint16_t width, uint16_t height) {
         EGL_DEPTH_SIZE,      16,
         EGL_NONE
     };
-
     EGLConfig config;
     EGLint num_config;
     if (!eglChooseConfig(egl_display, attribs, &config, 1, &num_config)) {
@@ -113,7 +112,7 @@ void platform_terminate(void) {
 }
 
 void platform_swap_buffers(void) {
-    if (egl_display != EGL_NO_DISPLAY) {
+    if (egl_display != EGL_NO_DISPLAY && eglSwapBuffers) {
         eglSwapBuffers(egl_display, egl_surface);
     }
 }
@@ -145,25 +144,8 @@ static int opengl_init(void) {
     glGenBuffers(1, &state->vbo);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
     return 0;
 }
-
-static void opengl_terminate(void) {
-    GLBackendState *state = geogl_get_state();
-    terminate_all_shaders();
-    glDeleteBuffers(1, &state->vbo);
-    if (state->aa_fbo) glDeleteFramebuffers(1, &state->aa_fbo);
-    if (state->aa_fbo_texture) glDeleteTextures(1, &state->aa_fbo_texture);
-    if (state->video_textures[0]) glDeleteTextures(3, state->video_textures);
-    kv_destroy(state->textures);
-    native_text_terminate();
-}
-
-
-/* =========================================
- * Core Hooks
- * ========================================= */
 
 void gly_hook_display_init(uint16_t width, uint16_t height) {
     GLBackendState *state = geogl_get_state();
@@ -177,15 +159,11 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
         exit(1);
     }
 
+    ge_pipeline_init(width, height);
     native_draw_color(0xFFFFFFFF);
     native_draw_clear(0x1A2B3CFF);
     mat4_ortho(state->projection, 0, width, height, 0, -1, 1);
     state->last_frame_time = platform_get_time();
-}
-
-void gly_hook_display_fps(uint8_t fps) {
-    //eglSwapInterval(egl_display, interval);
-    //platform_set_swap_interval(fps == 0 ? 0 : 1);
 }
 
 void gly_hook_display_dt(int16_t *delta_time) {
@@ -196,6 +174,13 @@ void gly_hook_display_dt(int16_t *delta_time) {
 }
 
 void gly_hook_display_close(void) {
-    opengl_terminate();
+    GLBackendState *s = geogl_get_state();
+    terminate_all_shaders();
+    glDeleteBuffers(1, &s->vbo);
+    if (s->aa_fbo) glDeleteFramebuffers(1, &s->aa_fbo);
+    if (s->aa_fbo_texture) glDeleteTextures(1, &s->aa_fbo_texture);
+    if (s->video_textures[0]) glDeleteTextures(3, s->video_textures);
+    kv_destroy(s->textures);
+    native_text_terminate();
     platform_terminate();
 }

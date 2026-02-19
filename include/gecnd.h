@@ -24,7 +24,10 @@
 
 //! @cond
 typedef struct lua_State lua_State;
-//! @endcond
+
+typedef struct {
+    float x, y;
+} gecnd_vec2;
 
 typedef struct {
     lua_State *L;
@@ -37,7 +40,6 @@ typedef struct {
     int16_t width;
     int16_t height;
     int16_t delta_time;
-    float filter_aa[3];
     int ref_native_callback_init;
     int ref_native_callback_loop;
     int ref_native_callback_draw;
@@ -46,6 +48,18 @@ typedef struct {
     char *lua_engine_code;
     const char* error_string;
 } gecnd_t;
+
+typedef struct {
+    gecnd_vec2 corners[4];
+    float brightness;
+    float contrast;
+    float saturation;
+    float film_grain;
+    float sharpen;
+    float aa_blur;
+    float aa_weight_center;
+    float aa_weight_neighbor;
+} gecnd_filter_t;
 
 // instance
 gecnd_t *gecnd_new(lua_State* L);
@@ -71,5 +85,17 @@ void gecnd_set_btn_state(gecnd_t *gly, const char* key, bool state);
 uint32_t gecnd_get_delta_ms(void);
 size_t gecnd_utils_get_exe_cwd(char *buffer, size_t max_size);
 size_t gecnd_utils_get_cwd(char *buffer, size_t max_size);
+// filters
+gecnd_filter_t* gecnd_filter_get_config();
+void gecnd_filter_set_brightness(float v);
+void gecnd_filter_set_contrast(float v);
+void gecnd_filter_set_saturation(float v);
+void gecnd_filter_set_film_grain(float v);
+void gecnd_filter_set_sharpen(float v);
+void gecnd_filter_set_aa(float blur, float wC, float wN);
+void gecnd_filter_set_corners(float x1, float y1, float x2, float y2, float x3, float y3, float x4, float y4);
+void gecnd_filter_reset_all();
+void gecnd_filter_reset_corners();
+bool gencd_filter_is_zero_corners();
 
 #endif

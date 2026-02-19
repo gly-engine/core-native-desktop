@@ -1,5 +1,6 @@
 #include <stdio.h>
-
+#include <stdlib.h>
+#include <string.h>
 #include "geopengl.h"
 
 #include <gecnd/shadder_gl_rect_vert.h>
@@ -22,10 +23,10 @@
 #include <gecnd/shadder_gl_video_frag.h>
 #include <gecnd/shadder_es_video_vert.h>
 #include <gecnd/shadder_es_video_frag.h>
-#include <gecnd/shadder_gl_aa_vert.h>
-#include <gecnd/shadder_gl_aa_frag.h>
 #include <gecnd/shadder_es_aa_vert.h>
 #include <gecnd/shadder_es_aa_frag.h>
+#include <gecnd/shadder_gl_aa_vert.h>
+#include <gecnd/shadder_gl_aa_frag.h>
 
 typedef struct {
     const char *name;
@@ -35,154 +36,131 @@ typedef struct {
 
 #define SHADER(sym) { #sym, (const char*)(sym), (int)(sym##_len) }
 
-static GLuint compile_shader(GLenum type, const shader_src_t *sh) {
+static GLuint compile(GLenum type, const char* src, int len, const char* name) {
     GLuint s = glCreateShader(type);
-    glShaderSource(s, 1, &sh->src, &sh->len);
+    glShaderSource(s, 1, &src, len > 0 ? &len : NULL);
     glCompileShader(s);
-
-    GLint ok = 0;
+    GLint ok;
     glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
     if (!ok) {
         char log[1024];
-        glGetShaderInfoLog(s, sizeof(log), NULL, log);
-        fprintf(stderr, "[SHADER ERROR] %s (%s) %s", sh->name, type == GL_VERTEX_SHADER ? "vertex" : "fragment", log);
-        exit(1); // Or return 0 on EGL
+        glGetShaderInfoLog(s, 1024, NULL, log);
+        fprintf(stderr, "[SHADER %s] %s\n", name, log);
+        exit(1);
     }
     return s;
 }
 
-static GLuint create_program(const shader_src_t *vs, const shader_src_t *fs) {
+static GLuint create_prog(const shader_src_t* vs, const shader_src_t* fs) {
     GLuint p = glCreateProgram();
-    GLuint v = compile_shader(GL_VERTEX_SHADER, vs);
-    GLuint f = compile_shader(GL_FRAGMENT_SHADER, fs);
-
+    GLuint v = compile(GL_VERTEX_SHADER, vs->src, vs->len, vs->name);
+    GLuint f = compile(GL_FRAGMENT_SHADER, fs->src, fs->len, fs->name);
     glAttachShader(p, v);
     glAttachShader(p, f);
     glLinkProgram(p);
-
-    GLint ok = 0;
+    GLint ok;
     glGetProgramiv(p, GL_LINK_STATUS, &ok);
     if (!ok) {
         char log[1024];
-        glGetProgramInfoLog(p, sizeof(log), NULL, log);
-        fprintf(stderr, "[PROGRAM LINK ERROR] VS: %s FS: %s %s", vs->name, fs->name, log);
-        exit(1); // Or return 0 on EGL
+        glGetProgramInfoLog(p, 1024, NULL, log);
+        fprintf(stderr, "[LINK %s/%s] %s\n", vs->name, fs->name, log);
+        exit(1);
     }
-
     glDeleteShader(v);
     glDeleteShader(f);
     return p;
 }
 
-static inline const shader_src_t* pick_shader(bool is_gles, const shader_src_t *gl, const shader_src_t *es) {
-    return is_gles ? es : gl;
+static inline const shader_src_t* pick(bool gles, const shader_src_t *gl, const shader_src_t *es) {
+    return gles ? es : gl;
 }
 
-void init_all_shaders(bool is_gles) {
-    GLBackendState *state = geogl_get_state();
+void init_all_shaders(bool gles) {
+    GLBackendState *s = geogl_get_state();
 
-    // Shape Program
-    shader_src_t rect_vs_gl = SHADER(shadder_gl_rect_vert);
-    shader_src_t rect_fs_gl = SHADER(shadder_gl_rect_frag);
-    shader_src_t rect_vs_es = SHADER(shadder_es_rect_vert);
-    shader_src_t rect_fs_es = SHADER(shadder_es_rect_frag);
-    state->shape_program = create_program(
-        pick_shader(is_gles, &rect_vs_gl, &rect_vs_es),
-        pick_shader(is_gles, &rect_fs_gl, &rect_fs_es)
-    );
-    state->shape_loc_pos    = glGetAttribLocation (state->shape_program, "a_pos");
-    state->shape_loc_proj   = glGetUniformLocation(state->shape_program, "u_projection");
-    state->shape_loc_color  = glGetUniformLocation(state->shape_program, "u_color");
-    state->shape_loc_rect      = glGetUniformLocation(state->shape_program, "u_rect");
-    state->shape_loc_radius    = glGetUniformLocation(state->shape_program, "u_radius");
-    state->shape_loc_mode      = glGetUniformLocation(state->shape_program, "u_mode");
-    state->shape_loc_thickness = glGetUniformLocation(state->shape_program, "u_thickness");
+    shader_src_t rs_vs_gl = SHADER(shadder_gl_rect_vert);
+    shader_src_t rs_fs_gl = SHADER(shadder_gl_rect_frag);
+    shader_src_t rs_vs_es = SHADER(shadder_es_rect_vert);
+    shader_src_t rs_fs_es = SHADER(shadder_es_rect_frag);
+    s->shape_program = create_prog(pick(gles, &rs_vs_gl, &rs_vs_es), pick(gles, &rs_fs_gl, &rs_fs_es));
+    s->shape_loc_pos = glGetAttribLocation(s->shape_program, "a_pos");
+    s->shape_loc_proj = glGetUniformLocation(s->shape_program, "u_projection");
+    s->shape_loc_color = glGetUniformLocation(s->shape_program, "u_color");
+    s->shape_loc_rect = glGetUniformLocation(s->shape_program, "u_rect");
+    s->shape_loc_radius = glGetUniformLocation(s->shape_program, "u_radius");
+    s->shape_loc_mode = glGetUniformLocation(s->shape_program, "u_mode");
+    s->shape_loc_thickness = glGetUniformLocation(s->shape_program, "u_thickness");
 
-    // Line Program
-    shader_src_t line_vs_gl = SHADER(shadder_gl_line_vert);
-    shader_src_t line_fs_gl = SHADER(shadder_gl_line_frag);
-    shader_src_t line_vs_es = SHADER(shadder_es_line_vert);
-    shader_src_t line_fs_es = SHADER(shadder_es_line_frag);
-    state->line_program = create_program(
-        pick_shader(is_gles, &line_vs_gl, &line_vs_es),
-        pick_shader(is_gles, &line_fs_gl, &line_fs_es)
-    );
-    state->line_loc_pos   = glGetAttribLocation (state->line_program, "a_pos");
-    state->line_loc_proj  = glGetUniformLocation(state->line_program, "u_projection");
-    state->line_loc_color = glGetUniformLocation(state->line_program, "u_color");
+    shader_src_t ls_vs_gl = SHADER(shadder_gl_line_vert);
+    shader_src_t ls_fs_gl = SHADER(shadder_gl_line_frag);
+    shader_src_t ls_vs_es = SHADER(shadder_es_line_vert);
+    shader_src_t ls_fs_es = SHADER(shadder_es_line_frag);
+    s->line_program = create_prog(pick(gles, &ls_vs_gl, &ls_vs_es), pick(gles, &ls_fs_gl, &ls_fs_es));
+    s->line_loc_pos = glGetAttribLocation(s->line_program, "a_pos");
+    s->line_loc_proj = glGetUniformLocation(s->line_program, "u_projection");
+    s->line_loc_color = glGetUniformLocation(s->line_program, "u_color");
 
-    // Texture Program
-    shader_src_t tex_vs_gl = SHADER(shadder_gl_tex_vert);
-    shader_src_t tex_fs_gl = SHADER(shadder_gl_tex_frag);
-    shader_src_t tex_vs_es = SHADER(shadder_es_tex_vert);
-    shader_src_t tex_fs_es = SHADER(shadder_es_tex_frag);
-    state->texture_program = create_program(
-        pick_shader(is_gles, &tex_vs_gl, &tex_vs_es),
-        pick_shader(is_gles, &tex_fs_gl, &tex_fs_es)
-    );
-    state->texture_loc_pos      = glGetAttribLocation (state->texture_program, "a_pos");
-    state->texture_loc_texCoord = glGetAttribLocation (state->texture_program, "a_texCoord");
-    state->texture_loc_proj     = glGetUniformLocation(state->texture_program, "u_projection");
-    state->texture_loc_sampler  = glGetUniformLocation(state->texture_program, "u_texture");
+    shader_src_t ts_vs_gl = SHADER(shadder_gl_tex_vert);
+    shader_src_t ts_fs_gl = SHADER(shadder_gl_tex_frag);
+    shader_src_t ts_vs_es = SHADER(shadder_es_tex_vert);
+    shader_src_t ts_fs_es = SHADER(shadder_es_tex_frag);
+    s->texture_program = create_prog(pick(gles, &ts_vs_gl, &ts_vs_es), pick(gles, &ts_fs_gl, &ts_fs_es));
+    s->texture_loc_pos = glGetAttribLocation(s->texture_program, "a_pos");
+    s->texture_loc_texCoord = glGetAttribLocation(s->texture_program, "a_texCoord");
+    s->texture_loc_proj = glGetUniformLocation(s->texture_program, "u_projection");
+    s->texture_loc_sampler = glGetUniformLocation(s->texture_program, "u_texture");
 
-    // Unified Video/Texture Program
-    shader_src_t video_vs_gl = SHADER(shadder_gl_video_vert);
-    shader_src_t video_fs_gl = SHADER(shadder_gl_video_frag);
-    shader_src_t video_vs_es = SHADER(shadder_es_video_vert);
-    shader_src_t video_fs_es = SHADER(shadder_es_video_frag);
-    state->video_program = create_program(
-        pick_shader(is_gles, &video_vs_gl, &video_vs_es),
-        pick_shader(is_gles, &video_fs_gl, &video_fs_es)
-    );
-    state->video_loc_pos      = glGetAttribLocation(state->video_program, "a_pos");
-    state->video_loc_texCoord = glGetAttribLocation(state->video_program, "a_texCoord");
-    state->video_loc_proj     = glGetUniformLocation(state->video_program, "u_projection");
-    state->video_loc_tex_rgba = glGetUniformLocation(state->video_program, "tex_rgba");
-    state->video_loc_tex_y    = glGetUniformLocation(state->video_program, "tex_y");
-    state->video_loc_tex_u    = glGetUniformLocation(state->video_program, "tex_u");
-    state->video_loc_tex_v    = glGetUniformLocation(state->video_program, "tex_v");
-    state->video_loc_format   = glGetUniformLocation(state->video_program, "format");
+    shader_src_t vs_vs_gl = SHADER(shadder_gl_video_vert);
+    shader_src_t vs_fs_gl = SHADER(shadder_gl_video_frag);
+    shader_src_t vs_vs_es = SHADER(shadder_es_video_vert);
+    shader_src_t vs_fs_es = SHADER(shadder_es_video_frag);
+    s->video_program = create_prog(pick(gles, &vs_vs_gl, &vs_vs_es), pick(gles, &vs_fs_gl, &vs_fs_es));
+    s->video_loc_pos = glGetAttribLocation(s->video_program, "a_pos");
+    s->video_loc_texCoord = glGetAttribLocation(s->video_program, "a_texCoord");
+    s->video_loc_proj = glGetUniformLocation(s->video_program, "u_projection");
+    s->video_loc_tex_rgba = glGetUniformLocation(s->video_program, "tex_rgba");
+    s->video_loc_tex_y = glGetUniformLocation(s->video_program, "tex_y");
+    s->video_loc_tex_u = glGetUniformLocation(s->video_program, "tex_u");
+    s->video_loc_tex_v = glGetUniformLocation(s->video_program, "tex_v");
+    s->video_loc_format = glGetUniformLocation(s->video_program, "format");
 
-    // Font Program
-    shader_src_t font_vs_gl = SHADER(shadder_gl_font_vert);
-    shader_src_t font_fs_gl = SHADER(shadder_gl_font_frag);
-    shader_src_t font_vs_es = SHADER(shadder_es_font_vert);
-    shader_src_t font_fs_es = SHADER(shadder_es_font_frag);
-    state->font_program = create_program(
-        pick_shader(is_gles, &font_vs_gl, &font_vs_es),
-        pick_shader(is_gles, &font_fs_gl, &font_fs_es)
-    );
-    state->font_loc_pos      = glGetAttribLocation (state->font_program, "a_pos");
-    state->font_loc_texCoord = glGetAttribLocation (state->font_program, "a_texCoord");
-    state->font_loc_proj     = glGetUniformLocation(state->font_program, "u_projection");
-    state->font_loc_sampler  = glGetUniformLocation(state->font_program, "u_texture");
-    state->font_loc_color    = glGetUniformLocation(state->font_program, "u_color");
+    shader_src_t fs_vs_gl = SHADER(shadder_gl_font_vert);
+    shader_src_t fs_fs_gl = SHADER(shadder_gl_font_frag);
+    shader_src_t fs_vs_es = SHADER(shadder_es_font_vert);
+    shader_src_t fs_fs_es = SHADER(shadder_es_font_frag);
+    s->font_program = create_prog(pick(gles, &fs_vs_gl, &fs_vs_es), pick(gles, &fs_fs_gl, &fs_fs_es));
+    s->font_loc_pos = glGetAttribLocation(s->font_program, "a_pos");
+    s->font_loc_texCoord = glGetAttribLocation(s->font_program, "a_texCoord");
+    s->font_loc_proj = glGetUniformLocation(s->font_program, "u_projection");
+    s->font_loc_sampler = glGetUniformLocation(s->font_program, "u_texture");
+    s->font_loc_color = glGetUniformLocation(s->font_program, "u_color");
 
-    // AA Program
-    shader_src_t aa_vs_gl = SHADER(shadder_gl_aa_vert);
-    shader_src_t aa_fs_gl = SHADER(shadder_gl_aa_frag);
-    shader_src_t aa_vs_es = SHADER(shadder_es_aa_vert);
-    shader_src_t aa_fs_es = SHADER(shadder_es_aa_frag);
-    state->aa_program = create_program(
-        pick_shader(is_gles, &aa_vs_gl, &aa_vs_es),
-        pick_shader(is_gles, &aa_fs_gl, &aa_fs_es)
-    );
-    state->aa_loc_pos      = glGetAttribLocation (state->aa_program, "a_pos");
-    state->aa_loc_texCoord = glGetAttribLocation (state->aa_program, "a_texCoord");
-    state->aa_loc_proj     = glGetUniformLocation(state->aa_program, "u_projection");
-    state->aa_loc_sampler  = glGetUniformLocation(state->aa_program, "u_texture");
-    state->aa_loc_texelSize = glGetUniformLocation(state->aa_program, "u_texelSize");
-    state->aa_loc_blur      = glGetUniformLocation(state->aa_program, "u_blur");
-    state->aa_loc_weightCenter   = glGetUniformLocation(state->aa_program, "u_weightCenter");
-    state->aa_loc_weightNeighbor = glGetUniformLocation(state->aa_program, "u_weightNeighbor");
+    shader_src_t as_vs_gl = SHADER(shadder_gl_aa_vert);
+    shader_src_t as_fs_gl = SHADER(shadder_gl_aa_frag);
+    shader_src_t as_vs_es = SHADER(shadder_es_aa_vert);
+    shader_src_t as_fs_es = SHADER(shadder_es_aa_frag);
+    s->aa_program = create_prog(pick(gles, &as_vs_gl, &as_vs_es), pick(gles, &as_fs_gl, &as_fs_es));
+    s->aa_loc_pos = glGetAttribLocation(s->aa_program, "a_pos");
+    s->aa_loc_texCoord = glGetAttribLocation(s->aa_program, "a_texCoord");
+    s->aa_loc_proj = glGetUniformLocation(s->aa_program, "u_projection");
+    s->aa_loc_sampler = glGetUniformLocation(s->aa_program, "u_texture");
+    s->aa_loc_tsize = glGetUniformLocation(s->aa_program, "u_texelSize");
+    s->aa_loc_blur = glGetUniformLocation(s->aa_program, "u_aa_blur");
+    s->aa_loc_wC = glGetUniformLocation(s->aa_program, "u_aa_wC");
+    s->aa_loc_wN = glGetUniformLocation(s->aa_program, "u_aa_wN");
+    s->aa_loc_bright = glGetUniformLocation(s->aa_program, "u_brightness");
+    s->aa_loc_contrast = glGetUniformLocation(s->aa_program, "u_contrast");
+    s->aa_loc_sat = glGetUniformLocation(s->aa_program, "u_saturation");
+    s->aa_loc_grain = glGetUniformLocation(s->aa_program, "u_film_grain");
+    s->aa_loc_sharpen = glGetUniformLocation(s->aa_program, "u_sharpen");
 }
 
 void terminate_all_shaders(void) {
-    GLBackendState *state = geogl_get_state();
-    glDeleteProgram(state->shape_program);
-    glDeleteProgram(state->line_program);
-    glDeleteProgram(state->texture_program);
-    glDeleteProgram(state->video_program);
-    glDeleteProgram(state->font_program);
-    glDeleteProgram(state->aa_program);
+    GLBackendState *s = geogl_get_state();
+    glDeleteProgram(s->shape_program);
+    glDeleteProgram(s->line_program);
+    glDeleteProgram(s->texture_program);
+    glDeleteProgram(s->video_program);
+    glDeleteProgram(s->font_program);
+    glDeleteProgram(s->aa_program);
 }

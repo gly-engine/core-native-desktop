@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <ketopt.h>
 
 #include "gecnd.h"
@@ -13,9 +14,21 @@ static ko_longopt_t longopts[] = {
     { "game", ko_required_argument, 305 },
     { "engine", ko_required_argument, 306 },
     { "play", ko_required_argument, 307 },
-    { "aa", ko_required_argument, 308 },
+    { "filter-aa", ko_required_argument, 401 },
+    { "filter-color", ko_required_argument, 402 },
+    { "filter-grain", ko_required_argument, 403 },
+    { "filter-sharpen", ko_required_argument, 404 },
+    { "offset", ko_required_argument, 405 },
     { NULL, 0, 0 }
 };
+
+static void check_range(gecnd_t *gly, float val, float min, float max, const char *name) {
+    if (val < min || val > max) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "argument %s out of range [%.1f, %.1f]: %.2f", name, min, max, val);
+        gly->error_string = strdup(buf);
+    }
+}
 
 void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
     if (!gly) return;
@@ -43,10 +56,37 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
             native_media_source(0, opt.arg);
             native_media_play(0);
         }
-        if (c == 308) {
-            if (sscanf(opt.arg, "%f,%f,%f", &gly->filter_aa[0], &gly->filter_aa[1], &gly->filter_aa[2]) == 1) {
-                gly->filter_aa[1] = 0.8f;
-                gly->filter_aa[2] = 0.05f;
+        if (c == 401) {
+            float a, b, c;
+            if (sscanf(opt.arg, "%f,%f,%f", &a, &b, &c) == 3) {
+                gecnd_filter_set_aa(a, b, c);
+            }
+        }
+        if (c == 402) {
+            float b = 1.0f, cv = 1.0f, s = 1.0f;
+            if (sscanf(opt.arg, "%f,%f,%f", &b, &cv, &s) >= 1) {
+                check_range(gly, b, 0.0f, 2.0f, "brightness");
+                check_range(gly, cv, 0.0f, 2.0f, "contrast");
+                check_range(gly, s, 0.0f, 2.0f, "saturation");
+                gecnd_filter_set_brightness(b);
+                gecnd_filter_set_contrast(cv);
+                gecnd_filter_set_saturation(s);
+            }
+        }
+        if (c == 403) {
+            float g = (float)atof(opt.arg);
+            check_range(gly, g, 0.0f, 1.0f, "film-grain");
+            gecnd_filter_set_film_grain(g);
+        }
+        if (c == 404) {
+            gecnd_filter_set_sharpen((float)atof(opt.arg));
+        }
+        if (c == 405) {
+            float x1, y1, x2, y2, x3, y3, x4, y4;
+            if (sscanf(opt.arg, "%f,%f,%f,%f,%f,%f,%f,%f", &x1, &y1, &x2, &y2, &x3, &y3, &x4, &y4) == 8) {
+                gecnd_filter_set_corners(x1, y1, x2, y2, x3, y3, x4, y4);
+            } else if (sscanf(opt.arg, "%f,%f,%f,%f", &x1, &y1, &x3, &y3) == 4) {
+                gecnd_filter_set_corners(x1, y1, x3, y1, x3, y3, x1, y3);
             }
         }
     }

@@ -1,25 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include "gecnd.h"
 #include "gehook.h"
 #include "geopengl.h"
-
-/* =========================================
- * Global State
- * ========================================= */
 
 static GLBackendState g_gl_state;
 
 GLBackendState* geogl_get_state(void) {
     return &g_gl_state;
 }
-
-
-/* =========================================
- * Platform Abstraction (GLFW Implementation)
- * ========================================= */
 
 static void die(const char *msg) {
     fprintf(stderr, "[FATAL] %s\n", msg);
@@ -40,10 +30,10 @@ static const struct {
     { GLFW_KEY_V,            "d" },
     { GLFW_KEY_LEFT_SHIFT,   "menu" },
 };
-#define KEYMAP_COUNT (sizeof(keymap) / sizeof(keymap[0]))
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    for (int i = 0; i < KEYMAP_COUNT; i++) {
+    (void)window; (void)scancode; (void)mods;
+    for (size_t i = 0; i < sizeof(keymap)/sizeof(keymap[0]); i++) {
         if (keymap[i].key == key) {
             gecnd_set_btn_state(gecnd_get_root(), keymap[i].name, action == GLFW_PRESS);
             return;
@@ -80,12 +70,12 @@ int platform_init(uint16_t width, uint16_t height) {
     return 0;
 }
 
-void platform_swap_buffers(void) {
-    glfwSwapBuffers(geogl_get_state()->window);
+void platform_terminate(void) {
+    glfwTerminate();
 }
 
-void platform_set_swap_interval(int interval) {
-    glfwSwapInterval(interval);
+void platform_swap_buffers(void) {
+    glfwSwapBuffers(geogl_get_state()->window);
 }
 
 double platform_get_time(void) {
@@ -96,68 +86,25 @@ void* platform_get_proc_address(const char *name) {
     return (void*)glfwGetProcAddress(name);
 }
 
-
-/* =========================================
- * OpenGL Specifics (Shader Compilation, etc.)
- * ========================================= */
-
-void native_text_terminate();
-
-static void opengl_init(void) {
-    GLBackendState *state = geogl_get_state();
-
-    if (!gladLoadGL((GLADloadfunc)platform_get_proc_address)) {
-        fprintf(stderr, "[FATAL] GLAD load failed");
-        exit(1);
-    }
-
+void gly_hook_display_init(uint16_t width, uint16_t height) {
+    GLBackendState *s = geogl_get_state();
+    if (platform_init(width, height) != 0) exit(1);
+    if (!gladLoadGL((GLADloadfunc)platform_get_proc_address)) die("GLAD load failed");
     const char *ver = (const char*)glGetString(GL_VERSION);
-    bool is_gles = ver && strstr(ver, "OpenGL ES");
-
-    kv_init(state->textures);
-    init_all_shaders(is_gles);
-
-    glGenBuffers(1, &state->vbo);
+    bool gles = ver && strstr(ver, "OpenGL ES");
+    kv_init(s->textures);
+    init_all_shaders(gles);
+    glGenBuffers(1, &s->vbo);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-}
-
-static void opengl_terminate(void) {
-    GLBackendState *state = geogl_get_state();
-    terminate_all_shaders();
-    glDeleteBuffers(1, &state->vbo);
-    if (state->aa_fbo) glDeleteFramebuffers(1, &state->aa_fbo);
-    if (state->aa_fbo_texture) glDeleteTextures(1, &state->aa_fbo_texture);
-    if (state->video_textures[0]) glDeleteTextures(3, state->video_textures);
-    kv_destroy(state->textures);
-    native_text_terminate();
-}
-
-
-/* =========================================
- * Core Hooks
- * ========================================= */
- 
-void gly_hook_display_init(uint16_t width, uint16_t height) {
-    GLBackendState *state = geogl_get_state();
-
-    if (platform_init(width, height) != 0) {
-        fprintf(stderr, "[FATAL] Platform initialization failed.\n");
-        exit(1);
-    }
-
-    opengl_init();
-
+    ge_pipeline_init(width, height);
     native_draw_color(0xFFFFFFFF);
     native_draw_clear(0x1A2B3CFF);
-
-    mat4_ortho(state->projection, 0, width, height, 0, -1, 1);
-    
-    state->last_frame_time = platform_get_time();
+    s->last_frame_time = platform_get_time();
 }
 
 void gly_hook_display_fps(uint8_t fps) {
-    platform_set_swap_interval(fps == 0 ? 0 : 1);
+    glfwSwapInterval(fps == 0 ? 0 : 1);
 }
 
 void gly_hook_display_dt(int16_t *delta_time) {
@@ -168,14 +115,24 @@ void gly_hook_display_dt(int16_t *delta_time) {
 }
 
 void gly_hook_should_close(bool *should_close) {
-    *should_close = glfwWindowShouldClose(geogl_get_state()->window);
+    if (glfwWindowShouldClose) {
+        *should_close = glfwWindowShouldClose(geogl_get_state()->window);
+    }
 }
 
 void gly_hook_display_close(void) {
-    opengl_terminate();
-    glfwTerminate();
+    GLBackendState *s = geogl_get_state();
+    terminate_all_shaders();
+    glDeleteBuffers(1, &s->vbo);
+    if (s->aa_fbo) glDeleteFramebuffers(1, &s->aa_fbo);
+    if (s->aa_fbo_texture) glDeleteTextures(1, &s->aa_fbo_texture);
+    if (s->video_textures[0]) glDeleteTextures(3, s->video_textures);
+    kv_destroy(s->textures);
+    native_text_terminate();
+    platform_terminate();
 }
 
 void gly_hook_input_keyboard(uint8_t index, char** key, bool* press) {
+    (void)index; (void)key; (void)press;
     glfwPollEvents();
 }
