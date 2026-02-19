@@ -70,8 +70,22 @@ void native_draw_background_video(void) {
         glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, s->video_textures[0]);
         glUniform1i(s->video_loc_tex_rgba, 0);
     }
-    float w = (float)s->window_width, h = (float)s->window_height;
-    float vertices[] = { 0.0f, 0.0f, 0.0f, 0.0f, w, 0.0f, 1.0f, 0.0f, w, h, 1.0f, 1.0f, 0.0f, h, 0.0f, 1.0f };
+
+    gecnd_filter_t *filter = gecnd_filter_get_config();
+    glUniform1f(s->video_loc_bright, filter->brightness);
+    glUniform1f(s->video_loc_contrast, filter->contrast);
+    glUniform1f(s->video_loc_sat, filter->saturation);
+    glUniform1f(s->video_loc_grain, filter->film_grain);
+    glUniform1f(s->video_loc_time, (float)platform_get_time());
+    glUniform1f(s->video_loc_scratch, filter->scratch_amount);
+    glUniform1f(s->video_loc_jitter, filter->jitter_amount);
+
+    float x = filter->video_pos.x;
+    float y = filter->video_pos.y;
+    float w = filter->video_size.x > 0 ? filter->video_size.x : (float)s->window_width;
+    float h = filter->video_size.y > 0 ? filter->video_size.y : (float)s->window_height;
+
+    float vertices[] = { x, y, 0.0f, 0.0f, x + w, y, 1.0f, 0.0f, x + w, y + h, 1.0f, 1.0f, x, y + h, 0.0f, 1.0f };
     glBindBuffer(GL_ARRAY_BUFFER, s->vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
     glEnableVertexAttribArray(s->video_loc_pos);

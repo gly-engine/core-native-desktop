@@ -124,8 +124,8 @@ void gly_hook_display_close(void) {
     GLBackendState *s = geogl_get_state();
     terminate_all_shaders();
     glDeleteBuffers(1, &s->vbo);
-    if (s->aa_fbo) glDeleteFramebuffers(1, &s->aa_fbo);
-    if (s->aa_fbo_texture) glDeleteTextures(1, &s->aa_fbo_texture);
+    if (s->post_fbo) glDeleteFramebuffers(1, &s->post_fbo);
+    if (s->post_fbo_texture) glDeleteTextures(1, &s->post_fbo_texture);
     if (s->video_textures[0]) glDeleteTextures(3, s->video_textures);
     kv_destroy(s->textures);
     native_text_terminate();

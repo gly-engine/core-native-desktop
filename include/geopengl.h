@@ -81,30 +81,48 @@ typedef struct {
     GLint texture_loc_sampler;
 
     GLuint video_program;
-    GLint video_loc_pos;
-    GLint video_loc_texCoord;
-    GLint video_loc_proj;
-    GLint video_loc_tex_rgba;
-    GLint video_loc_tex_y;
-    GLint video_loc_tex_u;
-    GLint video_loc_tex_v;
-    GLint video_loc_format;
+    GLint  video_loc_pos;
+    GLint  video_loc_texCoord;
+    GLint  video_loc_proj;
+    GLint  video_loc_tex_rgba;
+    GLint  video_loc_tex_y;
+    GLint  video_loc_tex_u;
+    GLint  video_loc_tex_v;
+    GLint  video_loc_format;
+    GLint  video_loc_bright;
+    GLint  video_loc_contrast;
+    GLint  video_loc_sat;
+    GLint  video_loc_grain;
+    GLint  video_loc_sharpen;
+    GLint  video_loc_tsize;
+    GLint  video_loc_time;
+    GLint  video_loc_scratch;
+    GLint  video_loc_jitter;
 
     GLuint font_program;
-    GLint font_loc_pos;
-    GLint font_loc_texCoord;
-    GLint font_loc_proj;
-    GLint font_loc_sampler;
-    GLint font_loc_color;
+    GLint  font_loc_pos;
+    GLint  font_loc_texCoord;
+    GLint  font_loc_proj;
+    GLint  font_loc_sampler;
+    GLint  font_loc_color;
 
-    GLuint aa_program;
-    GLint aa_loc_pos, aa_loc_texCoord, aa_loc_proj, aa_loc_sampler;
-    GLint aa_loc_bright, aa_loc_contrast, aa_loc_sat, aa_loc_grain, aa_loc_tsize;
-    GLint aa_loc_blur, aa_loc_wC, aa_loc_wN, aa_loc_sharpen;
+    GLuint post_program;
+    GLint  post_loc_pos;
+    GLint  post_loc_texCoord;
+    GLint  post_loc_proj;
+    GLint  post_loc_sampler;
+    GLint  post_loc_tsize;
+    GLint  post_loc_blur;
+    GLint  post_loc_wC;
+    GLint  post_loc_wN;
+    GLint  post_loc_rotation;
+    GLint  post_loc_center;
+    GLint  post_loc_crt;
+    GLint  post_loc_time;
 
     GLuint vbo;
-    GLuint aa_fbo;
-    GLuint aa_fbo_texture;
+    GLuint post_fbo;
+    GLuint post_fbo_texture;
 
     float projection[16];
     float current_color[4];

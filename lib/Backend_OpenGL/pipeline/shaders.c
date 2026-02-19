@@ -23,10 +23,10 @@
 #include <gecnd/shadder_gl_video_frag.h>
 #include <gecnd/shadder_es_video_vert.h>
 #include <gecnd/shadder_es_video_frag.h>
-#include <gecnd/shadder_es_aa_vert.h>
-#include <gecnd/shadder_es_aa_frag.h>
-#include <gecnd/shadder_gl_aa_vert.h>
-#include <gecnd/shadder_gl_aa_frag.h>
+#include <gecnd/shadder_es_post_vert.h>
+#include <gecnd/shadder_es_post_frag.h>
+#include <gecnd/shadder_gl_post_vert.h>
+#include <gecnd/shadder_gl_post_frag.h>
 
 typedef struct {
     const char *name;
@@ -123,6 +123,15 @@ void init_all_shaders(bool gles) {
     s->video_loc_tex_u = glGetUniformLocation(s->video_program, "tex_u");
     s->video_loc_tex_v = glGetUniformLocation(s->video_program, "tex_v");
     s->video_loc_format = glGetUniformLocation(s->video_program, "format");
+    s->video_loc_bright = glGetUniformLocation(s->video_program, "u_brightness");
+    s->video_loc_contrast = glGetUniformLocation(s->video_program, "u_contrast");
+    s->video_loc_sat = glGetUniformLocation(s->video_program, "u_saturation");
+    s->video_loc_grain = glGetUniformLocation(s->video_program, "u_film_grain");
+    s->video_loc_sharpen = glGetUniformLocation(s->video_program, "u_sharpen");
+    s->video_loc_tsize = glGetUniformLocation(s->video_program, "u_texelSize");
+    s->video_loc_time = glGetUniformLocation(s->video_program, "u_time");
+    s->video_loc_scratch = glGetUniformLocation(s->video_program, "u_scratch");
+    s->video_loc_jitter = glGetUniformLocation(s->video_program, "u_jitter");
 
     shader_src_t fs_vs_gl = SHADER(shadder_gl_font_vert);
     shader_src_t fs_fs_gl = SHADER(shadder_gl_font_frag);
@@ -135,24 +144,23 @@ void init_all_shaders(bool gles) {
     s->font_loc_sampler = glGetUniformLocation(s->font_program, "u_texture");
     s->font_loc_color = glGetUniformLocation(s->font_program, "u_color");
 
-    shader_src_t as_vs_gl = SHADER(shadder_gl_aa_vert);
-    shader_src_t as_fs_gl = SHADER(shadder_gl_aa_frag);
-    shader_src_t as_vs_es = SHADER(shadder_es_aa_vert);
-    shader_src_t as_fs_es = SHADER(shadder_es_aa_frag);
-    s->aa_program = create_prog(pick(gles, &as_vs_gl, &as_vs_es), pick(gles, &as_fs_gl, &as_fs_es));
-    s->aa_loc_pos = glGetAttribLocation(s->aa_program, "a_pos");
-    s->aa_loc_texCoord = glGetAttribLocation(s->aa_program, "a_texCoord");
-    s->aa_loc_proj = glGetUniformLocation(s->aa_program, "u_projection");
-    s->aa_loc_sampler = glGetUniformLocation(s->aa_program, "u_texture");
-    s->aa_loc_tsize = glGetUniformLocation(s->aa_program, "u_texelSize");
-    s->aa_loc_blur = glGetUniformLocation(s->aa_program, "u_aa_blur");
-    s->aa_loc_wC = glGetUniformLocation(s->aa_program, "u_aa_wC");
-    s->aa_loc_wN = glGetUniformLocation(s->aa_program, "u_aa_wN");
-    s->aa_loc_bright = glGetUniformLocation(s->aa_program, "u_brightness");
-    s->aa_loc_contrast = glGetUniformLocation(s->aa_program, "u_contrast");
-    s->aa_loc_sat = glGetUniformLocation(s->aa_program, "u_saturation");
-    s->aa_loc_grain = glGetUniformLocation(s->aa_program, "u_film_grain");
-    s->aa_loc_sharpen = glGetUniformLocation(s->aa_program, "u_sharpen");
+    shader_src_t as_vs_gl = SHADER(shadder_gl_post_vert);
+    shader_src_t as_fs_gl = SHADER(shadder_gl_post_frag);
+    shader_src_t as_vs_es = SHADER(shadder_es_post_vert);
+    shader_src_t as_fs_es = SHADER(shadder_es_post_frag);
+    s->post_program = create_prog(pick(gles, &as_vs_gl, &as_vs_es), pick(gles, &as_fs_gl, &as_fs_es));
+    s->post_loc_pos = glGetAttribLocation(s->post_program, "a_pos");
+    s->post_loc_texCoord = glGetAttribLocation(s->post_program, "a_texCoord");
+    s->post_loc_proj = glGetUniformLocation(s->post_program, "u_projection");
+    s->post_loc_sampler = glGetUniformLocation(s->post_program, "u_texture");
+    s->post_loc_tsize = glGetUniformLocation(s->post_program, "u_texelSize");
+    s->post_loc_blur = glGetUniformLocation(s->post_program, "u_aa_blur");
+    s->post_loc_wC = glGetUniformLocation(s->post_program, "u_aa_wC");
+    s->post_loc_wN = glGetUniformLocation(s->post_program, "u_aa_wN");
+    s->post_loc_rotation = glGetUniformLocation(s->post_program, "u_rotation");
+    s->post_loc_center = glGetUniformLocation(s->post_program, "u_center");
+    s->post_loc_crt = glGetUniformLocation(s->post_program, "u_crt");
+    s->post_loc_time = glGetUniformLocation(s->post_program, "u_time");
 }
 
 void terminate_all_shaders(void) {
@@ -162,5 +170,5 @@ void terminate_all_shaders(void) {
     glDeleteProgram(s->texture_program);
     glDeleteProgram(s->video_program);
     glDeleteProgram(s->font_program);
-    glDeleteProgram(s->aa_program);
+    glDeleteProgram(s->post_program);
 }

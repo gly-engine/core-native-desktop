@@ -58,6 +58,16 @@ static void callback_init(gecnd_t *gly) {
     do {
         gly_hook_display_init(gly->width, gly->height);
 
+        if(gly == gecnd_get_root()) {
+            if (gencd_filter_is_zero_corners()) {
+                gecnd_filter_reset_corners();
+            }
+
+            if (gencd_filter_is_zero_video_pos()) {
+                gecnd_filter_reset_video_pos();
+            }
+        }
+
         if (gly->loop) {
             gly_hook_display_fps(0);
         } else {

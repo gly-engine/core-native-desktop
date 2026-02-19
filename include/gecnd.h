@@ -51,14 +51,19 @@ typedef struct {
 
 typedef struct {
     gecnd_vec2 corners[4];
+    gecnd_vec2 video_pos;
+    gecnd_vec2 video_size;
     float brightness;
     float contrast;
     float saturation;
     float film_grain;
-    float sharpen;
     float aa_blur;
     float aa_weight_center;
     float aa_weight_neighbor;
+    float rotation;
+    float crt_amount;
+    float scratch_amount;
+    float jitter_amount;
 } gecnd_filter_t;
 
 // instance
@@ -91,11 +96,17 @@ void gecnd_filter_set_brightness(float v);
 void gecnd_filter_set_contrast(float v);
 void gecnd_filter_set_saturation(float v);
 void gecnd_filter_set_film_grain(float v);
-void gecnd_filter_set_sharpen(float v);
+void gecnd_filter_set_crt(float v);
+void gecnd_filter_set_scratch(float v);
+void gecnd_filter_set_jitter(float v);
+void gecnd_filter_set_video_pos(float x, float y, float w, float h);
+void gecnd_filter_set_rotation(float angle);
 void gecnd_filter_set_aa(float blur, float wC, float wN);
 void gecnd_filter_set_corners(float x1, float y1, float x2, float y2, float x3, float y3, float x4, float y4);
-void gecnd_filter_reset_all();
+void gecnd_filter_reset_effects();
 void gecnd_filter_reset_corners();
+void gecnd_filter_reset_video_pos();
 bool gencd_filter_is_zero_corners();
+bool gencd_filter_is_zero_video_pos();
 
 #endif

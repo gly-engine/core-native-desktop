@@ -98,7 +98,7 @@ gecnd_t *gecnd_new(lua_State* L) {
 
     if(!instance) {
         instance = gly;
-        gecnd_filter_reset_all();
+        gecnd_filter_reset_effects();
     }
 
     return gly;   

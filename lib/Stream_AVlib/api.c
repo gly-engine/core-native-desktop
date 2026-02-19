@@ -3,6 +3,7 @@
 
 #define GECND_STREAM_AVLIB_INTERNAL
 #define GECND_FFMPEG_DYN_INTERNAL
+#include "gecnd.h"
 #include "gehook.h"
 #include "gemedia.h"
 
@@ -30,7 +31,8 @@ void native_media_source(uint8_t channel, const char* url) {
 }
 
 void native_media_position(uint8_t channel, int16_t x, int16_t y, int16_t w, int16_t h) {
-    (void)channel; (void)x; (void)y; (void)w; (void)h;
+    (void) (channel);
+    gecnd_filter_set_video_pos(x, y, w, h);
 }
 
 void native_media_play(uint8_t channel) {

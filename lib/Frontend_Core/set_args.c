@@ -17,8 +17,11 @@ static ko_longopt_t longopts[] = {
     { "filter-aa", ko_required_argument, 401 },
     { "filter-color", ko_required_argument, 402 },
     { "filter-grain", ko_required_argument, 403 },
-    { "filter-sharpen", ko_required_argument, 404 },
-    { "offset", ko_required_argument, 405 },
+    { "filter-crt", ko_required_argument, 404 },
+    { "filter-rotate", ko_required_argument, 405 },
+    { "filter-scratch", ko_required_argument, 406 },
+    { "filter-jitter", ko_required_argument, 407 },
+    { "offset", ko_required_argument, 408 },
     { NULL, 0, 0 }
 };
 
@@ -65,9 +68,6 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
         if (c == 402) {
             float b = 1.0f, cv = 1.0f, s = 1.0f;
             if (sscanf(opt.arg, "%f,%f,%f", &b, &cv, &s) >= 1) {
-                check_range(gly, b, 0.0f, 2.0f, "brightness");
-                check_range(gly, cv, 0.0f, 2.0f, "contrast");
-                check_range(gly, s, 0.0f, 2.0f, "saturation");
                 gecnd_filter_set_brightness(b);
                 gecnd_filter_set_contrast(cv);
                 gecnd_filter_set_saturation(s);
@@ -79,9 +79,18 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
             gecnd_filter_set_film_grain(g);
         }
         if (c == 404) {
-            gecnd_filter_set_sharpen((float)atof(opt.arg));
+            gecnd_filter_set_crt((float)atof(opt.arg));
         }
         if (c == 405) {
+            gecnd_filter_set_rotation((float)atof(opt.arg));
+        }
+        if (c == 406) {
+            gecnd_filter_set_scratch((float)atof(opt.arg));
+        }
+        if (c == 407) {
+            gecnd_filter_set_jitter((float)atof(opt.arg));
+        }
+        if (c == 408) {
             float x1, y1, x2, y2, x3, y3, x4, y4;
             if (sscanf(opt.arg, "%f,%f,%f,%f,%f,%f,%f,%f", &x1, &y1, &x2, &y2, &x3, &y3, &x4, &y4) == 8) {
                 gecnd_filter_set_corners(x1, y1, x2, y2, x3, y3, x4, y4);
