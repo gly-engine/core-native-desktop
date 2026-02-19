@@ -6,9 +6,6 @@
 #include <stdbool.h>
 #include <dlfcn.h>
 
-#include <glad/egl.h>
-#include <glad/gles2.h>
-
 #include "gecnd.h"
 #include "gehook.h"
 #include "geopengl.h"
@@ -134,8 +131,6 @@ double platform_get_time(void) {
 
 void native_text_terminate();
 
-#include "shaders.c"
-
 static int opengl_init(void) {
     GLBackendState *state = geogl_get_state();
 
@@ -204,8 +199,3 @@ void gly_hook_display_close(void) {
     opengl_terminate();
     platform_terminate();
 }
-
-#include "render/media.c"
-#include "render/draw.c"
-#include "render/image.c"
-#include "render/text.c"

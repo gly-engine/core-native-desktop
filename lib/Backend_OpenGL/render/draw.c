@@ -1,6 +1,8 @@
+#include <stdio.h>
+
+#include "gecnd.h"
 #include "gehook.h"
 #include "geopengl.h"
-#include "gecnd.h"
 
 static void ensure_fbo(void) {
     GLBackendState *state = geogl_get_state();

@@ -1,6 +1,9 @@
+#include <string.h>
+
 #include "gehook.h"
-#include "geopengl.h"
 #include "gemedia.h"
+#include "geopengl.h"
+
 #include <libavutil/pixfmt.h>
 
 void native_draw_background_video(void) {

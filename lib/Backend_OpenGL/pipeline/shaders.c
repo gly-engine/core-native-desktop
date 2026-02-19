@@ -1,11 +1,6 @@
-// This file is designed to be included by a GL context provider (e.g., glfw.c, egl.c)
-// It contains all shader compilation and initialization logic to avoid duplication.
+#include <stdio.h>
 
-// These headers are expected to be included by the parent file (glfw.c or egl.c)
-// #include "gecnd.h"
-// #include "gehook.h"
-// #include "geopengl.h"
-
+#include "geopengl.h"
 
 #include <gecnd/shadder_gl_rect_vert.h>
 #include <gecnd/shadder_gl_rect_frag.h>
@@ -83,7 +78,7 @@ static inline const shader_src_t* pick_shader(bool is_gles, const shader_src_t *
     return is_gles ? es : gl;
 }
 
-static void init_all_shaders(bool is_gles) {
+void init_all_shaders(bool is_gles) {
     GLBackendState *state = geogl_get_state();
 
     // Shape Program
@@ -182,7 +177,7 @@ static void init_all_shaders(bool is_gles) {
     state->aa_loc_weightNeighbor = glGetUniformLocation(state->aa_program, "u_weightNeighbor");
 }
 
-static void terminate_all_shaders(void) {
+void terminate_all_shaders(void) {
     GLBackendState *state = geogl_get_state();
     glDeleteProgram(state->shape_program);
     glDeleteProgram(state->line_program);

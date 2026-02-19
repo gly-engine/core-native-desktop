@@ -3,7 +3,18 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "kvec.h" // For kvec_t
+
+#include "kvec.h" 
+
+#if !defined(GECND_OPENGLES)
+#error MISSING OPENGL TYPE
+#elif GECND_OPENGLES == 1
+#include <glad/egl.h>
+#include <glad/gles2.h>
+#else
+#include <glad/gl.h>
+#include <GLFW/glfw3.h>
+#endif
 
 typedef struct {
     GLuint id;
@@ -140,6 +151,9 @@ typedef struct {
 GLBackendState* geogl_get_state(void);
 
 
+
+void init_all_shaders(bool is_gles);
+void terminate_all_shaders();
 /* =========================================
  * Render Functions
  * ========================================= */
@@ -151,10 +165,7 @@ void native_draw_background_video(void);
  * ========================================= */
 
 int platform_init(uint16_t width, uint16_t height);
-void platform_terminate(void);
 void platform_swap_buffers(void);
-void platform_poll_events(void);
-bool platform_should_close(void);
 void platform_set_swap_interval(int interval);
 double platform_get_time(void);
 void* platform_get_proc_address(const char *name);

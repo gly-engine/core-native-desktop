@@ -2,9 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <glad/gl.h>
-#include <GLFW/glfw3.h>
-
 #include "gecnd.h"
 #include "gehook.h"
 #include "geopengl.h"
@@ -83,20 +80,8 @@ int platform_init(uint16_t width, uint16_t height) {
     return 0;
 }
 
-void platform_terminate(void) {
-    glfwTerminate();
-}
-
 void platform_swap_buffers(void) {
     glfwSwapBuffers(geogl_get_state()->window);
-}
-
-void platform_poll_events(void) {
-    glfwPollEvents();
-}
-
-bool platform_should_close(void) {
-    return glfwWindowShouldClose(geogl_get_state()->window);
 }
 
 void platform_set_swap_interval(int interval) {
@@ -117,8 +102,6 @@ void* platform_get_proc_address(const char *name) {
  * ========================================= */
 
 void native_text_terminate();
-
-#include "shaders.c"
 
 static void opengl_init(void) {
     GLBackendState *state = geogl_get_state();
@@ -185,24 +168,14 @@ void gly_hook_display_dt(int16_t *delta_time) {
 }
 
 void gly_hook_should_close(bool *should_close) {
-    *should_close = platform_should_close();
+    *should_close = glfwWindowShouldClose(geogl_get_state()->window);
 }
 
 void gly_hook_display_close(void) {
     opengl_terminate();
-    platform_terminate();
+    glfwTerminate();
 }
 
 void gly_hook_input_keyboard(uint8_t index, char** key, bool* press) {
-    platform_poll_events();
-    *key = NULL;
+    glfwPollEvents();
 }
-
-/* =========================================
- * Render Implementation Files
- * ========================================= */
-
-#include "render/media.c"
-#include "render/draw.c"
-#include "render/image.c"
-#include "render/text.c"
