@@ -554,7 +554,7 @@ if(GECND_USE_RC)
     target_link_libraries(php_static PRIVATE gecnd_cc_flags)
     target_link_libraries(${PROJECT_NAME} PRIVATE php_static)
     target_include_directories(${PROJECT_NAME} PRIVATE ${PHP_DIR})
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Rc/rc.c")
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Input_Rc/web_uv.c")
 endif()
 
 if(GECND_MOCK_HTTP)
