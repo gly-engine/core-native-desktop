@@ -7,10 +7,12 @@ uniform float u_time;
 
 vec2 curve(vec2 uv) {
     uv = (uv - 0.5) * 2.0;
-    uv *= 1.1;	
-    uv.x *= 1.0 + pow((abs(uv.y) / 5.0), 2.0);
-    uv.y *= 1.0 + pow((abs(uv.x) / 4.0), 2.0);
-    uv  = (uv / 2.0) + 0.5;
+    uv *= 1.1;
+    float d2y = uv.y * 0.2;
+    float d2x = uv.x * 0.25;
+    uv.x *= 1.0 + (d2y * d2y);
+    uv.y *= 1.0 + (d2x * d2x);
+    uv  = (uv * 0.5) + 0.5;
     uv =  uv * 0.92 + 0.04;
     return uv;
 }
@@ -26,7 +28,7 @@ void main() {
         return;
     }
 
-    vec4 color;
+    lowp vec4 color;
     if (u_crt > 0.0) {
         // RGB shift
         float shift = 0.001 * u_crt;
@@ -36,7 +38,7 @@ void main() {
         color.a = 1.0;
 
         // Scanlines
-        float scanline = sin(uv.y * 800.0) * 0.04 * u_crt;
+        lowp float scanline = sin(uv.y * 800.0) * 0.04 * u_crt;
         color.rgb -= scanline;
 
         // Vignette

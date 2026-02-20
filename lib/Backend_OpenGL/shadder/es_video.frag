@@ -28,25 +28,26 @@ void main() {
     if (rand(vec2(jTime, 1.0)) > 0.98) uv.y += (rand(vec2(jTime, 2.0)) - 0.5) * 0.02 * u_jitter;
   }
 
-  vec4 color;
+  lowp vec4 color;
   if (format == 1) {
     float y = texture2D(tex_y, uv).r;
     float u = texture2D(tex_u, uv).r - 0.5;
     float v = texture2D(tex_v, uv).r - 0.5;
-    float r = y + 1.402 * v;
-    float g = y - 0.344136 * u - 0.714136 * v;
-    float b = y + 1.772 * u;
+    lowp float r = y + 1.402 * v;
+    lowp float g = y - 0.344136 * u - 0.714136 * v;
+    lowp float b = y + 1.772 * u;
     color = vec4(r, g, b, 1.0);
   } else {
     color = texture2D(tex_rgba, uv);
   }
 
-  color.rgb = (color.rgb - 0.5) * u_contrast + 0.5 + (u_brightness - 1.0);
-  float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+  color.rgb = color.rgb * u_contrast + (u_brightness - 0.5 * u_contrast - 0.5);
+  
+  lowp float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
   color.rgb = mix(vec3(gray), color.rgb, u_saturation);
 
   if (u_film_grain > 0.0) {
-    float n = rand(uv + vec2(u_time * 0.01, u_time * 0.02)) * u_film_grain;
+    lowp float n = rand(uv + vec2(u_time * 0.01, u_time * 0.02)) * u_film_grain;
     color.rgb += n - u_film_grain * 0.5;
   }
 
@@ -54,7 +55,7 @@ void main() {
     // Vertical scratches
     float s = sin(uv.x * 200.0 + u_time * 10.0);
     if (s > 0.99) {
-        float scratch = rand(vec2(floor(uv.x * 200.0 + u_time * 10.0), 0.0));
+        lowp float scratch = rand(vec2(floor(uv.x * 200.0 + u_time * 10.0), 0.0));
         if (scratch > 1.0 - u_scratch * 0.5) color.rgb += 0.2 * u_scratch;
     }
     // Random dust/spots

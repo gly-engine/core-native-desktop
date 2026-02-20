@@ -40,7 +40,8 @@ void main() {
     color = texture2D(tex_rgba, uv);
   }
 
-  color.rgb = (color.rgb - 0.5) * u_contrast + 0.5 + (u_brightness - 1.0);
+  color.rgb = color.rgb * u_contrast + (u_brightness - 0.5 * u_contrast - 0.5);
+  
   float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
   color.rgb = mix(vec3(gray), color.rgb, u_saturation);
 

@@ -13,10 +13,10 @@ float sdRoundedBox(vec2 p, vec2 b, float r) {
 }
 
 void main() {
-    vec2 center = u_rect.xy + u_rect.zw / 2.0;
+    vec2 center = u_rect.xy + u_rect.zw * 0.5;
     vec2 size = u_rect.zw;
 
-    float dist = sdRoundedBox(v_pos - center, size / 2.0, u_radius);
+    float dist = sdRoundedBox(v_pos - center, size * 0.5, u_radius);
     
     float smooth_edge = 1.0 + u_aa_blur;
     float alpha = clamp(0.5 - dist / smooth_edge, 0.0, 1.0);
@@ -24,10 +24,6 @@ void main() {
     if (u_mode == 1) { // line
         float alpha_inner = clamp(0.5 - (dist + u_thickness) / smooth_edge, 0.0, 1.0);
         alpha -= alpha_inner;
-    }
-
-    if (alpha <= 0.0) {
-        discard;
     }
 
     gl_FragColor = vec4(u_color.rgb, u_color.a * alpha);

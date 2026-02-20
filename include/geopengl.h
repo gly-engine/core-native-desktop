@@ -16,7 +16,7 @@
 #else
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
-#define GE_LINE_WIDTH 0.6
+#define GE_LINE_WIDTH 2.0f
 #endif
 
 typedef struct {

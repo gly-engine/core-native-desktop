@@ -6,10 +6,12 @@ uniform float u_time;
 
 vec2 curve(vec2 uv) {
     uv = (uv - 0.5) * 2.0;
-    uv *= 1.1;	
-    uv.x *= 1.0 + pow((abs(uv.y) / 5.0), 2.0);
-    uv.y *= 1.0 + pow((abs(uv.x) / 4.0), 2.0);
-    uv  = (uv / 2.0) + 0.5;
+    uv *= 1.1;
+    float d2y = uv.y * 0.2;
+    float d2x = uv.x * 0.25;
+    uv.x *= 1.0 + (d2y * d2y);
+    uv.y *= 1.0 + (d2x * d2x);
+    uv  = (uv * 0.5) + 0.5;
     uv =  uv * 0.92 + 0.04;
     return uv;
 }
