@@ -214,8 +214,9 @@ bool gecnd_update(gecnd_t * gly)
                 gly->error_string = "[error] engine want blit!\n";
             }
             gecnd_metrics_finish_draw();
-            gecnd_metrics_render(gly);
             native_draw_flush();
+            gecnd_metrics_render(gly);
+            native_draw_finish();
         }
         
         gecnd_metrics_update();

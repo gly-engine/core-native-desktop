@@ -12,6 +12,9 @@ void native_draw_start(void) {
 
 void native_draw_flush(void) {
     ge_pipeline_flush();
+}
+
+void native_draw_finish(void) {
     platform_swap_buffers();
 }
 

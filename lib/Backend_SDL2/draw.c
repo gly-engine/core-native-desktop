@@ -87,6 +87,9 @@ void native_draw_start(void) {
 }
 
 void native_draw_flush(void) {
+}
+
+void native_draw_finish(void) {
     SDL_RenderPresent(gly_renderer);
 }
 
