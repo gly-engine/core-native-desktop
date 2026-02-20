@@ -15,6 +15,12 @@ typedef struct
     uint64_t draw_start;
     uint32_t draw_time;
 
+    uint64_t post_start;
+    uint32_t post_time;
+
+    uint64_t tint_start;
+    uint32_t tint_time;
+
     uint32_t frame_count;
     uint64_t last_sec_time;
 
@@ -90,6 +96,38 @@ void gecnd_metrics_finish_draw(void)
     if (state.flags & GECND_METRICS_PERF)
     {
         state.draw_time = (uint32_t)(gecnd_get_cur_time() - state.draw_start);
+    }
+}
+
+void gecnd_metrics_start_post(void)
+{
+    if (state.flags & GECND_METRICS_PERF)
+    {
+        state.post_start = gecnd_get_cur_time();
+    }
+}
+
+void gecnd_metrics_finish_post(void)
+{
+    if (state.flags & GECND_METRICS_PERF)
+    {
+        state.post_time = (uint32_t)(gecnd_get_cur_time() - state.post_start);
+    }
+}
+
+void gecnd_metrics_start_tint(void)
+{
+    if (state.flags & GECND_METRICS_PERF)
+    {
+        state.tint_start = gecnd_get_cur_time();
+    }
+}
+
+void gecnd_metrics_finish_tint(void)
+{
+    if (state.flags & GECND_METRICS_PERF)
+    {
+        state.tint_time = (uint32_t)(gecnd_get_cur_time() - state.tint_start);
     }
 }
 
@@ -190,6 +228,8 @@ uint64_t gecnd_metrics_get_lua_avg(void) { return state.lua_mem_avg; }
 uint32_t gecnd_metrics_get_input_time(void) { return state.input_time; }
 uint32_t gecnd_metrics_get_loop_time(void) { return state.loop_time; }
 uint32_t gecnd_metrics_get_draw_time(void) { return state.draw_time; }
+uint32_t gecnd_metrics_get_post_time(void) { return state.post_time; }
+uint32_t gecnd_metrics_get_tint_time(void) { return state.tint_time; }
 uint16_t gecnd_metrics_get_fps_avg(void) { return state.fps_average; }
 uint16_t gecnd_metrics_get_fps_immediate(void) { return state.fps_immediate; }
 uint16_t gecnd_metrics_get_fps_worst(void) { return state.fps_worst; }

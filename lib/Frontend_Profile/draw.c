@@ -36,8 +36,9 @@ void gecnd_metrics_render(gecnd_t *gly)
         return;
     }
 
-    const int16_t box_w = 120;
-    const int16_t line_h = 15;
+    const int16_t margin = 16;
+    const int16_t box_w = 160;
+    const int16_t line_h = 20;
     bool has_bg = (flags & GECND_METRICS_BG);
 
     int16_t r_lines = 0;
@@ -45,31 +46,31 @@ void gecnd_metrics_render(gecnd_t *gly)
     if (flags & GECND_METRICS_LUA) r_lines += 2;
 
     int16_t l_lines = 0;
-    if (flags & GECND_METRICS_PERF) l_lines += 3;
+    if (flags & GECND_METRICS_PERF) l_lines += 5;
 
     if (has_bg)
     {
         native_draw_color(0xFFFF00FF); // Amarelo
         if (r_lines > 0)
         {
-            native_draw_rect(0, gly->width - box_w - 5, 5, box_w, (r_lines * line_h) + 10, 0);
+            native_draw_rect(0, gly->width - box_w - margin, margin, box_w, (r_lines * line_h) + margin, 0);
         }
         if (l_lines > 0)
         {
-            native_draw_rect(0, 5, 5, box_w, (l_lines * line_h) + 10, 0);
+            native_draw_rect(0, margin, margin, box_w, (l_lines * line_h) + margin, 0);
         }
     }
 
     native_draw_color(has_bg ? 0x000000FF : 0xFFFFFFFF);
     native_text_font_default(1);
-    native_text_font_size(12);
+    native_text_font_size(16);
 
     char buf[128];
 
     if (r_lines > 0)
     {
-        int16_t rx = gly->width - box_w;
-        int16_t ry = 10;
+        int16_t rx = gly->width - box_w - (margin / 2);
+        int16_t ry = margin + (margin / 2);
 
         if (flags & GECND_METRICS_FPS)
         {
@@ -103,24 +104,34 @@ void gecnd_metrics_render(gecnd_t *gly)
 
     if (l_lines > 0)
     {
-        int16_t ly = 10;
+        int16_t ly = margin + (margin / 2);
         uint32_t io = gecnd_metrics_get_input_time();
         uint32_t loop = gecnd_metrics_get_loop_time();
         uint32_t draw = gecnd_metrics_get_draw_time();
-        uint32_t total = io + loop + draw;
+        uint32_t post = gecnd_metrics_get_post_time();
+        uint32_t tint = gecnd_metrics_get_tint_time();
+        uint32_t total = io + loop + draw + post + tint;
 
         if (total > 0)
         {
             snprintf(buf, sizeof(buf), "IO: %d ms (%.1f%%)", io, (io * 100.0f) / total);
-            native_text_print(10, ly, buf);
+            native_text_print(margin + (margin / 2), ly, buf);
             ly += line_h;
 
             snprintf(buf, sizeof(buf), "Loop: %d ms (%.1f%%)", loop, (loop * 100.0f) / total);
-            native_text_print(10, ly, buf);
+            native_text_print(margin + (margin / 2), ly, buf);
             ly += line_h;
 
             snprintf(buf, sizeof(buf), "Draw: %d ms (%.1f%%)", draw, (draw * 100.0f) / total);
-            native_text_print(10, ly, buf);
+            native_text_print(margin + (margin / 2), ly, buf);
+            ly += line_h;
+
+            snprintf(buf, sizeof(buf), "Post: %d ms (%.1f%%)", post, (post * 100.0f) / total);
+            native_text_print(margin + (margin / 2), ly, buf);
+            ly += line_h;
+
+            snprintf(buf, sizeof(buf), "Tint: %d ms (%.1f%%)", tint, (tint * 100.0f) / total);
+            native_text_print(margin + (margin / 2), ly, buf);
         }
     }
 }
