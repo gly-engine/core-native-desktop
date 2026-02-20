@@ -1,8 +1,11 @@
 #include <string.h>
+
+#include <libavutil/pixfmt.h>
+
+#include "gefilter.h"
 #include "gehook.h"
 #include "gemedia.h"
 #include "geopengl.h"
-#include <libavutil/pixfmt.h>
 
 void native_draw_background_video(void) {
     GLBackendState *s = geogl_get_state();
@@ -60,7 +63,15 @@ void native_draw_background_video(void) {
         }
     }
     glUseProgram(s->video_program);
-    glUniformMatrix4fv(s->video_loc_proj, 1, GL_FALSE, s->projection);
+    
+    static const float identity[16] = {
+        1,0,0,0,
+        0,1,0,0,
+        0,0,1,0,
+        0,0,0,1
+    };
+    glUniformMatrix4fv(s->video_loc_proj, 1, GL_FALSE, identity);
+
     if (yuv) {
         glUniform1i(s->video_loc_format, 1);
         for(int i=0; i<3; i++) {glActiveTexture(GL_TEXTURE0+i); glBindTexture(GL_TEXTURE_2D, s->video_textures[i]);}
@@ -72,22 +83,20 @@ void native_draw_background_video(void) {
     }
 
     gecnd_filter_t *filter = gecnd_filter_get_config();
+    
+    glUniform1f(s->video_loc_time, (float)platform_get_time());
     glUniform1f(s->video_loc_bright, filter->brightness);
     glUniform1f(s->video_loc_contrast, filter->contrast);
     glUniform1f(s->video_loc_sat, filter->saturation);
     glUniform1f(s->video_loc_grain, filter->film_grain);
-    glUniform1f(s->video_loc_time, (float)platform_get_time());
     glUniform1f(s->video_loc_scratch, filter->scratch_amount);
     glUniform1f(s->video_loc_jitter, filter->jitter_amount);
 
-    float x = filter->video_pos.x;
-    float y = filter->video_pos.y;
-    float w = filter->video_size.x > 0 ? filter->video_size.x : (float)s->window_width;
-    float h = filter->video_size.y > 0 ? filter->video_size.y : (float)s->window_height;
-
-    float vertices[] = { x, y, 0.0f, 0.0f, x + w, y, 1.0f, 0.0f, x + w, y + h, 1.0f, 1.0f, x, y + h, 0.0f, 1.0f };
-    glBindBuffer(GL_ARRAY_BUFFER, s->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, s->video_vbo);
+    if (filter->video_dirty) {
+        glBufferData(GL_ARRAY_BUFFER, sizeof(filter->video_vertices), filter->video_vertices, GL_DYNAMIC_DRAW);
+    }
+    
     glEnableVertexAttribArray(s->video_loc_pos);
     glEnableVertexAttribArray(s->video_loc_texCoord);
     glVertexAttribPointer(s->video_loc_pos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);

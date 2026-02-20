@@ -12,9 +12,11 @@
 #elif GECND_OPENGLES == 1
 #include <glad/egl.h>
 #include <glad/gles2.h>
+#define GE_LINE_WIDTH 2.0f
 #else
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
+#define GE_LINE_WIDTH 0.6
 #endif
 
 typedef struct {
@@ -52,8 +54,6 @@ static inline void set_color_from_u32(float *v, uint32_t c) {
     v[3] = ( c        & 0xFF) / 255.0f;
 }
 
-#define GE_LINE_WIDTH 2.0f
-
 typedef struct {
     void *window;
     uint16_t window_width;
@@ -82,6 +82,10 @@ typedef struct {
     GLint texture_loc_texCoord;
     GLint texture_loc_proj;
     GLint texture_loc_sampler;
+    GLint texture_loc_tsize;
+    GLint texture_loc_aa_blur;
+    GLint texture_loc_aa_wC;
+    GLint texture_loc_aa_wN;
 
     GLuint video_program;
     GLint  video_loc_pos;
@@ -125,6 +129,8 @@ typedef struct {
     GLint  post_loc_time;
 
     GLuint vbo;
+    GLuint video_vbo;
+    GLuint post_vbo;
     GLuint post_fbo;
     GLuint post_fbo_texture;
 

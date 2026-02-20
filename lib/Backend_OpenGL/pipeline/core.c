@@ -23,11 +23,3 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s->post_fbo_texture, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
-
-void ge_pipeline_resize(uint16_t w, uint16_t h) {
-    GLBackendState *s = geogl_get_state();
-    s->window_width = w;
-    s->window_height = h;
-    glBindTexture(GL_TEXTURE_2D, s->post_fbo_texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-}

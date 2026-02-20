@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include "gecnd.h"
+#include "gefilter.h"
 #include "gehook.h"
 #include "geopengl.h"
 

@@ -142,6 +142,8 @@ static int opengl_init(void) {
     init_all_shaders(true); // is_gles = true
 
     glGenBuffers(1, &state->vbo);
+    glGenBuffers(1, &state->video_vbo);
+    glGenBuffers(1, &state->post_vbo);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     return 0;
@@ -177,6 +179,8 @@ void gly_hook_display_close(void) {
     GLBackendState *s = geogl_get_state();
     terminate_all_shaders();
     glDeleteBuffers(1, &s->vbo);
+    glDeleteBuffers(1, &s->video_vbo);
+    glDeleteBuffers(1, &s->post_vbo);
     if (s->post_fbo) glDeleteFramebuffers(1, &s->post_fbo);
     if (s->post_fbo_texture) glDeleteTextures(1, &s->post_fbo_texture);
     if (s->video_textures[0]) glDeleteTextures(3, s->video_textures);

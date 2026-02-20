@@ -40,8 +40,8 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
     ketopt_t opt = KETOPT_INIT;
     int c;
 
-    while ((c = ketopt(&opt, argc, argv, 1, "s:", longopts)) >= 0) {
-        if (c == 301 && sscanf(opt.arg, "%hdx%hd", &gly->window_height, &gly->window_width) != 2) {
+    while ((c = ketopt(&opt, argc, argv, 1, "", longopts)) >= 0) {
+        if (c == 300 && sscanf(opt.arg, "%hdx%hd", &gly->window_width, &gly->window_height) != 2) {
             gly->error_string = "invalid window size!";
         }
         if (c == 301 && sscanf(opt.arg, "%hdx%hd", &gly->width, &gly->height) != 2) {

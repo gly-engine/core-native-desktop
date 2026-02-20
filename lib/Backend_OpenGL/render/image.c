@@ -1,4 +1,6 @@
 #include <spng.h>
+
+#include "gefilter.h"
 #include "gehook.h"
 #include "geopengl.h"
 
@@ -33,6 +35,7 @@ void native_image_load(const char *path, int32_t image_id, bool *success) {
 
 void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
     GLBackendState *s = geogl_get_state();
+    gecnd_filter_t *filter = gecnd_filter_get_config();
     size_t idx = image_id - 1;
     if (image_id <= 0 || kv_size(s->textures) <= idx) return;
     GLTexture t = kv_A(s->textures, idx);
@@ -40,6 +43,10 @@ void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
     glUseProgram(s->texture_program);
     glUniformMatrix4fv(s->texture_loc_proj, 1, GL_FALSE, s->projection);
     glUniform1i(s->texture_loc_sampler, 0);
+    glUniform2f(s->texture_loc_tsize, 1.0f / (float)t.width, 1.0f / (float)t.height);
+    glUniform1f(s->texture_loc_aa_blur, filter->aa_blur);
+    glUniform1f(s->texture_loc_aa_wC, filter->aa_weight_center);
+    glUniform1f(s->texture_loc_aa_wN, filter->aa_weight_neighbor);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, t.id);
     float v[] = {(float)x, (float)y, 0, 0, (float)x+t.width, (float)y, 1, 0, (float)x+t.width, (float)y+t.height, 1, 1, (float)x, (float)y+t.height, 0, 1};

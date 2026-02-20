@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "gefilter.h"
 #include "geopengl.h"
 
 #define FONTSTASH_IMPLEMENTATION

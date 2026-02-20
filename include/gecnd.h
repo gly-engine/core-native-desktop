@@ -22,12 +22,7 @@
 #define gecnd_add_flags(gly)  gecnd_set_flags(gly, gecnd_get_flags(gly) | FLAG_A)
 #define gecnd_del_flags(gly)  gecnd_set_flags(gly, gecnd_get_flags(gly) & ~FLAG_A); 
 
-//! @cond
 typedef struct lua_State lua_State;
-
-typedef struct {
-    float x, y;
-} gecnd_vec2;
 
 typedef struct {
     lua_State *L;
@@ -50,23 +45,6 @@ typedef struct {
     char *lua_engine_code;
     const char* error_string;
 } gecnd_t;
-
-typedef struct {
-    gecnd_vec2 corners[4];
-    gecnd_vec2 video_pos;
-    gecnd_vec2 video_size;
-    float brightness;
-    float contrast;
-    float saturation;
-    float film_grain;
-    float aa_blur;
-    float aa_weight_center;
-    float aa_weight_neighbor;
-    float rotation;
-    float crt_amount;
-    float scratch_amount;
-    float jitter_amount;
-} gecnd_filter_t;
 
 // instance
 gecnd_t *gecnd_new(lua_State* L);
@@ -93,7 +71,6 @@ uint32_t gecnd_get_delta_ms(void);
 size_t gecnd_utils_get_exe_cwd(char *buffer, size_t max_size);
 size_t gecnd_utils_get_cwd(char *buffer, size_t max_size);
 // filters
-gecnd_filter_t* gecnd_filter_get_config();
 void gecnd_filter_set_brightness(float v);
 void gecnd_filter_set_contrast(float v);
 void gecnd_filter_set_saturation(float v);

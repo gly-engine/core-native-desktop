@@ -95,6 +95,8 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     kv_init(s->textures);
     init_all_shaders(gles);
     glGenBuffers(1, &s->vbo);
+    glGenBuffers(1, &s->video_vbo);
+    glGenBuffers(1, &s->post_vbo);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     ge_pipeline_init(width, height);
@@ -124,6 +126,8 @@ void gly_hook_display_close(void) {
     GLBackendState *s = geogl_get_state();
     terminate_all_shaders();
     glDeleteBuffers(1, &s->vbo);
+    glDeleteBuffers(1, &s->video_vbo);
+    glDeleteBuffers(1, &s->post_vbo);
     if (s->post_fbo) glDeleteFramebuffers(1, &s->post_fbo);
     if (s->post_fbo_texture) glDeleteTextures(1, &s->post_fbo_texture);
     if (s->video_textures[0]) glDeleteTextures(3, s->video_textures);

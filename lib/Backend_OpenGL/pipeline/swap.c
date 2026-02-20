@@ -1,7 +1,20 @@
 #include <stdlib.h>
 #include <string.h>
-#include "gecnd.h"
+
+#include "gefilter.h"
 #include "geopengl.h"
+
+void ge_pipeline_resize(uint16_t w, uint16_t h) {
+    GLBackendState *s = geogl_get_state();
+    s->window_width = w;
+    s->window_height = h;
+    glBindTexture(GL_TEXTURE_2D, s->post_fbo_texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    
+    // Refresh projections when window resizes
+    gecnd_filter_reset_corners();
+    gecnd_filter_reset_video_pos();
+}
 
 void ge_pipeline_start(void) {
     GLBackendState *s = geogl_get_state();
@@ -23,14 +36,17 @@ void ge_pipeline_flush(void) {
     glClear(GL_COLOR_BUFFER_BIT);
     glDisable(GL_BLEND);
     glUseProgram(s->post_program);
-    float ortho[16];
-    mat4_ortho(ortho, 0, (float)s->window_width, (float)s->window_height, 0, -1, 1);
-    glUniformMatrix4fv(s->post_loc_proj, 1, GL_FALSE, ortho);
     
+    static const float identity[16] = {
+        1,0,0,0,
+        0,1,0,0,
+        0,0,1,0,
+        0,0,0,1
+    };
+    glUniformMatrix4fv(s->post_loc_proj, 1, GL_FALSE, identity);
     glUniform2f(s->post_loc_tsize, 1.0f / (float)s->window_width, 1.0f / (float)s->window_height);
     
-    float rad = filter->rotation * 3.14159265f / 180.0f;
-    glUniform1f(s->post_loc_rotation, rad);
+    glUniform1f(s->post_loc_rotation, filter->rotation_rad);
     glUniform2f(s->post_loc_center, (float)s->window_width / 2.0f, (float)s->window_height / 2.0f);
     glUniform1f(s->post_loc_crt, filter->crt_amount);
     glUniform1f(s->post_loc_time, (float)platform_get_time());
@@ -39,15 +55,11 @@ void ge_pipeline_flush(void) {
     glBindTexture(GL_TEXTURE_2D, s->post_fbo_texture);
     glUniform1i(s->post_loc_sampler, 0);
 
-    gecnd_vec2 *c = filter->corners;
-    float vertices[] = {
-        c[0].x, c[0].y, 0.0f, 1.0f,
-        c[1].x, c[1].y, 1.0f, 1.0f,
-        c[2].x, c[2].y, 1.0f, 0.0f,
-        c[3].x, c[3].y, 0.0f, 0.0f
-    };
-    glBindBuffer(GL_ARRAY_BUFFER, s->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, s->post_vbo);
+    if (filter->post_dirty) {
+        glBufferData(GL_ARRAY_BUFFER, sizeof(filter->corner_vertices), filter->corner_vertices, GL_DYNAMIC_DRAW);
+    }
+    
     glEnableVertexAttribArray(s->post_loc_pos);
     glEnableVertexAttribArray(s->post_loc_texCoord);
     glVertexAttribPointer(s->post_loc_pos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
@@ -56,4 +68,8 @@ void ge_pipeline_flush(void) {
     glDisableVertexAttribArray(s->post_loc_pos);
     glDisableVertexAttribArray(s->post_loc_texCoord);
     glEnable(GL_BLEND);
+
+    // Reset dirty flags after use
+    filter->post_dirty = false;
+    filter->video_dirty = false;
 }
