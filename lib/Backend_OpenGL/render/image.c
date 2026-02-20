@@ -45,8 +45,6 @@ void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
     glUniform1i(s->texture_loc_sampler, 0);
     glUniform2f(s->texture_loc_tsize, 1.0f / (float)t.width, 1.0f / (float)t.height);
     glUniform1f(s->texture_loc_aa_blur, filter->aa_blur);
-    glUniform1f(s->texture_loc_aa_wC, filter->aa_weight_center);
-    glUniform1f(s->texture_loc_aa_wN, filter->aa_weight_neighbor);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, t.id);
     float v[] = {(float)x, (float)y, 0, 0, (float)x+t.width, (float)y, 1, 0, (float)x+t.width, (float)y+t.height, 1, 1, (float)x, (float)y+t.height, 0, 1};

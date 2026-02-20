@@ -198,9 +198,9 @@ bool gecnd_update(gecnd_t * gly)
         gly->internal |= GECND_INTERNAL_RUNNING;
         gecnd_metrics_finish_wait();
 
-        if (gecnd_is_emulator_running()) {
-            libretro_run_frame();
-        }
+        //if (gecnd_is_emulator_running()) {
+        //    libretro_run_frame();
+        //}
 
         gecnd_metrics_start_input();
         callback_keyboard(gly);

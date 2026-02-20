@@ -31,7 +31,7 @@ static int glfons__renderCreate(void* userPtr, int width, int height) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, width, height, 0, GL_ALPHA, GL_UNSIGNED_BYTE, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, width, height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, NULL);
     return 1;
 }
 
@@ -64,13 +64,13 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
     unsigned char* dst = gl->scratch;
 
     for (int row = 0; row < h; row++) {
-        memcpy(dst, src, w);
+        memcpy(dst, src, (size_t)w);
         dst += w;
         src += gl->width;
     }
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_ALPHA, GL_UNSIGNED_BYTE, gl->scratch);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_LUMINANCE, GL_UNSIGNED_BYTE, gl->scratch);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
 }
@@ -88,8 +88,6 @@ static void glfons__renderDraw(void* userPtr, const float* verts, const float* t
     gecnd_filter_t *filter = gecnd_filter_get_config();
     glUniform2f(state->font_loc_tsize, 1.0f / (float)gl->width, 1.0f / (float)gl->height);
     glUniform1f(state->font_loc_aa_blur, filter->aa_blur);
-    glUniform1f(state->font_loc_aa_wC, filter->aa_weight_center);
-    glUniform1f(state->font_loc_aa_wN, filter->aa_weight_neighbor);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, gl->tex);

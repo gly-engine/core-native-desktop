@@ -4,36 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdatomic.h>
-
-typedef enum {
-    GE_PIX_FMT_RGBA8888 = 0,
-    GE_PIX_FMT_YUV420P = 1,
-    GE_PIX_FMT_RGB565 = 2,
-    GE_PIX_FMT_NONE = -1
-} GEColorFormat;
-
-typedef struct {
-    uint8_t *data[4];
-    int linesize[4];
-    int width;
-    int height;
-    int format; // Uses GEColorFormat
-    double pts;
-    atomic_bool ready;
-} MediaFrame;
-
-MediaFrame* avlib_get_background_frame(void);
-MediaFrame* libretro_get_frame(void);
-
-// Main background frame getter (handles both video and emu)
-MediaFrame* gecnd_get_background_frame(void);
-
-// Shared background media frame with double buffering
-MediaFrame* gecnd_buffer_get_front(void);
-MediaFrame* gecnd_buffer_get_back(void);
-void gecnd_buffer_swap(void);
-void gecnd_buffer_resize(int w, int h, int format);
-void gecnd_buffer_free(void);
+#include "gebuffer.h"
 
 #if defined(GECND_STREAM_AVLIB_INTERNAL)
 
@@ -49,9 +20,6 @@ typedef struct {
     AVStream        *video;
     int video_index;
     struct SwsContext *sws;
-
-    MediaFrame frames[2];
-    atomic_int front;
 
     uv_thread_t thread;
     atomic_int running;

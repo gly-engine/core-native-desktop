@@ -148,8 +148,6 @@ void init_all_shaders(bool gles) {
     s->font_loc_color = glGetUniformLocation(s->font_program, "u_color");
     s->font_loc_tsize = glGetUniformLocation(s->font_program, "u_texelSize");
     s->font_loc_aa_blur = glGetUniformLocation(s->font_program, "u_aa_blur");
-    s->font_loc_aa_wC = glGetUniformLocation(s->font_program, "u_aa_wC");
-    s->font_loc_aa_wN = glGetUniformLocation(s->font_program, "u_aa_wN");
 
     shader_src_t as_vs_gl = SHADER(shadder_gl_post_vert);
     shader_src_t as_fs_gl = SHADER(shadder_gl_post_frag);

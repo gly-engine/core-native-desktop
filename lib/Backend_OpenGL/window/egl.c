@@ -7,6 +7,7 @@
 #include <dlfcn.h>
 
 #include "gecnd.h"
+#include "gebuffer.h"
 #include "gehook.h"
 #include "geopengl.h"
 

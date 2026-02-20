@@ -1,6 +1,7 @@
 #ifndef GEC_BACKEND_GL_INTERNAL_H
 #define GEC_BACKEND_GL_INTERNAL_H
 
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -84,8 +85,6 @@ typedef struct {
     GLint texture_loc_sampler;
     GLint texture_loc_tsize;
     GLint texture_loc_aa_blur;
-    GLint texture_loc_aa_wC;
-    GLint texture_loc_aa_wN;
 
     GLuint video_program;
     GLint  video_loc_pos;
@@ -114,8 +113,6 @@ typedef struct {
     GLint  font_loc_color;
     GLint font_loc_tsize;
     GLint font_loc_aa_blur;
-    GLint font_loc_aa_wC;
-    GLint font_loc_aa_wN;
 
     GLuint post_program;
     GLint  post_loc_pos;
@@ -141,6 +138,7 @@ typedef struct {
     kvec_t(GLTexture) textures;
     GLuint video_textures[3];
     int video_width, video_height, video_format;
+    atomic_int video_update_count;
 } GLBackendState;
 
 GLBackendState* geogl_get_state(void);

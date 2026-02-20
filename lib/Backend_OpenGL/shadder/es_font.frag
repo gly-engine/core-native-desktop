@@ -5,19 +5,15 @@ uniform vec4 u_color;
 varying vec2 v_texCoord;
 uniform vec2 u_texelSize;
 uniform float u_aa_blur;
-uniform float u_aa_wC;
-uniform float u_aa_wN;
 
 void main() {
-    float alpha = texture2D(u_texture, v_texCoord).a;
+    lowp float alpha = texture2D(u_texture, v_texCoord).r;
 
-    if (u_aa_blur > 0.0) {
-        float sum = alpha * u_aa_wC;
-        sum += texture2D(u_texture, v_texCoord + vec2(u_texelSize.x, 0.0) * u_aa_blur).a * u_aa_wN;
-        sum += texture2D(u_texture, v_texCoord - vec2(u_texelSize.x, 0.0) * u_aa_blur).a * u_aa_wN;
-        sum += texture2D(u_texture, v_texCoord + vec2(0.0, u_texelSize.y) * u_aa_blur).a * u_aa_wN;
-        sum += texture2D(u_texture, v_texCoord - vec2(0.0, u_texelSize.y) * u_aa_blur).a * u_aa_wN;
-        alpha = sum;
+    if (u_aa_blur > 0.1) {
+        // Simplified 3-tap blur instead of 5
+        lowp float a2 = texture2D(u_texture, v_texCoord + u_texelSize * u_aa_blur).r;
+        lowp float a3 = texture2D(u_texture, v_texCoord - u_texelSize * u_aa_blur).r;
+        alpha = (alpha * 2.0 + a2 + a3) * 0.25;
     }
 
     gl_FragColor = vec4(u_color.rgb, u_color.a * alpha);

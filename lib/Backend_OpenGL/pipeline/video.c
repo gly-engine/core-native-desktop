@@ -21,12 +21,13 @@ void native_draw_background_video(void) {
     }
 
     int ge_format = f->format;
+    bool needs_upload = gecnd_buffer_check_update(&s->video_update_count);
 
     if (s->video_textures[0] == 0 || s->video_width != f->width || s->video_height != f->height || s->video_format != f->format) {
         s->video_width = f->width; s->video_height = f->height; s->video_format = f->format;
         if (s->video_textures[0] != 0) glDeleteTextures(3, s->video_textures);
         
-        if (ge_format == GE_PIX_FMT_YUV420P) {
+        if (ge_format == GECND_PIX_FMT_YUV420P) {
             glGenTextures(3, s->video_textures);
             for (int i = 0; i < 3; i++) {
                 glBindTexture(GL_TEXTURE_2D, s->video_textures[i]);
@@ -47,14 +48,17 @@ void native_draw_background_video(void) {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             
-            if (ge_format == GE_PIX_FMT_RGB565) {
+            if (ge_format == GECND_PIX_FMT_RGB565) {
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, f->width, f->height, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, f->data[0]);
             } else {
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, f->width, f->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, f->data[0]);
             }
         }
-    } else {
-        if (ge_format == GE_PIX_FMT_YUV420P) {
+        needs_upload = false; // Already uploaded by glTexImage2D
+    }
+
+    if (needs_upload) {
+        if (ge_format == GECND_PIX_FMT_YUV420P) {
             glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
             for (int i = 0; i < 3; i++) {
                 glActiveTexture(GL_TEXTURE0 + i);
@@ -66,13 +70,14 @@ void native_draw_background_video(void) {
         } else {
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, s->video_textures[0]);
-            if (ge_format == GE_PIX_FMT_RGB565) {
+            if (ge_format == GECND_PIX_FMT_RGB565) {
                 glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width, f->height, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, f->data[0]);
             } else {
                 glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width, f->height, GL_RGBA, GL_UNSIGNED_BYTE, f->data[0]);
             }
         }
     }
+
     glUseProgram(s->video_program);
     
     static const float identity[16] = {
@@ -83,12 +88,12 @@ void native_draw_background_video(void) {
     };
     glUniformMatrix4fv(s->video_loc_proj, 1, GL_FALSE, identity);
 
-    if (ge_format == GE_PIX_FMT_YUV420P) {
+    if (ge_format == GECND_PIX_FMT_YUV420P) {
         glUniform1i(s->video_loc_format, 1);
         for(int i=0; i<3; i++) {glActiveTexture(GL_TEXTURE0+i); glBindTexture(GL_TEXTURE_2D, s->video_textures[i]);}
         glUniform1i(s->video_loc_tex_y, 0); glUniform1i(s->video_loc_tex_u, 1); glUniform1i(s->video_loc_tex_v, 2);
     } else {
-        glUniform1i(s->video_loc_format, (ge_format == GE_PIX_FMT_RGB565) ? 2 : 0);
+        glUniform1i(s->video_loc_format, (ge_format == GECND_PIX_FMT_RGB565) ? 2 : 0);
         glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, s->video_textures[0]);
         glUniform1i(s->video_loc_tex_rgba, 0);
     }
