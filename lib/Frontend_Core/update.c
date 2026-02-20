@@ -6,6 +6,7 @@
 #define GLY_HOOK_IMPL
 #include "gehook.h"
 #include "gecnd.h"
+#include "gemetrics.h"
 
 typedef struct {
     FILE *fp;
@@ -193,16 +194,27 @@ bool gecnd_update(gecnd_t * gly)
         if (gly->error_string) break;
         gly->internal |= GECND_INTERNAL_RUNNING;
 
+        gecnd_metrics_start_input();
         callback_keyboard(gly);
+        gecnd_metrics_finish_input();
         if (gly->error_string) break;
 
+        gecnd_metrics_start_loop();
         callback_loop(gly);
+        gecnd_metrics_finish_loop();
         if (gly->error_string) break;
 
         if (gly->frameskip_count++ >= gly->frameskip) {
             gly->frameskip_count = 0;
+            native_draw_start();
+            gecnd_metrics_start_draw();
             callback_draw(gly);
+            gecnd_metrics_finish_draw();
+            gecnd_metrics_render(gly);
+            native_draw_flush();
         }
+        
+        gecnd_metrics_update();
         if (gly->error_string) break;
     }
     while(0);

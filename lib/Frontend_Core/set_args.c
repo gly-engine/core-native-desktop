@@ -5,12 +5,13 @@
 
 #include "gecnd.h"
 #include "gehook.h"
+#include "gemetrics.h"
 
 static ko_longopt_t longopts[] = {
     { "window", ko_required_argument, 300},
     { "screen", ko_required_argument, 301},
     { "fps", ko_required_argument, 302 },
-    { "showfps", ko_required_argument, 303 },
+    { "metrics", ko_required_argument, 303 },
     { "frameskip", ko_required_argument, 304 },
     { "game", ko_required_argument, 305 },
     { "engine", ko_required_argument, 306 },
@@ -49,6 +50,9 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
         }
         if (c == 302 && (sscanf(opt.arg, "%hhi", &gly->target_fps) != 1 || gly->target_fps > 100)) {
             gly->error_string = "invalid fps!";
+        }
+        if (c == 303) {
+            gecnd_metrics_setup((uint32_t)atoi(opt.arg));
         }
         if (c == 304 && (sscanf(opt.arg, "%hhi", &gly->frameskip) != 1 || gly->frameskip > 10)) {
             gly->error_string = "invalid frameskip!";

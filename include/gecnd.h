@@ -68,6 +68,7 @@ bool gecnd_update(gecnd_t * gly);
 void gecnd_set_btn_state(gecnd_t *gly, const char* key, bool state);
 // utils
 uint32_t gecnd_get_delta_ms(void);
+uint64_t gecnd_get_cur_time(void);
 size_t gecnd_utils_get_exe_cwd(char *buffer, size_t max_size);
 size_t gecnd_utils_get_cwd(char *buffer, size_t max_size);
 // filters

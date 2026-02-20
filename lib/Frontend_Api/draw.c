@@ -4,13 +4,13 @@
 #include "gehook.h"
 
 static int lua_native_draw_start(lua_State *L) {
-    native_draw_start();
+    /// @todo check
     lua_settop(L, 0);
     return 0;
 }
 
 static int lua_native_draw_flush(lua_State *L) {
-    native_draw_flush();
+    /// @todo check
     lua_settop(L, 0);
     return 0;
 }
