@@ -46,7 +46,7 @@ void gecnd_metrics_render(gecnd_t *gly)
     if (flags & GECND_METRICS_LUA) r_lines += 2;
 
     int16_t l_lines = 0;
-    if (flags & GECND_METRICS_PERF) l_lines += 5;
+    if (flags & GECND_METRICS_PERF) l_lines += 6;
 
     if (has_bg)
     {
@@ -105,16 +105,17 @@ void gecnd_metrics_render(gecnd_t *gly)
     if (l_lines > 0)
     {
         int16_t ly = margin + (margin / 2);
-        uint32_t io = gecnd_metrics_get_input_time();
+        uint32_t io_worst = gecnd_metrics_get_input_worst();
         uint32_t loop = gecnd_metrics_get_loop_time();
         uint32_t draw = gecnd_metrics_get_draw_time();
         uint32_t post = gecnd_metrics_get_post_time();
         uint32_t tint = gecnd_metrics_get_tint_time();
-        uint32_t total = io + loop + draw + post + tint;
+        uint32_t wait = gecnd_metrics_get_wait_time();
+        uint32_t total = io_worst + loop + draw + post + tint + wait;
 
         if (total > 0)
         {
-            snprintf(buf, sizeof(buf), "IO: %d ms (%.1f%%)", io, (io * 100.0f) / total);
+            snprintf(buf, sizeof(buf), "I/O: %d ms (%.1f%%)", io_worst, (io_worst * 100.0f) / total);
             native_text_print(margin + (margin / 2), ly, buf);
             ly += line_h;
 
@@ -131,6 +132,10 @@ void gecnd_metrics_render(gecnd_t *gly)
             ly += line_h;
 
             snprintf(buf, sizeof(buf), "Tint: %d ms (%.1f%%)", tint, (tint * 100.0f) / total);
+            native_text_print(margin + (margin / 2), ly, buf);
+            ly += line_h;
+
+            snprintf(buf, sizeof(buf), "Wait: %d ms (%.1f%%)", wait, (wait * 100.0f) / total);
             native_text_print(margin + (margin / 2), ly, buf);
         }
     }

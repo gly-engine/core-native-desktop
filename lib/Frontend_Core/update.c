@@ -193,6 +193,7 @@ bool gecnd_update(gecnd_t * gly)
         }
         if (gly->error_string) break;
         gly->internal |= GECND_INTERNAL_RUNNING;
+        gecnd_metrics_finish_wait();
 
         gecnd_metrics_start_input();
         callback_keyboard(gly);
@@ -224,6 +225,7 @@ bool gecnd_update(gecnd_t * gly)
         }
         
         gecnd_metrics_update();
+        gecnd_metrics_start_wait();
         if (gly->error_string) break;
     }
     while(0);
