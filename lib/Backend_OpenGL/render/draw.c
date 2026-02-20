@@ -23,6 +23,7 @@ void native_draw_clear(uint32_t color) {
 
 void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r) {
     GLBackendState *s = geogl_get_state();
+    gecnd_filter_t *filter = gecnd_filter_get_config();
     float v[8] = {(float)x, (float)y, (float)x+w, (float)y, (float)x+w, (float)y+h, (float)x, (float)y+h};
     glUseProgram(s->shape_program);
     glUniformMatrix4fv(s->shape_loc_proj, 1, GL_FALSE, s->projection);
@@ -34,6 +35,7 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
     glUniform1f(s->shape_loc_radius, fr);
     glUniform1i(s->shape_loc_mode, mode);
     glUniform1f(s->shape_loc_thickness, GE_LINE_WIDTH);
+    glUniform1f(s->shape_loc_aa_blur, filter->aa_blur);
     glBindBuffer(GL_ARRAY_BUFFER, s->vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STREAM_DRAW);
     glEnableVertexAttribArray(s->shape_loc_pos);
@@ -44,15 +46,34 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
 
 void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
     GLBackendState *s = geogl_get_state();
-    float v[4] = {(float)x1, (float)y1, (float)x2, (float)y2};
+    gecnd_filter_t *filter = gecnd_filter_get_config();
+    
+    float dx = (float)(x2 - x1);
+    float dy = (float)(y2 - y1);
+    float len = sqrtf(dx * dx + dy * dy);
+    if (len < 0.0001f) return;
+    
+    float nx = -dy / len;
+    float ny = dx / len;
+    float w = GE_LINE_WIDTH / 2.0f + 1.0f; // Add padding for AA
+
+    float v[8] = {
+        (float)x1 + nx * w, (float)y1 + ny * w,
+        (float)x2 + nx * w, (float)y2 + ny * w,
+        (float)x2 - nx * w, (float)y2 - ny * w,
+        (float)x1 - nx * w, (float)y1 - ny * w
+    };
+
     glUseProgram(s->line_program);
     glUniformMatrix4fv(s->line_loc_proj, 1, GL_FALSE, s->projection);
     glUniform4fv(s->line_loc_color, 1, s->current_color);
-    glLineWidth(GE_LINE_WIDTH);
+    glUniform1f(s->line_loc_thickness, GE_LINE_WIDTH);
+    glUniform1f(s->line_loc_aa_blur, filter->aa_blur);
+    
     glBindBuffer(GL_ARRAY_BUFFER, s->vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STREAM_DRAW);
     glEnableVertexAttribArray(s->line_loc_pos);
     glVertexAttribPointer(s->line_loc_pos, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
-    glDrawArrays(GL_LINES, 0, 2);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     glDisableVertexAttribArray(s->line_loc_pos);
 }

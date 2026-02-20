@@ -90,6 +90,7 @@ void init_all_shaders(bool gles) {
     s->shape_loc_radius = glGetUniformLocation(s->shape_program, "u_radius");
     s->shape_loc_mode = glGetUniformLocation(s->shape_program, "u_mode");
     s->shape_loc_thickness = glGetUniformLocation(s->shape_program, "u_thickness");
+    s->shape_loc_aa_blur = glGetUniformLocation(s->shape_program, "u_aa_blur");
 
     shader_src_t ls_vs_gl = SHADER(shadder_gl_line_vert);
     shader_src_t ls_fs_gl = SHADER(shadder_gl_line_frag);
@@ -99,6 +100,8 @@ void init_all_shaders(bool gles) {
     s->line_loc_pos = glGetAttribLocation(s->line_program, "a_pos");
     s->line_loc_proj = glGetUniformLocation(s->line_program, "u_projection");
     s->line_loc_color = glGetUniformLocation(s->line_program, "u_color");
+    s->line_loc_thickness = glGetUniformLocation(s->line_program, "u_thickness");
+    s->line_loc_aa_blur = glGetUniformLocation(s->line_program, "u_aa_blur");
 
     shader_src_t ts_vs_gl = SHADER(shadder_gl_tex_vert);
     shader_src_t ts_fs_gl = SHADER(shadder_gl_tex_frag);
@@ -143,6 +146,10 @@ void init_all_shaders(bool gles) {
     s->font_loc_proj = glGetUniformLocation(s->font_program, "u_projection");
     s->font_loc_sampler = glGetUniformLocation(s->font_program, "u_texture");
     s->font_loc_color = glGetUniformLocation(s->font_program, "u_color");
+    s->font_loc_tsize = glGetUniformLocation(s->font_program, "u_texelSize");
+    s->font_loc_aa_blur = glGetUniformLocation(s->font_program, "u_aa_blur");
+    s->font_loc_aa_wC = glGetUniformLocation(s->font_program, "u_aa_wC");
+    s->font_loc_aa_wN = glGetUniformLocation(s->font_program, "u_aa_wN");
 
     shader_src_t as_vs_gl = SHADER(shadder_gl_post_vert);
     shader_src_t as_fs_gl = SHADER(shadder_gl_post_frag);
@@ -154,9 +161,6 @@ void init_all_shaders(bool gles) {
     s->post_loc_proj = glGetUniformLocation(s->post_program, "u_projection");
     s->post_loc_sampler = glGetUniformLocation(s->post_program, "u_texture");
     s->post_loc_tsize = glGetUniformLocation(s->post_program, "u_texelSize");
-    s->post_loc_blur = glGetUniformLocation(s->post_program, "u_aa_blur");
-    s->post_loc_wC = glGetUniformLocation(s->post_program, "u_aa_wC");
-    s->post_loc_wN = glGetUniformLocation(s->post_program, "u_aa_wN");
     s->post_loc_rotation = glGetUniformLocation(s->post_program, "u_rotation");
     s->post_loc_center = glGetUniformLocation(s->post_program, "u_center");
     s->post_loc_crt = glGetUniformLocation(s->post_program, "u_crt");

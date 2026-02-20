@@ -68,11 +68,14 @@ typedef struct {
     GLint shape_loc_radius;
     GLint shape_loc_mode;
     GLint shape_loc_thickness;
+    GLint shape_loc_aa_blur;
 
     GLuint line_program;
     GLint line_loc_pos;
     GLint line_loc_proj;
     GLint line_loc_color;
+    GLint line_loc_thickness;
+    GLint line_loc_aa_blur;
 
     GLuint texture_program;
     GLint texture_loc_pos;
@@ -105,6 +108,10 @@ typedef struct {
     GLint  font_loc_proj;
     GLint  font_loc_sampler;
     GLint  font_loc_color;
+    GLint font_loc_tsize;
+    GLint font_loc_aa_blur;
+    GLint font_loc_aa_wC;
+    GLint font_loc_aa_wN;
 
     GLuint post_program;
     GLint  post_loc_pos;
@@ -112,9 +119,6 @@ typedef struct {
     GLint  post_loc_proj;
     GLint  post_loc_sampler;
     GLint  post_loc_tsize;
-    GLint  post_loc_blur;
-    GLint  post_loc_wC;
-    GLint  post_loc_wN;
     GLint  post_loc_rotation;
     GLint  post_loc_center;
     GLint  post_loc_crt;

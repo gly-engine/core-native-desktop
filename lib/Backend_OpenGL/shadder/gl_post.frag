@@ -1,10 +1,6 @@
 #version 120
 uniform sampler2D u_texture;
 varying vec2 v_texCoord;
-uniform vec2 u_texelSize;
-uniform float u_aa_blur;
-uniform float u_aa_wC;
-uniform float u_aa_wN;
 uniform float u_crt;
 uniform float u_time;
 
@@ -45,14 +41,5 @@ void main() {
         color = texture2D(u_texture, uv);
     }
     
-    if (u_aa_blur > 0.0) {
-        vec4 sum = color * u_aa_wC;
-        sum += texture2D(u_texture, uv + vec2(u_texelSize.x, 0.0) * u_aa_blur) * u_aa_wN;
-        sum += texture2D(u_texture, uv - vec2(u_texelSize.x, 0.0) * u_aa_blur) * u_aa_wN;
-        sum += texture2D(u_texture, uv + vec2(0.0, u_texelSize.y) * u_aa_blur) * u_aa_wN;
-        sum += texture2D(u_texture, uv - vec2(0.0, u_texelSize.y) * u_aa_blur) * u_aa_wN;
-        color = sum;
-    }
-
     gl_FragColor = color;
 }

@@ -3,6 +3,7 @@ uniform vec4 u_color;
 uniform vec4 u_rect;      // x, y, width, height
 uniform float u_radius;
 uniform float u_thickness;
+uniform float u_aa_blur;
 uniform int u_mode;      // 0 for filled, 1 for line
 varying vec2 v_pos;
 
@@ -17,7 +18,7 @@ void main() {
 
     float dist = sdRoundedBox(v_pos - center, size / 2.0, u_radius);
     
-    float smooth_edge = 1.5;
+    float smooth_edge = 1.0 + u_aa_blur;
     float alpha = clamp(0.5 - dist / smooth_edge, 0.0, 1.0);
     
     if (u_mode == 1) { // line

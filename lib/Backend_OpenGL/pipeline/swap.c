@@ -27,14 +27,8 @@ void ge_pipeline_flush(void) {
     mat4_ortho(ortho, 0, (float)s->window_width, (float)s->window_height, 0, -1, 1);
     glUniformMatrix4fv(s->post_loc_proj, 1, GL_FALSE, ortho);
     
-    // AA uniforms
-    glUniform1f(s->post_loc_blur, filter->aa_blur);
-    glUniform1f(s->post_loc_wC, filter->aa_weight_center);
-    glUniform1f(s->post_loc_wN, filter->aa_weight_neighbor);
     glUniform2f(s->post_loc_tsize, 1.0f / (float)s->window_width, 1.0f / (float)s->window_height);
     
-    // Rotation uniforms (Pivot is always center)
-    // Convert degrees to radians if the filter stores degrees
     float rad = filter->rotation * 3.14159265f / 180.0f;
     glUniform1f(s->post_loc_rotation, rad);
     glUniform2f(s->post_loc_center, (float)s->window_width / 2.0f, (float)s->window_height / 2.0f);

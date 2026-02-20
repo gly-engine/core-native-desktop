@@ -84,6 +84,12 @@ static void glfons__renderDraw(void* userPtr, const float* verts, const float* t
     glUniform1i(state->font_loc_sampler, 0);
     glUniform4fv(state->font_loc_color, 1, state->current_color);
 
+    gecnd_filter_t *filter = gecnd_filter_get_config();
+    glUniform2f(state->font_loc_tsize, 1.0f / (float)gl->width, 1.0f / (float)gl->height);
+    glUniform1f(state->font_loc_aa_blur, filter->aa_blur);
+    glUniform1f(state->font_loc_aa_wC, filter->aa_weight_center);
+    glUniform1f(state->font_loc_aa_wN, filter->aa_weight_neighbor);
+
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, gl->tex);
     glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
