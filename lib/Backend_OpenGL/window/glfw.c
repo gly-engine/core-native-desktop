@@ -128,6 +128,7 @@ void gly_hook_display_close(void) {
     if (s->post_fbo_texture) glDeleteTextures(1, &s->post_fbo_texture);
     if (s->video_textures[0]) glDeleteTextures(3, s->video_textures);
     kv_destroy(s->textures);
+    gecnd_buffer_free();
     native_text_terminate();
     platform_terminate();
 }

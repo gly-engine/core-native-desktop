@@ -1,7 +1,5 @@
 #include <string.h>
 
-#include <libavutil/pixfmt.h>
-
 #include "gefilter.h"
 #include "gehook.h"
 #include "gemedia.h"
@@ -9,7 +7,8 @@
 
 void native_draw_background_video(void) {
     GLBackendState *s = geogl_get_state();
-    MediaFrame *f = avlib_get_background_frame();
+    MediaFrame *f = gecnd_get_background_frame();
+    
     if (!f || !f->data[0]) {
         if (s->video_textures[0] != 0) {
             glDeleteTextures(3, s->video_textures);
@@ -20,11 +19,14 @@ void native_draw_background_video(void) {
         glClear(GL_COLOR_BUFFER_BIT);
         return;
     }
-    bool yuv = (f->format == AV_PIX_FMT_YUV420P);
+
+    int ge_format = f->format;
+
     if (s->video_textures[0] == 0 || s->video_width != f->width || s->video_height != f->height || s->video_format != f->format) {
         s->video_width = f->width; s->video_height = f->height; s->video_format = f->format;
         if (s->video_textures[0] != 0) glDeleteTextures(3, s->video_textures);
-        if (yuv) {
+        
+        if (ge_format == GE_PIX_FMT_YUV420P) {
             glGenTextures(3, s->video_textures);
             for (int i = 0; i < 3; i++) {
                 glBindTexture(GL_TEXTURE_2D, s->video_textures[i]);
@@ -44,10 +46,15 @@ void native_draw_background_video(void) {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, f->width, f->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, f->data[0]);
+            
+            if (ge_format == GE_PIX_FMT_RGB565) {
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, f->width, f->height, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, f->data[0]);
+            } else {
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, f->width, f->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, f->data[0]);
+            }
         }
     } else {
-        if (yuv) {
+        if (ge_format == GE_PIX_FMT_YUV420P) {
             glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
             for (int i = 0; i < 3; i++) {
                 glActiveTexture(GL_TEXTURE0 + i);
@@ -59,7 +66,11 @@ void native_draw_background_video(void) {
         } else {
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, s->video_textures[0]);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width, f->height, GL_RGBA, GL_UNSIGNED_BYTE, f->data[0]);
+            if (ge_format == GE_PIX_FMT_RGB565) {
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width, f->height, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, f->data[0]);
+            } else {
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width, f->height, GL_RGBA, GL_UNSIGNED_BYTE, f->data[0]);
+            }
         }
     }
     glUseProgram(s->video_program);
@@ -72,12 +83,12 @@ void native_draw_background_video(void) {
     };
     glUniformMatrix4fv(s->video_loc_proj, 1, GL_FALSE, identity);
 
-    if (yuv) {
+    if (ge_format == GE_PIX_FMT_YUV420P) {
         glUniform1i(s->video_loc_format, 1);
         for(int i=0; i<3; i++) {glActiveTexture(GL_TEXTURE0+i); glBindTexture(GL_TEXTURE_2D, s->video_textures[i]);}
         glUniform1i(s->video_loc_tex_y, 0); glUniform1i(s->video_loc_tex_u, 1); glUniform1i(s->video_loc_tex_v, 2);
     } else {
-        glUniform1i(s->video_loc_format, 0);
+        glUniform1i(s->video_loc_format, (ge_format == GE_PIX_FMT_RGB565) ? 2 : 0);
         glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, s->video_textures[0]);
         glUniform1i(s->video_loc_tex_rgba, 0);
     }

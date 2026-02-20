@@ -37,6 +37,8 @@ void main() {
     lowp float g = y - 0.344136 * u - 0.714136 * v;
     lowp float b = y + 1.772 * u;
     color = vec4(r, g, b, 1.0);
+  } else if (format == 2) {
+    color = texture2D(tex_rgba, uv);
   } else {
     color = texture2D(tex_rgba, uv);
   }
