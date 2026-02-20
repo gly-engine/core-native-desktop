@@ -63,8 +63,9 @@ option(GECND_USE_LUA51 "prefer lua 5.1 instead lua 5.4" OFF)
 
 # Lua JIT
 set(LUAJIT_VERSION "2.0.5")
-set(LUAJIT_DIR "${CMAKE_SOURCE_DIR}/vendor/luajit/luajit")
-set(LUAJIT_LIB "${CMAKE_SOURCE_DIR}/vendor/luajit/luajit/src/libluajit.a")
+set(LUAJIT_DIR "${CMAKE_SOURCE_DIR}/vendor/lua/luajit")
+set(LUAJIT_LIB1 "${CMAKE_SOURCE_DIR}/vendor/lua/luajit/src/libluajit.a")
+set(LUAJIT_LIB2 "${CMAKE_BINARY_DIR}/libluajit.a")
 set(LUAJIT_DOWNLOAD "https://github.com/luajit/luajit/archive/refs/tags/v${LUAJIT_VERSION}.tar.gz")
 option(GECND_USE_LUAJIT "prefer lua jit instead lua 5.4" OFF)
 
@@ -262,19 +263,42 @@ endif()
 
 if(GECND_USE_LUAJIT)
     FetchContent_Populate(dep_luajit URL "${LUAJIT_DOWNLOAD}" SOURCE_DIR ${LUAJIT_DIR})
-    add_custom_command(
-        OUTPUT ${LUAJIT_LIB}
-        COMMAND make
-        WORKING_DIRECTORY ${LUAJIT_DIR}
-        COMMENT "Building LuaJIT (static)"
-    )
-    add_custom_target(
-        luajit-build
-        DEPENDS ${LUAJIT_LIB}
-    )
+    if(TARGET)
+        add_library(gcc_float STATIC ${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Compat/gcc_float.c)
+        target_link_libraries(gcc_float PRIVATE gecnd_cc_flags)
+        target_link_libraries(${PROJECT_NAME} PRIVATE gcc_float)
+        add_custom_command(
+            OUTPUT ${LUAJIT_LIB2}
+            COMMAND make
+                HOST_CC=${ZIG_DIR}/zig-cc-host
+                HOST_CFLAGS="--target=x86-linux-musl"
+                HOST_LDFLAGS="--target=x86-linux-musl"
+                CC=${ZIG_DIR}/zig-cc
+                XCFLAGS="-DLUAJIT_NO_UNWIND"
+                TARGET_SYS=Linux
+                TARGET_STRIP=eu-strip
+                TARGET_LDFLAGS="$<TARGET_FILE:gcc_float>"
+                BUILDMODE=static
+            COMMAND ${CMAKE_COMMAND} -E rename ${LUAJIT_LIB1} "${LUAJIT_LIB2}"
+            COMMAND make clean
+            WORKING_DIRECTORY ${LUAJIT_DIR}
+            COMMENT "Building LuaJIT (static)"
+            DEPENDS gcc_float
+        )
+    else()
+        add_custom_command(
+            OUTPUT ${LUAJIT_LIB2}
+            COMMAND make
+            COMMAND ${CMAKE_COMMAND} -E rename ${LUAJIT_LIB1} "${LUAJIT_LIB2}"
+            COMMAND make clean
+            WORKING_DIRECTORY ${LUAJIT_DIR}
+            COMMENT "Building LuaJIT (static)"
+        )
+    endif()
+    add_custom_target(luajit-build DEPENDS ${LUAJIT_LIB2})   
     add_library(luajit-static STATIC IMPORTED GLOBAL)
     set_target_properties(luajit-static PROPERTIES
-        IMPORTED_LOCATION ${LUAJIT_LIB}
+        IMPORTED_LOCATION ${LUAJIT_LIB2}
         INTERFACE_INCLUDE_DIRECTORIES ${LUAJIT_DIR}/src
     )
     add_dependencies(luajit-static luajit-build)
