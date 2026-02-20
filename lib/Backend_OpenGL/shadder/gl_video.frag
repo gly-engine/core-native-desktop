@@ -36,6 +36,14 @@ void main() {
     float g = y - 0.344136 * u - 0.714136 * v;
     float b = y + 1.772 * u;
     color = vec4(r, g, b, 1.0);
+  } else if (format == 2) {
+    // RGB565 from GL_UNSIGNED_SHORT_5_6_5
+    // Most drivers will already have decoded this to RGBA, but we'll use format=2 to identify it.
+    // If the driver doesn't decode it, we might need manual decoding if we pass as RAW bytes.
+    // However, glTexImage2D with GL_UNSIGNED_SHORT_5_6_5 usually does the job.
+    // If we want to be sure and perform manual decoding, we'd need to pass it as Luminance/Alpha
+    // or similar. Let's assume GL_UNSIGNED_SHORT_5_6_5 works for now.
+    color = texture2D(tex_rgba, uv);
   } else {
     color = texture2D(tex_rgba, uv);
   }

@@ -12,19 +12,25 @@ static inline double now_sec(void) {
     return AV.av_gettime_relative() / 1e6;
 }
 
-static void frame_alloc(MediaFrame *f, int w, int h, int format) {
+static void frame_alloc(MediaFrame *f, int w, int h, int av_format) {
     f->width = w;
     f->height = h;
-    f->format = format;
     
-    int size = AV.av_image_get_buffer_size(format, w, h, 1);
+    // Map AV format to GE format
+    if (av_format == AV_PIX_FMT_YUV420P) {
+        f->format = GE_PIX_FMT_YUV420P;
+    } else {
+        f->format = GE_PIX_FMT_RGBA8888;
+    }
+    
+    int size = AV.av_image_get_buffer_size(av_format, w, h, 1);
     if (size < 0) {
-        fprintf(stderr, "[ffmpeg] Failed to get buffer size for format %d\n", format);
+        fprintf(stderr, "[ffmpeg] Failed to get buffer size for format %d\n", av_format);
         f->data[0] = NULL;
         return;
     }
     f->data[0] = malloc(size);
-    AV.av_image_fill_arrays(f->data, f->linesize, f->data[0], format, w, h, 1);
+    AV.av_image_fill_arrays(f->data, f->linesize, f->data[0], av_format, w, h, 1);
     
     atomic_store(&f->ready, false);
 }
@@ -41,7 +47,8 @@ static void frame_free(MediaFrame *f) {
 static void frame_copy(AVFrame *src, MediaFrame *dst) {
     // av_image_copy_to_buffer is a good candidate, but let's do it manually
     // to be sure about plane layout.
-    for (int i = 0; i < 4; ++i) {
+    int num_planes = (dst->format == GE_PIX_FMT_YUV420P) ? 3 : 1;
+    for (int i = 0; i < num_planes; ++i) {
         if (!src->data[i] || !dst->data[i]) continue;
         
         int h = (i == 1 || i == 2) ? src->height / 2 : src->height;
@@ -49,8 +56,13 @@ static void frame_copy(AVFrame *src, MediaFrame *dst) {
             memcpy(dst->data[i], src->data[i], src->linesize[i] * h);
         } else {
             // Copy row by row if linesizes are different
+            int dst_stride = dst->linesize[i];
+            int src_stride = src->linesize[i];
+            int copy_w = (i == 1 || i == 2) ? dst->width / 2 : dst->width;
+            if (dst->format == GE_PIX_FMT_RGBA8888) copy_w *= 4;
+            
             for (int y = 0; y < h; ++y) {
-                memcpy(dst->data[i] + y * dst->linesize[i], src->data[i] + y * src->linesize[i], dst->linesize[i]);
+                memcpy(dst->data[i] + y * dst_stride, src->data[i] + y * src_stride, copy_w);
             }
         }
     }

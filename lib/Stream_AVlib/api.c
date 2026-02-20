@@ -63,4 +63,3 @@ MediaFrame* avlib_get_background_frame(void) {
     }
     return NULL;
 }
-

@@ -181,6 +181,9 @@ static void callback_draw(gecnd_t *gly) {
     }
 }
 
+extern void libretro_run_frame(void);
+extern bool gecnd_is_emulator_running(void);
+
 bool gecnd_update(gecnd_t * gly)
 {
     bool should_close = false;
@@ -194,6 +197,10 @@ bool gecnd_update(gecnd_t * gly)
         if (gly->error_string) break;
         gly->internal |= GECND_INTERNAL_RUNNING;
         gecnd_metrics_finish_wait();
+
+        if (gecnd_is_emulator_running()) {
+            libretro_run_frame();
+        }
 
         gecnd_metrics_start_input();
         callback_keyboard(gly);
