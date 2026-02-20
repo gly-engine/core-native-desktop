@@ -58,6 +58,11 @@ static void callback_init(gecnd_t *gly) {
     do {
         gly_hook_display_init(gly->width, gly->height);
 
+        if (gly->window_width == 0 || gly->window_height == 0) {
+            gly->window_width = gly->width;
+            gly->window_height = gly->height;
+        }
+
         if(gly == gecnd_get_root()) {
             if (gencd_filter_is_zero_corners()) {
                 gecnd_filter_reset_corners();

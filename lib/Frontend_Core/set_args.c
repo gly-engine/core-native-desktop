@@ -7,6 +7,7 @@
 #include "gehook.h"
 
 static ko_longopt_t longopts[] = {
+    { "window", ko_required_argument, 300},
     { "screen", ko_required_argument, 301},
     { "fps", ko_required_argument, 302 },
     { "showfps", ko_required_argument, 303 },
@@ -40,6 +41,9 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
     int c;
 
     while ((c = ketopt(&opt, argc, argv, 1, "s:", longopts)) >= 0) {
+        if (c == 301 && sscanf(opt.arg, "%hdx%hd", &gly->window_height, &gly->window_width) != 2) {
+            gly->error_string = "invalid window size!";
+        }
         if (c == 301 && sscanf(opt.arg, "%hdx%hd", &gly->width, &gly->height) != 2) {
             gly->error_string = "invalid screen size!";
         }

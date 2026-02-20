@@ -39,6 +39,8 @@ typedef struct {
     uint8_t internal;
     int16_t width;
     int16_t height;
+    int16_t window_width;
+    int16_t window_height;
     int16_t delta_time;
     int ref_native_callback_init;
     int ref_native_callback_loop;
