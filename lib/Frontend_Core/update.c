@@ -64,7 +64,7 @@ static void callback_init(gecnd_t *gly) {
             gly->window_height = gly->height;
         }
 
-        if(gly == gecnd_get_root()) {
+        if(gecnd_is_root(gly)) {
             if (gencd_filter_is_zero_corners()) {
                 gecnd_filter_reset_corners();
             }
@@ -208,7 +208,11 @@ bool gecnd_update(gecnd_t * gly)
             gly->frameskip_count = 0;
             native_draw_start();
             gecnd_metrics_start_draw();
+            gly->want_blit = true;
             callback_draw(gly);
+            if (gly->want_blit) {
+                gly->error_string = "[error] engine want blit!\n";
+            }
             gecnd_metrics_finish_draw();
             gecnd_metrics_render(gly);
             native_draw_flush();

@@ -111,6 +111,10 @@ void gecnd_destroy(gecnd_t *gly) {
     }
 }
 
+bool gecnd_is_root(gecnd_t *gly) {
+    return gly != NULL && gly == instance;    
+}
+
 gecnd_t *gecnd_get_root() {
     return instance;
 }

@@ -41,6 +41,7 @@ typedef struct {
     int ref_native_callback_loop;
     int ref_native_callback_draw;
     int ref_native_callback_keyboard;
+    bool want_blit;
     char *lua_game_code;
     char *lua_engine_code;
     const char* error_string;
@@ -49,6 +50,7 @@ typedef struct {
 // instance
 gecnd_t *gecnd_new(lua_State* L);
 gecnd_t *gecnd_get_root();
+bool gecnd_is_root(gecnd_t *gly);
 void gecnd_destroy(gecnd_t *gly);
 
 // configure

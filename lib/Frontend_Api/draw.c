@@ -1,16 +1,17 @@
 #include <lauxlib.h>
 #include <lua.h>
 
+#include "gecnd.h"
 #include "gehook.h"
 
 static int lua_native_draw_start(lua_State *L) {
-    /// @todo check
-    lua_settop(L, 0);
     return 0;
 }
 
 static int lua_native_draw_flush(lua_State *L) {
-    /// @todo check
+    lua_rawgeti(L, LUA_REGISTRYINDEX, GLY_REGISTRYINDEX);
+    gecnd_t *gly = lua_touserdata(L, -1);
+    gly->want_blit = false;
     lua_settop(L, 0);
     return 0;
 }
