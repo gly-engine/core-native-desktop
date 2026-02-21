@@ -4,6 +4,7 @@
 #include "gecnd.h"
 #include "gehook.h"
 #include "geopengl.h"
+#include "gebuffer.h"
 
 static GLBackendState g_gl_state;
 
@@ -94,12 +95,11 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     bool gles = ver && strstr(ver, "OpenGL ES");
     kv_init(s->textures);
     init_all_shaders(gles);
-    glGenBuffers(1, &s->vbo);
+    ge_pipeline_init(width, height);
     glGenBuffers(1, &s->video_vbo);
     glGenBuffers(1, &s->post_vbo);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    ge_pipeline_init(width, height);
     native_draw_color(0xFFFFFFFF);
     native_draw_clear(0x1A2B3CFF);
     mat4_ortho(s->projection, 0, width, height, 0, -1, 1);
@@ -114,7 +114,7 @@ void gly_hook_display_dt(int16_t *delta_time) {
 }
 
 void gly_hook_should_close(bool *should_close) {
-    if (glfwWindowShouldClose) {
+    if (geogl_get_state()->window) {
         *should_close = glfwWindowShouldClose(geogl_get_state()->window);
     }
 }
@@ -122,12 +122,13 @@ void gly_hook_should_close(bool *should_close) {
 void gly_hook_display_close(void) {
     GLBackendState *s = geogl_get_state();
     terminate_all_shaders();
-    glDeleteBuffers(1, &s->vbo);
+    if (s->vbos[0]) glDeleteBuffers(3, s->vbos);
     glDeleteBuffers(1, &s->video_vbo);
     glDeleteBuffers(1, &s->post_vbo);
     if (s->post_fbo) glDeleteFramebuffers(1, &s->post_fbo);
     if (s->post_fbo_texture) glDeleteTextures(1, &s->post_fbo_texture);
     if (s->video_textures[0]) glDeleteTextures(3, s->video_textures);
+    if (s->atlas_id) glDeleteTextures(1, &s->atlas_id);
     kv_destroy(s->textures);
     gecnd_buffer_free();
     native_text_terminate();

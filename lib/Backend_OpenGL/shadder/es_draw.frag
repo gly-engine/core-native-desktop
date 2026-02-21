@@ -1,39 +1,31 @@
 #version 100
 precision mediump float;
 
-varying vec2 v_pos;
 varying vec2 v_uv;
 varying vec4 v_color;
-varying vec4 v_rect;
-varying vec3 v_data; // x=radius, y=border, z=outline
+varying vec2 v_local;
+varying vec2 v_size;
+varying vec2 v_sdf;
 
 uniform sampler2D u_atlas;
 
-float roundedBox(vec2 p, vec2 size, float r) {
-    vec2 b = size * 0.5;
-    vec2 d = abs(p) - (b - vec2(r));
-    return length(max(d, 0.0)) - r;
-}
-
 void main() {
+    // lowp for colors and textures is much faster on Mali-400
     vec4 tex = texture2D(u_atlas, v_uv);
+    vec4 color = v_color;
+    float alpha = tex.a * color.a;
     
-    float alpha = tex.a * v_color.a;
+    vec2 halfSize = v_size * 0.5;
+    vec2 p = v_local * halfSize;
+    vec2 d = abs(p) - halfSize + v_sdf.x;
+    float dist = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - v_sdf.x;
     
-    // Only apply SDF if rect has size (shapes)
-    if (v_rect.z > 0.0) {
-        vec2 center = v_rect.xy + v_rect.zw * 0.5;
-        vec2 p = v_pos - center;
-        float dist = roundedBox(p, v_rect.zw, v_data.x);
-        float aa = 1.0;
-        
-        float fillMask = 1.0 - smoothstep(0.0, aa, dist);
-        float borderDist = abs(dist) - v_data.y;
-        float outlineMask = 1.0 - smoothstep(0.0, aa, borderDist);
-        
-        float shapeMask = mix(fillMask, outlineMask, step(0.5, v_data.z));
-        alpha *= shapeMask;
-    }
+    float fillMask = clamp(0.5 - dist, 0.0, 1.0);
+    float border = v_sdf.y;
+    float outlineMask = clamp(0.5 - (abs(dist + border*0.5) - border*0.5), 0.0, 1.0);
+    
+    float shapeMask = mix(fillMask, outlineMask, step(0.001, border));
+    alpha *= mix(1.0, shapeMask, step(0.001, v_size.x));
 
-    gl_FragColor = vec4(tex.rgb * v_color.rgb, alpha);
+    gl_FragColor = vec4(tex.rgb * color.rgb, alpha);
 }

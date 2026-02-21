@@ -79,14 +79,7 @@ void native_draw_background_video(void) {
     }
 
     glUseProgram(s->video_program);
-    
-    static const float identity[16] = {
-        1,0,0,0,
-        0,1,0,0,
-        0,0,1,0,
-        0,0,0,1
-    };
-    glUniformMatrix4fv(s->video_loc_proj, 1, GL_FALSE, identity);
+    glUniformMatrix4fv(s->video_loc_proj, 1, GL_FALSE, s->projection);
 
     if (ge_format == GECND_PIX_FMT_YUV420P) {
         glUniform1i(s->video_loc_format, 1);

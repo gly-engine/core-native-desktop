@@ -11,7 +11,7 @@
 
 #include "gecnd/notosans.h"
 
-#define MAX_VERTICES ((512 * 1024) / sizeof(GEDrawVertex))
+#define MAX_VERTICES (GE_BATCH_SIZE / sizeof(GEDrawVertex))
 
 struct GLFONScontext {
     GLuint tex;
@@ -26,27 +26,21 @@ static GLFONScontext* g_glfons = NULL;
 static int glfons__renderCreate(void* userPtr, int width, int height) {
     GLFONScontext* gl = (GLFONScontext*)userPtr;
     GLBackendState *s = geogl_get_state();
-    gl->width = width;
-    gl->height = height;
-    gl->tex = s->atlas_id; // Use Mega Atlas
+    gl->width = width; gl->height = height;
+    gl->tex = s->atlas_id;
     return 1;
 }
 
 static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* data) {
     GLFONScontext* gl = (GLFONScontext*)userPtr;
     GLBackendState *s = geogl_get_state();
-
     int x = rect[0], y = rect[1], w = rect[2] - rect[0], h = rect[3] - rect[1];
     if (w <= 0 || h <= 0) return;
-
     if (s->batch_count > 0) ge_pipeline_flush_primitives();
-
     size_t needed = (size_t)(w * h * 4);
     if (gl->scratch_size < needed) {
-        gl->scratch = realloc(gl->scratch, needed);
-        gl->scratch_size = needed;
+        gl->scratch = realloc(gl->scratch, needed); gl->scratch_size = needed;
     }
-
     for (int row = 0; row < h; row++) {
         const unsigned char* src = data + (y + row) * gl->width + x;
         unsigned char* dst = (unsigned char*)gl->scratch + row * w * 4;
@@ -54,10 +48,8 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
             dst[col*4+0] = 255; dst[col*4+1] = 255; dst[col*4+2] = 255; dst[col*4+3] = src[col];
         }
     }
-
     glBindTexture(GL_TEXTURE_2D, gl->tex);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    // Write to reserved region (0,0)
     glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, gl->scratch);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
@@ -65,24 +57,18 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
 static void glfons__renderDraw(void* userPtr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts) {
     if (nverts == 0) return;
     GLBackendState *s = geogl_get_state();
-
     if (s->batch_count + nverts >= MAX_VERTICES) ge_pipeline_flush_primitives();
-
-    // Scale factor for UVs (1024 -> 4096)
-    float uv_scale = 1024.0f / 4096.0f;
-
+    float uv_scale = 1024.0f / (float)s->atlas_width; 
     for (int i = 0; i < nverts; i++) {
-        uint8_t c[4];
+        float c[4];
         unsigned int col = colors[i];
-        c[0] = (uint8_t)(col & 0xFF);
-        c[1] = (uint8_t)((col >> 8) & 0xFF);
-        c[2] = (uint8_t)((col >> 16) & 0xFF);
-        c[3] = (uint8_t)((col >> 24) & 0xFF);
-        
+        c[0] = (float)(col & 0xFF) / 255.0f;
+        c[1] = (float)((col >> 8) & 0xFF) / 255.0f;
+        c[2] = (float)((col >> 16) & 0xFF) / 255.0f;
+        c[3] = (float)((col >> 24) & 0xFF) / 255.0f;
         float u = tcoords[i*2] * uv_scale;
         float v = tcoords[i*2+1] * uv_scale;
-        
-        ge_batch_add_vertex(verts[i*2], verts[i*2+1], u, v, c, NULL, NULL);
+        ge_batch_add_vertex(verts[i*2], verts[i*2+1], u, v, c, 0,0, 0,0, 0,0);
     }
 }
 
@@ -97,7 +83,6 @@ FONScontext* glfonsCreate(int width, int height, int flags) {
     g_glfons = (GLFONScontext*)malloc(sizeof(GLFONScontext));
     if (g_glfons == NULL) return NULL;
     memset(g_glfons, 0, sizeof(GLFONScontext));
-
     memset(&params, 0, sizeof(params));
     params.width = width; params.height = height; params.flags = (unsigned char)flags;
     params.renderCreate = glfons__renderCreate;
@@ -105,15 +90,12 @@ FONScontext* glfonsCreate(int width, int height, int flags) {
     params.renderDraw = glfons__renderDraw;
     params.renderDelete = glfons__renderDelete;
     params.userPtr = g_glfons;
-
     return fonsCreateInternal(&params);
 }
 
 void glfonsDelete(FONScontext* ctx) {
     fonsDeleteInternal(ctx);
-    if (g_glfons) {
-        free(g_glfons); g_glfons = NULL;
-    }
+    if (g_glfons) { free(g_glfons); g_glfons = NULL; }
 }
 
 unsigned int glfonsRGBA(unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
@@ -156,13 +138,11 @@ void native_text_print(int16_t x, int16_t y, const char *text) {
     if (!text || !initialized) return;
     ensure_font_loaded();
     if (fs_font == FONS_INVALID) return;
-
     GLBackendState *state = geogl_get_state();
     uint8_t r = (uint8_t)(state->current_color[0] * 255.0f);
     uint8_t g = (uint8_t)(state->current_color[1] * 255.0f);
     uint8_t b = (uint8_t)(state->current_color[2] * 255.0f);
     uint8_t a = (uint8_t)(state->current_color[3] * 255.0f);
-
     fonsSetSize(fs, current_size);
     fonsSetFont(fs, fs_font);
     fonsSetColor(fs, glfonsRGBA(r,g,b,a));
