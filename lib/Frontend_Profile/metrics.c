@@ -31,9 +31,11 @@ typedef struct
     uint16_t fps_immediate;
     uint16_t fps_worst;
     uint16_t fps_percent;
+    uint16_t fps_drops;
 
     uint32_t current_sec_good_frames;
     uint16_t current_sec_worst_fps;
+    uint32_t current_sec_drops;
     uint64_t last_frame_time;
 
     uint32_t input_worst_cur_sec;
@@ -190,6 +192,12 @@ void gecnd_metrics_update(void)
         state.current_sec_good_frames++;
     }
 
+    uint16_t ref = state.fps_average > 0 ? state.fps_average : target;
+    if (state.fps_immediate < (ref - 2))
+    {
+        state.current_sec_drops++;
+    }
+
     if (state.fps_immediate < state.current_sec_worst_fps || state.current_sec_worst_fps == 0)
     {
         state.current_sec_worst_fps = state.fps_immediate;
@@ -217,6 +225,7 @@ void gecnd_metrics_update(void)
     {
         state.fps_average = state.frame_count;
         state.fps_worst = state.current_sec_worst_fps;
+        state.fps_drops = (uint16_t)state.current_sec_drops;
         state.input_worst_last_sec = state.input_worst_cur_sec;
         
         // Calculate percentage: (current_avg / target) * 100
@@ -245,6 +254,7 @@ void gecnd_metrics_update(void)
         state.last_sec_time = now;
         state.current_sec_worst_fps = 0;
         state.current_sec_good_frames = 0;
+        state.current_sec_drops = 0;
         state.input_worst_cur_sec = 0;
         state.lua_mem_accumulated = 0;
         state.lua_mem_frame_count = 0;
@@ -264,3 +274,4 @@ uint16_t gecnd_metrics_get_fps_avg(void) { return state.fps_average; }
 uint16_t gecnd_metrics_get_fps_immediate(void) { return state.fps_immediate; }
 uint16_t gecnd_metrics_get_fps_worst(void) { return state.fps_worst; }
 uint16_t gecnd_metrics_get_fps_percent(void) { return state.fps_percent; }
+uint16_t gecnd_metrics_get_fps_drops(void) { return state.fps_drops; }

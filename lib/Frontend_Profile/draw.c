@@ -3,6 +3,12 @@
 #include <stdio.h>
 #include <lua.h>
 
+#if defined(LUA_LJDIR)
+#define L_FLAVOR "JIT"
+#else
+#define L_FLAVOR "PUC"
+#endif
+
 static void format_memory(uint64_t bytes, char *out, size_t size)
 {
     if (bytes >= 1024ULL * 1024ULL * 1024ULL)
@@ -42,8 +48,8 @@ void gecnd_metrics_render(gecnd_t *gly)
     bool has_bg = (flags & GECND_METRICS_BG);
 
     int16_t r_lines = 0;
-    if (flags & GECND_METRICS_FPS) r_lines += 1;
-    if (flags & GECND_METRICS_LUA) r_lines += 2;
+    if (flags & GECND_METRICS_FPS) r_lines += 2;
+    if (flags & GECND_METRICS_LUA) r_lines += 3;
 
     int16_t l_lines = 0;
     if (flags & GECND_METRICS_PERF) l_lines += 6;
@@ -74,10 +80,16 @@ void gecnd_metrics_render(gecnd_t *gly)
 
         if (flags & GECND_METRICS_FPS)
         {
-            snprintf(buf, sizeof(buf), "FPS: %02d avg: %02d worst: %02d", 
-                     gecnd_metrics_get_fps_immediate(),
-                     gecnd_metrics_get_fps_avg(),
-                     gecnd_metrics_get_fps_worst());
+            int fps_cur = gecnd_metrics_get_fps_immediate();
+            int fps_avg = gecnd_metrics_get_fps_avg();
+            int fps_worst = gecnd_metrics_get_fps_worst();
+            int fps_drops = gecnd_metrics_get_fps_drops();
+
+            snprintf(buf, sizeof(buf), "FPS: %3d (cur: %3d)", fps_avg, fps_cur);
+            native_text_print(rx, ry, buf);
+            ry += line_h;
+
+            snprintf(buf, sizeof(buf), "Worst: %3d (drops: %d)", fps_worst, fps_drops);
             native_text_print(rx, ry, buf);
             ry += line_h;
         }
@@ -92,7 +104,12 @@ void gecnd_metrics_render(gecnd_t *gly)
             format_memory(gecnd_metrics_get_lua_avg(), s2, sizeof(s2));
             format_memory(gecnd_metrics_get_lua_peak(), s3, sizeof(s3));
 
-            snprintf(buf, sizeof(buf), "Lua memory cur: %02s", s1);
+            static const char *const nt = (lua_Number)0.5 == 0? "int": "fp";
+            snprintf(buf, sizeof(buf), "%s %s %dbits %s", LUA_RELEASE, L_FLAVOR, (int)(sizeof(lua_Number) * 8), nt);
+            native_text_print(rx, ry, buf);
+            ry += line_h;
+
+            snprintf(buf, sizeof(buf), "memory currenty: %02s", s1);
             native_text_print(rx, ry, buf);
             ry += line_h;
 
@@ -115,27 +132,27 @@ void gecnd_metrics_render(gecnd_t *gly)
 
         if (total > 0)
         {
-            snprintf(buf, sizeof(buf), "I/O: %02d ms (%.1f%%)", io_worst, (io_worst * 100.0f) / total);
+            snprintf(buf, sizeof(buf), "I/O: %3d ms (%.1f%%)", io_worst, (io_worst * 100.0f) / total);
             native_text_print(margin + (margin / 2), ly, buf);
             ly += line_h;
 
-            snprintf(buf, sizeof(buf), "Loop: %02d ms (%.1f%%)", loop, (loop * 100.0f) / total);
+            snprintf(buf, sizeof(buf), "Loop: %3d ms (%.1f%%)", loop, (loop * 100.0f) / total);
             native_text_print(margin + (margin / 2), ly, buf);
             ly += line_h;
 
-            snprintf(buf, sizeof(buf), "Draw: %02d ms (%.1f%%)", draw, (draw * 100.0f) / total);
+            snprintf(buf, sizeof(buf), "Draw: %3d ms (%.1f%%)", draw, (draw * 100.0f) / total);
             native_text_print(margin + (margin / 2), ly, buf);
             ly += line_h;
 
-            snprintf(buf, sizeof(buf), "Post: %02d ms (%.1f%%)", post, (post * 100.0f) / total);
+            snprintf(buf, sizeof(buf), "Post: %3d ms (%.1f%%)", post, (post * 100.0f) / total);
             native_text_print(margin + (margin / 2), ly, buf);
             ly += line_h;
 
-            snprintf(buf, sizeof(buf), "Tint: %02d ms (%.1f%%)", tint, (tint * 100.0f) / total);
+            snprintf(buf, sizeof(buf), "Tint: %3d ms (%.1f%%)", tint, (tint * 100.0f) / total);
             native_text_print(margin + (margin / 2), ly, buf);
             ly += line_h;
 
-            snprintf(buf, sizeof(buf), "Wait: %02d ms (%.1f%%)", wait, (wait * 100.0f) / total);
+            snprintf(buf, sizeof(buf), "Wait: %3d ms (%.1f%%)", wait, (wait * 100.0f) / total);
             native_text_print(margin + (margin / 2), ly, buf);
         }
     }

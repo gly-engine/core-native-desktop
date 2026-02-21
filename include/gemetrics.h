@@ -48,5 +48,6 @@ uint16_t gecnd_metrics_get_fps_avg(void);
 uint16_t gecnd_metrics_get_fps_immediate(void);
 uint16_t gecnd_metrics_get_fps_worst(void);
 uint16_t gecnd_metrics_get_fps_percent(void);
+uint16_t gecnd_metrics_get_fps_drops(void);
 
 #endif
