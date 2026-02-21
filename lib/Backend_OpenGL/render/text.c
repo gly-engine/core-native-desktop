@@ -11,8 +11,6 @@
 
 #include "gecnd/notosans.h"
 
-#define MAX_VERTICES (GE_BATCH_SIZE / sizeof(GEDrawVertex))
-
 struct GLFONScontext {
     GLuint tex;
     int width, height;
@@ -57,8 +55,9 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
 static void glfons__renderDraw(void* userPtr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts) {
     if (nverts == 0) return;
     GLBackendState *s = geogl_get_state();
-    if (s->batch_count + nverts >= MAX_VERTICES) ge_pipeline_flush_primitives();
-    float uv_scale = 1024.0f / (float)s->atlas_width; 
+    if (s->batch_count + nverts >= GE_MAX_VERTICES) ge_pipeline_flush_primitives();
+    float uv_scale_x = (float)GE_FONT_ATLAS_SIZE / (float)s->atlas_width; 
+    float uv_scale_y = (float)GE_FONT_ATLAS_SIZE / (float)s->atlas_height; 
     for (int i = 0; i < nverts; i++) {
         float c[4];
         unsigned int col = colors[i];
@@ -66,8 +65,8 @@ static void glfons__renderDraw(void* userPtr, const float* verts, const float* t
         c[1] = (float)((col >> 8) & 0xFF) / 255.0f;
         c[2] = (float)((col >> 16) & 0xFF) / 255.0f;
         c[3] = (float)((col >> 24) & 0xFF) / 255.0f;
-        float u = tcoords[i*2] * uv_scale;
-        float v = tcoords[i*2+1] * uv_scale;
+        float u = tcoords[i*2] * uv_scale_x;
+        float v = tcoords[i*2+1] * uv_scale_y;
         ge_batch_add_vertex(verts[i*2], verts[i*2+1], u, v, c, 0,0, 0,0, 0,0);
     }
 }
@@ -106,7 +105,7 @@ static FONScontext *fs;
 static int fs_font = FONS_INVALID;
 static float current_size = 16.0f;
 static int initialized = 0;
-static int atlas_w = 1024, atlas_h = 1024;
+static int atlas_w = GE_FONT_ATLAS_SIZE, atlas_h = GE_FONT_ATLAS_SIZE;
 static unsigned char *default_font_mem;
 static size_t default_font_size;
 

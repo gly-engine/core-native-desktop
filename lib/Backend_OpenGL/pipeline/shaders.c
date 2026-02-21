@@ -51,8 +51,8 @@ static GLuint create_prog(const shader_src_t* vs, const shader_src_t* fs, bool i
     glBindAttribLocation(p, 2, "a_color");
     if (is_draw) {
         glBindAttribLocation(p, 3, "a_local");
-        glBindAttribLocation(p, 4, "a_size");
-        glBindAttribLocation(p, 5, "a_sdf");
+        glBindAttribLocation(p, 4, "a_sdf");
+        glBindAttribLocation(p, 5, "a_size");
     }
 
     glLinkProgram(p);

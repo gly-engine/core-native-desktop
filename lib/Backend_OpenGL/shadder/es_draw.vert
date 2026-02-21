@@ -1,11 +1,11 @@
 #version 100
 precision mediump float;
-attribute vec2 a_pos;
-attribute vec2 a_uv;
-attribute vec4 a_color;
-attribute vec2 a_local;
-attribute vec2 a_size;
-attribute vec2 a_sdf;
+attribute vec2 a_pos;    // loc 0
+attribute vec2 a_uv;     // loc 1
+attribute vec4 a_color;  // loc 2
+attribute vec2 a_local;  // loc 3 (int8_t normalized)
+attribute vec2 a_sdf;    // loc 4 (uint8_t)
+attribute vec2 a_size;   // loc 5 (float)
 
 uniform mat4 u_mvp;
 

@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stddef.h>
 #include "gecnd.h"
 #include "gefilter.h"
 #include "geopengl.h"
@@ -39,12 +40,12 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     if (s->atlas_id) glDeleteTextures(1, &s->atlas_id);
     glGenTextures(1, &s->atlas_id);
     glBindTexture(GL_TEXTURE_2D, s->atlas_id);
-    s->atlas_width = 2048; s->atlas_height = 2048;
+    s->atlas_width = GE_ATLAS_SIZE; s->atlas_height = GE_ATLAS_SIZE;
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, s->atlas_width, s->atlas_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     
-    // Triple VBOs (1MB each)
+    // Triple VBOs (GE_BATCH_SIZE each)
     if (s->vbos[0]) glDeleteBuffers(3, s->vbos);
     glGenBuffers(3, s->vbos);
     s->vbo_idx = 0;
@@ -53,7 +54,7 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
         glBufferData(GL_ARRAY_BUFFER, GE_BATCH_SIZE, NULL, GL_STREAM_DRAW);
     }
 
-    s->alloc_cursor_x = 512; s->alloc_cursor_y = 0; s->alloc_row_height = 0;
+    s->alloc_cursor_x = GE_FONT_ATLAS_SIZE; s->alloc_cursor_y = 0; s->alloc_row_height = 0;
     int wx, wy; ge_atlas_alloc(1, 1, &wx, &wy); 
     uint32_t white = 0xFFFFFFFF;
     glTexSubImage2D(GL_TEXTURE_2D, 0, wx, wy, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, &white);
@@ -74,10 +75,10 @@ void ge_atlas_alloc(int w, int h, int *ox, int *oy) {
     if (s->alloc_cursor_x + w > s->atlas_width) {
         s->alloc_cursor_x = 0; s->alloc_cursor_y += s->alloc_row_height; s->alloc_row_height = 0;
     }
-    if (s->alloc_cursor_y < 512 && s->alloc_cursor_x < 512) s->alloc_cursor_x = 512;
+    if (s->alloc_cursor_y < GE_FONT_ATLAS_SIZE && s->alloc_cursor_x < GE_FONT_ATLAS_SIZE) s->alloc_cursor_x = GE_FONT_ATLAS_SIZE;
     if (s->alloc_cursor_x + w > s->atlas_width) {
          s->alloc_cursor_x = 0; s->alloc_cursor_y += s->alloc_row_height; 
-         if (s->alloc_cursor_y < 512) s->alloc_cursor_y = 512;
+         if (s->alloc_cursor_y < GE_FONT_ATLAS_SIZE) s->alloc_cursor_y = GE_FONT_ATLAS_SIZE;
          s->alloc_row_height = 0;
     }
     *ox = s->alloc_cursor_x; *oy = s->alloc_cursor_y;
@@ -106,7 +107,7 @@ void ge_pipeline_start(void) {
 
 void ge_pipeline_flush_primitives(void) {
     GLBackendState *s = geogl_get_state();
-    if (s->batch_count == 0) return;
+    if (s->batch_count == 0 || !s->batch_buffer) return;
 
     glUseProgram(s->draw_program);
     glUniformMatrix4fv(s->draw_loc_proj, 1, GL_FALSE, s->projection);
@@ -115,31 +116,27 @@ void ge_pipeline_flush_primitives(void) {
     glBindTexture(GL_TEXTURE_2D, s->atlas_id);
 
     glBindBuffer(GL_ARRAY_BUFFER, s->vbos[s->vbo_idx]);
-    size_t stride = sizeof(GEDrawVertex);
     
+    // Upload EVERYTHING in one go. Using glBufferData is safer for many GLES2 drivers.
+    glBufferData(GL_ARRAY_BUFFER, s->batch_count * sizeof(GEDrawVertex), s->batch_buffer, GL_DYNAMIC_DRAW);
+
+    size_t stride = sizeof(GEDrawVertex);
+    glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(GEDrawVertex, x));
+    glEnableVertexAttribArray(1); glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(GEDrawVertex, u));
+    glEnableVertexAttribArray(2); glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(GEDrawVertex, color));
+    glEnableVertexAttribArray(3); glVertexAttribPointer(3, 2, GL_BYTE, GL_TRUE, stride, (void*)offsetof(GEDrawVertex, local));
+    glEnableVertexAttribArray(4); glVertexAttribPointer(4, 2, GL_UNSIGNED_BYTE, GL_FALSE, stride, (void*)offsetof(GEDrawVertex, sdf));
+    glEnableVertexAttribArray(5); glVertexAttribPointer(5, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(GEDrawVertex, size));
+
     int offset = 0;
-    int remaining = s->batch_count;
-    while (remaining > 0) {
-        int chunk = (remaining > GE_MAX_CHUNK) ? GE_MAX_CHUNK : remaining;
-        
-        // Upload chunk to current frame VBO
-        glBufferSubData(GL_ARRAY_BUFFER, offset * stride, chunk * stride, &s->batch_buffer[offset]);
-
-        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, (void*)(offset * stride + 0));
-        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (void*)(offset * stride + 8));
-        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride, (void*)(offset * stride + 16));
-        glEnableVertexAttribArray(3); glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, (void*)(offset * stride + 32));
-        glEnableVertexAttribArray(4); glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, (void*)(offset * stride + 40));
-        glEnableVertexAttribArray(5); glVertexAttribPointer(5, 2, GL_FLOAT, GL_FALSE, stride, (void*)(offset * stride + 48));
-
-        glDrawArrays(GL_TRIANGLES, 0, chunk); // Using 0 because we adjusted pointer offset
-
-        glDisableVertexAttribArray(0); glDisableVertexAttribArray(1); glDisableVertexAttribArray(2);
-        glDisableVertexAttribArray(3); glDisableVertexAttribArray(4); glDisableVertexAttribArray(5);
-
+    while (offset < s->batch_count) {
+        int chunk = (s->batch_count - offset > GE_MAX_CHUNK) ? GE_MAX_CHUNK : (s->batch_count - offset);
+        glDrawArrays(GL_TRIANGLES, offset, chunk);
         offset += chunk;
-        remaining -= chunk;
     }
+
+    glDisableVertexAttribArray(0); glDisableVertexAttribArray(1); glDisableVertexAttribArray(2);
+    glDisableVertexAttribArray(3); glDisableVertexAttribArray(4); glDisableVertexAttribArray(5);
 
     s->batch_count = 0;
 }

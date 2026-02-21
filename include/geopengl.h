@@ -20,10 +20,12 @@
 #define GE_LINE_WIDTH 2.0f
 #endif
 
-// 1MB batch buffer
-#define GE_BATCH_SIZE (1024 * 1024)
-// Slicing for performance on Mali
-#define GE_MAX_CHUNK 4092
+// Metaatlas Size
+#define GE_ATLAS_SIZE 2048
+// Font Atlas part (within metaatlas)
+#define GE_FONT_ATLAS_SIZE 1024
+// Max vertices in a single batch (multiple of 6, approx 256KB)
+#define GE_MAX_VERTICES 8190
 
 typedef struct {
     GLuint id;
@@ -51,12 +53,15 @@ static inline void set_color_from_u32(float *v, uint32_t c) {
 typedef struct {
     float x, y;       // 8
     float u, v;       // 8
-    float color[4];   // 16
-    float local[2];   // 8
+    uint8_t color[4]; // 4 (RGBA)
+    int8_t local[2];  // 2 (Mapped to -1.0..1.0 in shader)
+    uint8_t sdf[2];   // 2 (Radius, Border - max 255px)
     float size[2];    // 8
-    float sdf[2];     // 8
-    float padding[2]; // 8
-} GEDrawVertex; // 64 bytes - 16-byte aligned
+} GEDrawVertex; // 32 bytes - perfectly aligned
+
+#define GE_BATCH_SIZE (GE_MAX_VERTICES * sizeof(GEDrawVertex))
+// Slicing for performance on Mali - Must be multiple of 3!
+#define GE_MAX_CHUNK 1020
 
 typedef struct {
     void *window;
