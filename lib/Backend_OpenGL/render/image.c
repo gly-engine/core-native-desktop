@@ -4,6 +4,8 @@
 #include "gehook.h"
 #include "geopengl.h"
 
+#define MAX_VERTICES ((512 * 1024) / sizeof(GEDrawVertex))
+
 void native_image_load(const char *path, int32_t image_id, bool *success) {
     GLBackendState *s = geogl_get_state();
     spng_ctx *ctx = spng_ctx_new(0);
@@ -35,28 +37,28 @@ void native_image_load(const char *path, int32_t image_id, bool *success) {
 
 void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
     GLBackendState *s = geogl_get_state();
-    gecnd_filter_t *filter = gecnd_filter_get_config();
     size_t idx = image_id - 1;
     if (image_id <= 0 || kv_size(s->textures) <= idx) return;
     GLTexture t = kv_A(s->textures, idx);
     if (!t.id) return;
-    glUseProgram(s->texture_program);
-    glUniformMatrix4fv(s->texture_loc_proj, 1, GL_FALSE, s->projection);
-    glUniform1i(s->texture_loc_sampler, 0);
-    glUniform2f(s->texture_loc_tsize, 1.0f / (float)t.width, 1.0f / (float)t.height);
-    glUniform1f(s->texture_loc_aa_blur, filter->aa_blur);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, t.id);
-    float v[] = {(float)x, (float)y, 0, 0, (float)x+t.width, (float)y, 1, 0, (float)x+t.width, (float)y+t.height, 1, 1, (float)x, (float)y+t.height, 0, 1};
-    glBindBuffer(GL_ARRAY_BUFFER, s->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STREAM_DRAW);
-    glEnableVertexAttribArray(s->texture_loc_pos);
-    glVertexAttribPointer(s->texture_loc_pos, 2, GL_FLOAT, GL_FALSE, 4*sizeof(float), (void*)0);
-    glEnableVertexAttribArray(s->texture_loc_texCoord);
-    glVertexAttribPointer(s->texture_loc_texCoord, 2, GL_FLOAT, GL_FALSE, 4*sizeof(float), (void*)(2*sizeof(float)));
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-    glDisableVertexAttribArray(s->texture_loc_pos);
-    glDisableVertexAttribArray(s->texture_loc_texCoord);
+
+    if (s->batch_count + 6 >= MAX_VERTICES) return;
+
+    ge_batch_start_command(t.id);
+
+    uint8_t color[4];
+    ge_batch_get_color_u8(color);
+
+    float fx = (float)x; float fy = (float)y;
+    float fw = (float)t.width; float fh = (float)t.height;
+
+    ge_batch_add_vertex(fx, fy, 0, 0, color, NULL, NULL);
+    ge_batch_add_vertex(fx, fy+fh, 0, 1, color, NULL, NULL);
+    ge_batch_add_vertex(fx+fw, fy+fh, 1, 1, color, NULL, NULL);
+
+    ge_batch_add_vertex(fx, fy, 0, 0, color, NULL, NULL);
+    ge_batch_add_vertex(fx+fw, fy+fh, 1, 1, color, NULL, NULL);
+    ge_batch_add_vertex(fx+fw, fy, 1, 0, color, NULL, NULL);
 }
 
 void native_image_mensure(int32_t image_id, int16_t *w, int16_t *h) {
@@ -73,7 +75,12 @@ void native_image_unload(int32_t image_id, bool *success) {
     size_t idx = image_id - 1;
     if (image_id > 0 && kv_size(s->textures) > idx) {
         GLTexture *t = &kv_A(s->textures, idx);
-        if (t->id) { glDeleteTextures(1, &t->id); t->id = 0; if (success) *success = true; return; }
+        if (t->id) { 
+            glDeleteTextures(1, &t->id); 
+            t->id = 0; 
+            if (success) *success = true; 
+            return; 
+        }
     }
     if (success) *success = false;
 }

@@ -11,6 +11,8 @@
 
 #include "gecnd/notosans.h"
 
+#define MAX_VERTICES ((512 * 1024) / sizeof(GEDrawVertex))
+
 struct GLFONScontext {
     GLuint tex;
     int width, height;
@@ -78,49 +80,21 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
 static void glfons__renderDraw(void* userPtr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts) {
     if (nverts == 0) return;
     GLFONScontext* gl = (GLFONScontext*)userPtr;
-    GLBackendState *state = geogl_get_state();
+    GLBackendState *s = geogl_get_state();
 
-    glUseProgram(state->font_program);
-    glUniformMatrix4fv(state->font_loc_proj, 1, GL_FALSE, state->projection);
-    glUniform1i(state->font_loc_sampler, 0);
-    glUniform4fv(state->font_loc_color, 1, state->current_color);
+    if (s->batch_count + nverts >= MAX_VERTICES) return;
 
-    gecnd_filter_t *filter = gecnd_filter_get_config();
-    glUniform2f(state->font_loc_tsize, 1.0f / (float)gl->width, 1.0f / (float)gl->height);
-    glUniform1f(state->font_loc_aa_blur, filter->aa_blur);
+    ge_batch_start_command(gl->tex);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, gl->tex);
-    glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
-
-    size_t vert_size = sizeof(float) * 2;
-    size_t tcoord_size = sizeof(float) * 2;
-    size_t stride = vert_size + tcoord_size;
-    size_t total_size = stride * nverts;
-
-    if (gl->scratch_size < total_size) {
-        gl->scratch = realloc(gl->scratch, total_size);
-        gl->scratch_size = total_size;
-    }
-
-    unsigned char* p = (unsigned char*)gl->scratch;
     for (int i = 0; i < nverts; i++) {
-        memcpy(p, &verts[i*2], vert_size); p += vert_size;
-        memcpy(p, &tcoords[i*2], tcoord_size); p += tcoord_size;
+        uint8_t c[4];
+        unsigned int col = colors[i];
+        c[0] = (uint8_t)(col & 0xFF);
+        c[1] = (uint8_t)((col >> 8) & 0xFF);
+        c[2] = (uint8_t)((col >> 16) & 0xFF);
+        c[3] = (uint8_t)((col >> 24) & 0xFF);
+        ge_batch_add_vertex(verts[i*2], verts[i*2+1], tcoords[i*2], tcoords[i*2+1], c, NULL, NULL);
     }
-
-    glBufferData(GL_ARRAY_BUFFER, total_size, gl->scratch, GL_DYNAMIC_DRAW);
-
-    glEnableVertexAttribArray(state->font_loc_pos);
-    glEnableVertexAttribArray(state->font_loc_texCoord);
-    glVertexAttribPointer(state->font_loc_pos, 2, GL_FLOAT, GL_FALSE, stride, (void*)0);
-    glVertexAttribPointer(state->font_loc_texCoord, 2, GL_FLOAT, GL_FALSE, stride, (void*)vert_size);
-
-    glDrawArrays(GL_TRIANGLES, 0, nverts);
-
-    glDisableVertexAttribArray(state->font_loc_pos);
-    glDisableVertexAttribArray(state->font_loc_texCoord);
-    glUseProgram(0);
 }
 
 static void glfons__renderDelete(void* userPtr) {

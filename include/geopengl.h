@@ -56,35 +56,33 @@ static inline void set_color_from_u32(float *v, uint32_t c) {
 }
 
 typedef struct {
+    float x, y;
+    float u, v;
+    uint8_t color[4];
+    float rect[4];    // x, y, w, h
+    float params[4];  // radius, thickness, mode, aa_blur
+} GEDrawVertex;
+
+typedef struct {
+    GLuint texture;
+    int start;
+    int count;
+} BatchCommand;
+
+typedef struct {
     void *window;
     uint16_t window_width;
     uint16_t window_height;
     double last_frame_time;
 
-    GLuint shape_program;
-    GLint shape_loc_pos;
-    GLint shape_loc_proj;
-    GLint shape_loc_color;
-    GLint shape_loc_rect;
-    GLint shape_loc_radius;
-    GLint shape_loc_mode;
-    GLint shape_loc_thickness;
-    GLint shape_loc_aa_blur;
-
-    GLuint line_program;
-    GLint line_loc_pos;
-    GLint line_loc_proj;
-    GLint line_loc_color;
-    GLint line_loc_thickness;
-    GLint line_loc_aa_blur;
-
-    GLuint texture_program;
-    GLint texture_loc_pos;
-    GLint texture_loc_texCoord;
-    GLint texture_loc_proj;
-    GLint texture_loc_sampler;
-    GLint texture_loc_tsize;
-    GLint texture_loc_aa_blur;
+    GLuint draw_program;
+    GLint  draw_loc_pos;
+    GLint  draw_loc_texCoord;
+    GLint  draw_loc_color;
+    GLint  draw_loc_rect;
+    GLint  draw_loc_params;
+    GLint  draw_loc_proj;
+    GLint  draw_loc_sampler;
 
     GLuint video_program;
     GLint  video_loc_pos;
@@ -104,15 +102,6 @@ typedef struct {
     GLint  video_loc_time;
     GLint  video_loc_scratch;
     GLint  video_loc_jitter;
-
-    GLuint font_program;
-    GLint  font_loc_pos;
-    GLint  font_loc_texCoord;
-    GLint  font_loc_proj;
-    GLint  font_loc_sampler;
-    GLint  font_loc_color;
-    GLint font_loc_tsize;
-    GLint font_loc_aa_blur;
 
     GLuint post_program;
     GLint  post_loc_pos;
@@ -139,6 +128,17 @@ typedef struct {
     GLuint video_textures[3];
     int video_width, video_height, video_format;
     atomic_int video_update_count;
+
+    GEDrawVertex *batch_buffer;
+    int batch_count;
+    GLuint batch_texture;
+    int batch_mode; 
+    
+    BatchCommand *commands;
+    int command_count;
+    int command_capacity;
+
+    GLuint white_texture;
 } GLBackendState;
 
 GLBackendState* geogl_get_state(void);
@@ -148,6 +148,10 @@ void terminate_all_shaders(void);
 void ge_pipeline_init(uint16_t w, uint16_t h);
 void ge_pipeline_start(void);
 void ge_pipeline_flush(void);
+void ge_pipeline_flush_primitives(void);
+void ge_batch_start_command(GLuint tex);
+void ge_batch_add_vertex(float x, float y, float u, float v, uint8_t *color, float *rect, float *params);
+void ge_batch_get_color_u8(uint8_t *c);
 
 void native_draw_background_video(void);
 void native_text_terminate(void);

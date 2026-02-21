@@ -109,9 +109,7 @@ void native_draw_background_video(void) {
     glUniform1f(s->video_loc_jitter, filter->jitter_amount);
 
     glBindBuffer(GL_ARRAY_BUFFER, s->video_vbo);
-    if (filter->video_dirty) {
-        glBufferData(GL_ARRAY_BUFFER, sizeof(filter->video_vertices), filter->video_vertices, GL_DYNAMIC_DRAW);
-    }
+    glBufferData(GL_ARRAY_BUFFER, sizeof(filter->video_vertices), filter->video_vertices, GL_STREAM_DRAW);
     
     glEnableVertexAttribArray(s->video_loc_pos);
     glEnableVertexAttribArray(s->video_loc_texCoord);

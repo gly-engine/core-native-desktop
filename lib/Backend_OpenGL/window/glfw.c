@@ -102,6 +102,7 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     ge_pipeline_init(width, height);
     native_draw_color(0xFFFFFFFF);
     native_draw_clear(0x1A2B3CFF);
+    mat4_ortho(s->projection, 0, width, height, 0, -1, 1);
     s->last_frame_time = platform_get_time();
 }
 
@@ -130,6 +131,7 @@ void gly_hook_display_close(void) {
     kv_destroy(s->textures);
     gecnd_buffer_free();
     native_text_terminate();
+    if (s->batch_buffer) free(s->batch_buffer);
     platform_terminate();
 }
 

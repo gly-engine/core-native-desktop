@@ -188,5 +188,6 @@ void gly_hook_display_close(void) {
     kv_destroy(s->textures);
     gecnd_buffer_free();
     native_text_terminate();
+    if (s->batch_buffer) free(s->batch_buffer);
     platform_terminate();
 }
