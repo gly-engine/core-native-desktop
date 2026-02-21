@@ -21,9 +21,11 @@
 #endif
 
 typedef struct {
-    GLuint id;
+    GLuint id; // Atlas ID (redundant if one atlas, but keeps compatibility)
     int width;
     int height;
+    float u, v;   // Top-left UV in atlas
+    float u2, v2; // Bottom-right UV in atlas
 } GLTexture;
 
 static inline void mat4_ortho(float *mat, float left, float right, float bottom, float top, float near, float far) {
@@ -56,18 +58,17 @@ static inline void set_color_from_u32(float *v, uint32_t c) {
 }
 
 typedef struct {
-    float x, y;
-    float u, v;
-    uint8_t color[4];
-    float rect[4];    // x, y, w, h
-    float params[4];  // radius, thickness, mode, aa_blur
+    float x, y;       // a_pos
+    float u, v;       // a_uv
+    uint8_t color[4]; // a_color
+    float rect[4];    // a_rect (x, y, w, h) for SDF calculations
+    float data[3];    // a_data (radius, border, outline)
 } GEDrawVertex;
 
 typedef struct {
-    GLuint texture;
-    int start;
-    int count;
-} BatchCommand;
+    int x, y, w, h;
+    bool used;
+} AtlasNode;
 
 typedef struct {
     void *window;
@@ -77,13 +78,38 @@ typedef struct {
 
     GLuint draw_program;
     GLint  draw_loc_pos;
-    GLint  draw_loc_texCoord;
+    GLint  draw_loc_uv;
     GLint  draw_loc_color;
     GLint  draw_loc_rect;
-    GLint  draw_loc_params;
+    GLint  draw_loc_data;
     GLint  draw_loc_proj;
-    GLint  draw_loc_sampler;
+    GLint  draw_loc_atlas;
 
+    GLuint vbo;
+    
+    // Mega Atlas State
+    GLuint atlas_id;
+    int atlas_width;
+    int atlas_height;
+    
+    // Atlas Allocator (Simple Shelf/Block for now)
+    // We reserve 0-1024 for Fonts/System
+    int alloc_cursor_x;
+    int alloc_cursor_y;
+    int alloc_row_height;
+
+    // White pixel for solid shapes (located at 0,0)
+    float white_uv[4]; 
+
+    float projection[16];
+    float current_color[4];
+    float current_data[3]; // radius, border, outline
+    float clear_color[4];
+
+    // Images mapped to atlas regions
+    kvec_t(GLTexture) textures; // storing atlas UVs/Rects inside GLTexture
+    
+    // Legacy Video (separate pipeline for now, or could be merged if we update subimage frequently)
     GLuint video_program;
     GLint  video_loc_pos;
     GLint  video_loc_texCoord;
@@ -102,7 +128,12 @@ typedef struct {
     GLint  video_loc_time;
     GLint  video_loc_scratch;
     GLint  video_loc_jitter;
+    GLuint video_vbo;
+    GLuint video_textures[3];
+    int video_width, video_height, video_format;
+    atomic_int video_update_count;
 
+    // Post processing (FBO)
     GLuint post_program;
     GLint  post_loc_pos;
     GLint  post_loc_texCoord;
@@ -113,32 +144,12 @@ typedef struct {
     GLint  post_loc_center;
     GLint  post_loc_crt;
     GLint  post_loc_time;
-
-    GLuint vbo;
-    GLuint video_vbo;
     GLuint post_vbo;
     GLuint post_fbo;
     GLuint post_fbo_texture;
 
-    float projection[16];
-    float current_color[4];
-    float clear_color[4];
-
-    kvec_t(GLTexture) textures;
-    GLuint video_textures[3];
-    int video_width, video_height, video_format;
-    atomic_int video_update_count;
-
     GEDrawVertex *batch_buffer;
     int batch_count;
-    GLuint batch_texture;
-    int batch_mode; 
-    
-    BatchCommand *commands;
-    int command_count;
-    int command_capacity;
-
-    GLuint white_texture;
 } GLBackendState;
 
 GLBackendState* geogl_get_state(void);
@@ -149,8 +160,8 @@ void ge_pipeline_init(uint16_t w, uint16_t h);
 void ge_pipeline_start(void);
 void ge_pipeline_flush(void);
 void ge_pipeline_flush_primitives(void);
-void ge_batch_start_command(GLuint tex);
-void ge_batch_add_vertex(float x, float y, float u, float v, uint8_t *color, float *rect, float *params);
+void ge_atlas_alloc(int w, int h, int *ox, int *oy);
+void ge_batch_add_vertex(float x, float y, float u, float v, uint8_t *color, float *rect, float *data);
 void ge_batch_get_color_u8(uint8_t *c);
 
 void native_draw_background_video(void);

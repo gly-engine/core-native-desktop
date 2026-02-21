@@ -13,6 +13,7 @@ void ge_pipeline_resize(uint16_t w, uint16_t h) {
 void ge_pipeline_start(void) {
     GLBackendState *s = geogl_get_state();
     
+    // Direct to screen
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, s->window_width, s->window_height);
     
@@ -25,8 +26,6 @@ void ge_pipeline_start(void) {
     mat4_ortho(s->projection, 0, (float)s->window_width, (float)s->window_height, 0, -1, 1);
     
     s->batch_count = 0;
-    s->batch_texture = s->white_texture;
-    s->batch_mode = -1; // Force first bind
 }
 
 void ge_pipeline_flush(void) {

@@ -48,10 +48,10 @@ static GLuint create_prog(const shader_src_t* vs, const shader_src_t* fs, bool i
     
     if (is_draw) {
         glBindAttribLocation(p, 0, "a_pos");
-        glBindAttribLocation(p, 1, "a_texCoord");
+        glBindAttribLocation(p, 1, "a_uv");
         glBindAttribLocation(p, 2, "a_color");
         glBindAttribLocation(p, 3, "a_rect");
-        glBindAttribLocation(p, 4, "a_params");
+        glBindAttribLocation(p, 4, "a_data");
     } else {
         glBindAttribLocation(p, 0, "a_pos");
         glBindAttribLocation(p, 1, "a_texCoord");
@@ -84,12 +84,12 @@ void init_all_shaders(bool gles) {
     shader_src_t ds_fs_es = SHADER(shadder_es_draw_frag);
     s->draw_program = create_prog(pick(gles, &ds_vs_gl, &ds_vs_es), pick(gles, &ds_fs_gl, &ds_fs_es), true);
     s->draw_loc_pos = 0;
-    s->draw_loc_texCoord = 1;
+    s->draw_loc_uv = 1;
     s->draw_loc_color = 2;
     s->draw_loc_rect = 3;
-    s->draw_loc_params = 4;
-    s->draw_loc_proj = glGetUniformLocation(s->draw_program, "u_projection");
-    s->draw_loc_sampler = glGetUniformLocation(s->draw_program, "u_texture");
+    s->draw_loc_data = 4;
+    s->draw_loc_proj = glGetUniformLocation(s->draw_program, "u_mvp"); // Changed from u_projection to u_mvp match shader
+    s->draw_loc_atlas = glGetUniformLocation(s->draw_program, "u_atlas");
 
     shader_src_t vs_vs_gl = SHADER(shadder_gl_video_vert);
     shader_src_t vs_fs_gl = SHADER(shadder_gl_video_frag);

@@ -4,8 +4,6 @@
 #include "gehook.h"
 #include "geopengl.h"
 
-#define MAX_VERTICES ((512 * 1024) / sizeof(GEDrawVertex))
-
 void native_image_load(const char *path, int32_t image_id, bool *success) {
     GLBackendState *s = geogl_get_state();
     spng_ctx *ctx = spng_ctx_new(0);
@@ -19,18 +17,28 @@ void native_image_load(const char *path, int32_t image_id, bool *success) {
     spng_decoded_image_size(ctx, SPNG_FMT_RGBA8, &sz);
     unsigned char *img = malloc(sz);
     spng_decode_image(ctx, img, sz, SPNG_FMT_RGBA8, SPNG_DECODE_TRNS | SPNG_DECODE_GAMMA);
-    GLuint tid;
-    glGenTextures(1, &tid);
-    glBindTexture(GL_TEXTURE_2D, tid);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, ihdr.width, ihdr.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img);
+    
+    // Allocate in Atlas
+    int ox, oy;
+    ge_atlas_alloc(ihdr.width, ihdr.height, &ox, &oy);
+    
+    // Upload to Atlas
+    glBindTexture(GL_TEXTURE_2D, s->atlas_id);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, ox, oy, ihdr.width, ihdr.height, GL_RGBA, GL_UNSIGNED_BYTE, img);
+    
+    // Store UVs
     size_t idx = image_id - 1;
     while (kv_size(s->textures) <= idx) kv_push(GLTexture, s->textures, (GLTexture){0});
-    if (kv_A(s->textures, idx).id) glDeleteTextures(1, &kv_A(s->textures, idx).id);
-    kv_A(s->textures, idx) = (GLTexture){tid, (int)ihdr.width, (int)ihdr.height};
+    GLTexture *t = &kv_A(s->textures, idx);
+    
+    t->id = s->atlas_id;
+    t->width = ihdr.width;
+    t->height = ihdr.height;
+    t->u = (float)ox / s->atlas_width;
+    t->v = (float)oy / s->atlas_height;
+    t->u2 = (float)(ox + ihdr.width) / s->atlas_width;
+    t->v2 = (float)(oy + ihdr.height) / s->atlas_height;
+
     if (success) *success = true;
     free(img); spng_ctx_free(ctx); fclose(fp);
 }
@@ -40,25 +48,24 @@ void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
     size_t idx = image_id - 1;
     if (image_id <= 0 || kv_size(s->textures) <= idx) return;
     GLTexture t = kv_A(s->textures, idx);
-    if (!t.id) return;
-
-    if (s->batch_count + 6 >= MAX_VERTICES) return;
-
-    ge_batch_start_command(t.id);
+    if (!t.width) return;
 
     uint8_t color[4];
     ge_batch_get_color_u8(color);
 
     float fx = (float)x; float fy = (float)y;
     float fw = (float)t.width; float fh = (float)t.height;
+    
+    float rect[4] = {0,0,0,0}; // Disable SDF
+    float data[3] = {0,0,0};
 
-    ge_batch_add_vertex(fx, fy, 0, 0, color, NULL, NULL);
-    ge_batch_add_vertex(fx, fy+fh, 0, 1, color, NULL, NULL);
-    ge_batch_add_vertex(fx+fw, fy+fh, 1, 1, color, NULL, NULL);
+    ge_batch_add_vertex(fx, fy, t.u, t.v, color, rect, data);
+    ge_batch_add_vertex(fx, fy+fh, t.u, t.v2, color, rect, data);
+    ge_batch_add_vertex(fx+fw, fy+fh, t.u2, t.v2, color, rect, data);
 
-    ge_batch_add_vertex(fx, fy, 0, 0, color, NULL, NULL);
-    ge_batch_add_vertex(fx+fw, fy+fh, 1, 1, color, NULL, NULL);
-    ge_batch_add_vertex(fx+fw, fy, 1, 0, color, NULL, NULL);
+    ge_batch_add_vertex(fx, fy, t.u, t.v, color, rect, data);
+    ge_batch_add_vertex(fx+fw, fy+fh, t.u2, t.v2, color, rect, data);
+    ge_batch_add_vertex(fx+fw, fy, t.u2, t.v, color, rect, data);
 }
 
 void native_image_mensure(int32_t image_id, int16_t *w, int16_t *h) {
@@ -66,7 +73,7 @@ void native_image_mensure(int32_t image_id, int16_t *w, int16_t *h) {
     size_t idx = image_id - 1;
     if (image_id > 0 && kv_size(s->textures) > idx) {
         GLTexture t = kv_A(s->textures, idx);
-        if (t.id && w && h) { *w = (int16_t)t.width; *h = (int16_t)t.height; }
+        if (t.width && w && h) { *w = (int16_t)t.width; *h = (int16_t)t.height; }
     }
 }
 
@@ -75,12 +82,9 @@ void native_image_unload(int32_t image_id, bool *success) {
     size_t idx = image_id - 1;
     if (image_id > 0 && kv_size(s->textures) > idx) {
         GLTexture *t = &kv_A(s->textures, idx);
-        if (t->id) { 
-            glDeleteTextures(1, &t->id); 
-            t->id = 0; 
-            if (success) *success = true; 
-            return; 
-        }
+        t->width = 0;
+        if (success) *success = true;
+        return;
     }
     if (success) *success = false;
 }
