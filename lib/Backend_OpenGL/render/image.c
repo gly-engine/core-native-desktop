@@ -44,7 +44,7 @@ void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
     if (image_id <= 0 || kv_size(s->textures) <= idx) return;
     GLTexture t = kv_A(s->textures, idx);
     if (!t.width) return;
-    float *color = s->current_color;
+    static const uint32_t color = 0xFFFFFFFF;
     float fx = (float)x, fy = (float)y, fw = (float)t.width, fh = (float)t.height;
     ge_batch_add_vertex(fx, fy, t.u, t.v, color, 0,0, 0,0, 0,0);
     ge_batch_add_vertex(fx, fy+fh, t.u, t.v2, color, 0,0, 0,0, 0,0);

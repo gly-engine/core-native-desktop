@@ -85,8 +85,6 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     kv_init(s->textures);
     init_all_shaders(true);
     ge_pipeline_init(width, height);
-    glGenBuffers(1, &s->video_vbo);
-    glGenBuffers(1, &s->post_vbo);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     native_draw_color(0xFFFFFFFF);

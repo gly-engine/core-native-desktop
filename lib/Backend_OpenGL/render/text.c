@@ -59,15 +59,9 @@ static void glfons__renderDraw(void* userPtr, const float* verts, const float* t
     float uv_scale_x = (float)GE_FONT_ATLAS_SIZE / (float)s->atlas_width; 
     float uv_scale_y = (float)GE_FONT_ATLAS_SIZE / (float)s->atlas_height; 
     for (int i = 0; i < nverts; i++) {
-        float c[4];
-        unsigned int col = colors[i];
-        c[0] = (float)(col & 0xFF) / 255.0f;
-        c[1] = (float)((col >> 8) & 0xFF) / 255.0f;
-        c[2] = (float)((col >> 16) & 0xFF) / 255.0f;
-        c[3] = (float)((col >> 24) & 0xFF) / 255.0f;
         float u = tcoords[i*2] * uv_scale_x;
         float v = tcoords[i*2+1] * uv_scale_y;
-        ge_batch_add_vertex(verts[i*2], verts[i*2+1], u, v, c, 0,0, 0,0, 0,0);
+        ge_batch_add_vertex(verts[i*2], verts[i*2+1], u, v, colors[i], 0,0, 0,0, 0,0);
     }
 }
 
@@ -138,13 +132,10 @@ void native_text_print(int16_t x, int16_t y, const char *text) {
     ensure_font_loaded();
     if (fs_font == FONS_INVALID) return;
     GLBackendState *state = geogl_get_state();
-    uint8_t r = (uint8_t)(state->current_color[0] * 255.0f);
-    uint8_t g = (uint8_t)(state->current_color[1] * 255.0f);
-    uint8_t b = (uint8_t)(state->current_color[2] * 255.0f);
-    uint8_t a = (uint8_t)(state->current_color[3] * 255.0f);
+    GEColor c = state->current_color;
     fonsSetSize(fs, current_size);
     fonsSetFont(fs, fs_font);
-    fonsSetColor(fs, glfonsRGBA(r,g,b,a));
+    fonsSetColor(fs, glfonsRGBA(c.rgba[0], c.rgba[1], c.rgba[2], c.rgba[3]));
     fonsSetAlign(fs, FONS_ALIGN_LEFT | FONS_ALIGN_TOP);
     fonsDrawText(fs, (float)x, (float)y, text, NULL);
 }

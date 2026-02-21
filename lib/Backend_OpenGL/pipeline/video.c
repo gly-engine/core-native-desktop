@@ -15,7 +15,7 @@ void native_draw_background_video(void) {
             memset(s->video_textures, 0, sizeof(s->video_textures));
             s->video_width = s->video_height = s->video_format = 0;
         }
-        glClearColor(s->clear_color[0], s->clear_color[1], s->clear_color[2], s->clear_color[3]);
+        glClearColor(s->clear_color.rgba[0]/255.0f, s->clear_color.rgba[1]/255.0f, s->clear_color.rgba[2]/255.0f, s->clear_color.rgba[3]/255.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         return;
     }

@@ -13,6 +13,15 @@ void ge_pipeline_resize(uint16_t w, uint16_t h) {
     s->window_width = w; s->window_height = h;
     glBindTexture(GL_TEXTURE_2D, s->post_fbo_texture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, s->post_vbo);
+    float post_quad[] = { 
+        0,0, 0,1,    (float)w,0, 1,1,   (float)w,(float)h, 1,0,
+        0,0, 0,1,    (float)w,(float)h, 1,0,   0,(float)h, 0,0 
+    };
+    glBufferData(GL_ARRAY_BUFFER, sizeof(post_quad), post_quad, GL_STATIC_DRAW);
+
+    gecnd_filter_get_config()->video_dirty = true;
     gecnd_filter_reset_corners();
     gecnd_filter_reset_video_pos();
 }
@@ -21,6 +30,8 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     GLBackendState *s = geogl_get_state();
     s->window_width = w; s->window_height = h;
     
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+
     // Post FBO
     if (s->post_fbo_texture) glDeleteTextures(1, &s->post_fbo_texture);
     if (s->post_fbo) glDeleteFramebuffers(1, &s->post_fbo);
@@ -53,6 +64,20 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
         glBindBuffer(GL_ARRAY_BUFFER, s->vbos[i]);
         glBufferData(GL_ARRAY_BUFFER, GE_BATCH_SIZE, NULL, GL_STREAM_DRAW);
     }
+
+    // Video VBO
+    if (s->video_vbo) glDeleteBuffers(1, &s->video_vbo);
+    glGenBuffers(1, &s->video_vbo);
+
+    // Post VBO
+    if (s->post_vbo) glDeleteBuffers(1, &s->post_vbo);
+    glGenBuffers(1, &s->post_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, s->post_vbo);
+    float post_quad[] = { 
+        0,0, 0,1,    (float)w,0, 1,1,   (float)w,(float)h, 1,0,
+        0,0, 0,1,    (float)w,(float)h, 1,0,   0,(float)h, 0,0 
+    };
+    glBufferData(GL_ARRAY_BUFFER, sizeof(post_quad), post_quad, GL_STATIC_DRAW);
 
     s->alloc_cursor_x = GE_FONT_ATLAS_SIZE; s->alloc_cursor_y = 0; s->alloc_row_height = 0;
     int wx, wy; ge_atlas_alloc(1, 1, &wx, &wy); 
@@ -88,19 +113,14 @@ void ge_atlas_alloc(int w, int h, int *ox, int *oy) {
 
 void ge_pipeline_start(void) {
     GLBackendState *s = geogl_get_state();
-    glBindFramebuffer(GL_FRAMEBUFFER, 0); // Direct to screen for now
+    glBindFramebuffer(GL_FRAMEBUFFER, s->post_fbo);
     glViewport(0, 0, s->window_width, s->window_height);
-    glClearColor(s->clear_color[0], s->clear_color[1], s->clear_color[2], s->clear_color[3]);
+    glClearColor(s->clear_color.rgba[0]/255.0f, s->clear_color.rgba[1]/255.0f, s->clear_color.rgba[2]/255.0f, s->clear_color.rgba[3]/255.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     mat4_ortho(s->projection, 0, (float)s->window_width, (float)s->window_height, 0, -1, 1);
     
-    // Cycle VBO and Orphan whole frame buffer
-    s->vbo_idx = (s->vbo_idx + 1) % 3;
-    glBindBuffer(GL_ARRAY_BUFFER, s->vbos[s->vbo_idx]);
-    glBufferData(GL_ARRAY_BUFFER, GE_BATCH_SIZE, NULL, GL_STREAM_DRAW);
-
     s->batch_count = 0;
     native_draw_background_video();
 }
@@ -115,10 +135,13 @@ void ge_pipeline_flush_primitives(void) {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, s->atlas_id);
 
+    // Cycle VBO and Orphan
+    s->vbo_idx = (s->vbo_idx + 1) % 3;
     glBindBuffer(GL_ARRAY_BUFFER, s->vbos[s->vbo_idx]);
+    glBufferData(GL_ARRAY_BUFFER, GE_BATCH_SIZE, NULL, GL_STREAM_DRAW);
     
-    // Upload EVERYTHING in one go. Using glBufferData is safer for many GLES2 drivers.
-    glBufferData(GL_ARRAY_BUFFER, s->batch_count * sizeof(GEDrawVertex), s->batch_buffer, GL_DYNAMIC_DRAW);
+    // Upload data using glBufferSubData for efficiency after orphaning
+    glBufferSubData(GL_ARRAY_BUFFER, 0, s->batch_count * sizeof(GEDrawVertex), s->batch_buffer);
 
     size_t stride = sizeof(GEDrawVertex);
     glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(GEDrawVertex, x));
@@ -139,6 +162,44 @@ void ge_pipeline_flush_primitives(void) {
     glDisableVertexAttribArray(3); glDisableVertexAttribArray(4); glDisableVertexAttribArray(5);
 
     s->batch_count = 0;
+}
+
+void ge_pipeline_end(void) {
+    GLBackendState *s = geogl_get_state();
+    ge_pipeline_flush_primitives();
+
+    gecnd_filter_t *filter = gecnd_filter_get_config();
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, s->window_width, s->window_height);
+
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+
+    glUseProgram(s->post_program);
+    glUniformMatrix4fv(s->post_loc_proj, 1, GL_FALSE, s->projection);
+    glUniform1i(s->post_loc_sampler, 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, s->post_fbo_texture);
+
+    glUniform2f(s->post_loc_tsize, 1.0f / (float)s->window_width, 1.0f / (float)s->window_height);
+    glUniform1f(s->post_loc_time, (float)platform_get_time());
+    glUniform1f(s->post_loc_crt, filter->crt_amount);
+    glUniform1f(s->post_loc_rotation, filter->rotation_rad);
+    glUniform2f(s->post_loc_center, s->window_width * 0.5f, s->window_height * 0.5f);
+
+    glBindBuffer(GL_ARRAY_BUFFER, s->post_vbo);
+    glEnableVertexAttribArray(s->post_loc_pos);
+    glEnableVertexAttribArray(s->post_loc_texCoord);
+    glVertexAttribPointer(s->post_loc_pos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glVertexAttribPointer(s->post_loc_texCoord, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    glDisableVertexAttribArray(s->post_loc_pos);
+    glDisableVertexAttribArray(s->post_loc_texCoord);
+    glUseProgram(0);
+    glEnable(GL_BLEND);
 }
 
 void ge_pipeline_flush(void) {

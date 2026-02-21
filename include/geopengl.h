@@ -43,17 +43,15 @@ static inline void mat4_ortho(float *mat, float left, float right, float bottom,
     mat[14] = -(far + near) / (far - near); mat[15] = 1.0f;
 }
 
-static inline void set_color_from_u32(float *v, uint32_t c) {
-    v[0] = ((c >> 24) & 0xFF) / 255.0f;
-    v[1] = ((c >> 16) & 0xFF) / 255.0f;
-    v[2] = ((c >>  8) & 0xFF) / 255.0f;
-    v[3] = ( c        & 0xFF) / 255.0f;
-}
+typedef union {
+    uint32_t u32;
+    uint8_t rgba[4];
+} GEColor;
 
 typedef struct {
     float x, y;       // 8
     float u, v;       // 8
-    uint8_t color[4]; // 4 (RGBA)
+    GEColor color;    // 4 (RGBA)
     int8_t local[2];  // 2 (Mapped to -1.0..1.0 in shader)
     uint8_t sdf[2];   // 2 (Radius, Border - max 255px)
     float size[2];    // 8
@@ -85,8 +83,8 @@ typedef struct {
     float white_uv[2]; 
 
     float projection[16];
-    float current_color[4];
-    float clear_color[4];
+    GEColor current_color;
+    GEColor clear_color;
 
     kvec_t(GLTexture) textures;
     
@@ -116,10 +114,11 @@ void terminate_all_shaders(void);
 void ge_pipeline_init(uint16_t w, uint16_t h);
 void ge_pipeline_resize(uint16_t w, uint16_t h);
 void ge_pipeline_start(void);
+void ge_pipeline_end(void);
 void ge_pipeline_flush(void);
 void ge_pipeline_flush_primitives(void);
 void ge_atlas_alloc(int w, int h, int *ox, int *oy);
-void ge_batch_add_vertex(float x, float y, float u, float v, float* color, float lx, float ly, float sw, float sh, float r, float b);
+void ge_batch_add_vertex(float x, float y, float u, float v, uint32_t color, float lx, float ly, float sw, float sh, float r, float b);
 void ge_batch_get_color_u8(uint8_t *c);
 
 void native_draw_background_video(void);
