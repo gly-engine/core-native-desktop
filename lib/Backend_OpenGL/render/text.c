@@ -62,7 +62,11 @@ static void glfons__renderDraw(void* userPtr, const float* verts, const float* t
     for (int i = 0; i < nverts; i++) {
         float u = tcoords[i*2] * uv_scale_x;
         float v = tcoords[i*2+1] * uv_scale_y;
-        ge_batch_add_vertex(verts[i*2], verts[i*2+1], u, v, colors[i], 0,0, 0,0);
+        
+        int16_t iu = (int16_t)(u * 32767.0f); if (iu <= 0) iu = 1;
+        int16_t iv = (int16_t)(v * 32767.0f);
+
+        ge_batch_add_vertex_tex((int16_t)verts[i*2], (int16_t)verts[i*2+1], iu, iv, colors[i], false);
     }
 }
 

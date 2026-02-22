@@ -1,38 +1,44 @@
 #version 100
-precision lowp float;
-
-varying mediump vec2 v_uv;
-varying lowp vec4 v_color;
-varying lowp vec2 v_local;
-varying lowp float v_border;
-varying lowp float v_radius;
+#extension GL_OES_standard_derivatives : enable
+precision mediump float;
 
 uniform sampler2D u_tex;
+uniform float u_line_width;
+
+varying lowp vec4 v_color;
+varying mediump vec2 v_uv;
+varying mediump vec2 v_local;
+varying mediump float v_mode;
+varying mediump float v_radius;
+varying mediump float v_u;
+
+mediump float roundedMask(mediump vec2 p, mediump float r)
+{
+    //mediump vec2 d = abs(p) - (1.0 - r);
+    return 1.0;
+}
 
 void main()
 {
-    float mask = 1.0;
+    mediump float isTex = step(0.5, v_u);
+    mediump float isBorder = step(v_mode, -1.5);
+    mediump float isRound = step(0.001, v_radius);
 
-    if (v_radius > 0.001)
-    {
-        float r = v_radius;
-        vec2 p = abs(v_local);
-        float corner = max(p.x, p.y);
+    mediump vec2 p = v_local;
+    mediump float dist = max(abs(p.x), abs(p.y));
+    
+    mediump float mask = mix(step(dist, 1.0), roundedMask(p, v_radius), isRound);
+    
+    mediump float borderRel = u_line_width * fwidth(dist) * 0.5;
+    
+    mediump vec2 pInner = p / max(0.001, 1.0 - borderRel);
+    mediump float distInner = max(abs(pInner.x), abs(pInner.y));
+    mediump float maskInner = mix(step(distInner, 1.0), roundedMask(pInner, v_radius), isRound);
+    
+    mediump float finalMask = mix(mask, mask * (1.0 - maskInner), isBorder);
 
-        mask = clamp((r - corner) * 100.0, 0.0, 1.0);
+    lowp vec4 texColor = texture2D(u_tex, v_uv);
+    lowp vec4 shapeColor = vec4(v_color.rgb, v_color.a * finalMask);
 
-        if (v_border > 0.001)
-        {
-            float inner = r - v_border;
-            float innerMask = clamp((inner - corner) * 100.0, 0.0, 1.0);
-            mask -= innerMask;
-        }
-    }
-
-    vec4 tex = texture2D(u_tex, v_uv);
-    vec4 color = tex * v_color;
-
-    color.a *= mask;
-
-    gl_FragColor = color;
+    gl_FragColor = mix(shapeColor, texColor * v_color, isTex);
 }

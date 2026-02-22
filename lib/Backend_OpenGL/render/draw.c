@@ -11,35 +11,6 @@ void ge_batch_get_color_u8(uint8_t *c) {
     memcpy(c, s->current_color.rgba, 4);
 }
 
-void ge_batch_add_vertex(float x, float y, float u, float v, uint32_t color, float lx, float ly, float r, float b) {
-    GLBackendState *s = geogl_get_state();
-    if (s->batch_count >= GE_MAX_VERTICES) ge_pipeline_flush_primitives();
-    
-    GEDrawVertex *vertex = &s->batch_buffer[s->batch_count++];
-    vertex->x = (int16_t)x; vertex->y = (int16_t)y;
-    vertex->u = (uint16_t)(u * 65535.0f); vertex->v = (uint16_t)(v * 65535.0f);
-    
-    // Copy color bytes directly
-    uint8_t *c = (uint8_t*)&color;
-    vertex->r = c[0]; vertex->g = c[1]; vertex->b = c[2]; vertex->a = c[3];
-
-    // Packed 4-bit values: 0..15
-    int ilx = (int)((lx + 1.0f) * 7.5f + 0.5f);
-    int ily = (int)((ly + 1.0f) * 7.5f + 0.5f);
-    int iborder = (int)(b * 15.0f + 0.5f);
-    if (ilx < 0) ilx = 0; if (ilx > 15) ilx = 15;
-    if (ily < 0) ily = 0; if (ily > 15) ily = 15;
-    if (iborder < 0) iborder = 0; if (iborder > 15) iborder = 15;
-
-    vertex->lx = ilx;
-    vertex->ly = ily;
-    vertex->border = iborder;
-    vertex->flags = 0;
-
-    vertex->radius = (uint8_t)(r * 255.0f);
-    vertex->pad = 0;
-}
-
 void native_draw_start(void) {
     ge_pipeline_start();
 }
@@ -67,18 +38,28 @@ void native_draw_clear(uint32_t color) {
 void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r) {
     GLBackendState *s = geogl_get_state();
     uint32_t color = s->current_color.u32;
-    float fx = (float)x, fy = (float)y, fw = (float)w, fh = (float)h;
-    float fr = (float)r;
-    float fb = (mode == 1) ? 0.1f : 0.0f; 
-    float u = s->white_uv[0], v = s->white_uv[1];
+    
+    int16_t min_dim = (w < h) ? w : h;
+    int16_t norm_r = 0;
+    if (min_dim > 0 && r > 0) {
+        float fr = (float)r / (min_dim * 0.5f);
+        if (fr > 1.0f) fr = 1.0f;
+        norm_r = (int16_t)(fr * 32767.0f);
+    }
 
-    ge_batch_add_vertex(fx, fy, u, v, color, -1,-1, fr, fb);
-    ge_batch_add_vertex(fx, fy+fh, u, v, color, -1, 1, fr, fb);
-    ge_batch_add_vertex(fx+fw, fy+fh, u, v, color, 1, 1, fr, fb);
+    // mode 0: fill, 1: frame (border)
+    // shader expects v_mode <= -1.5 for border. 
+    // batch.c does vertex->param.shape.mode = -mode;
+    // So if mode=2, shader gets -2.
+    int8_t internal_mode = (mode == 1) ? 2 : 0;
 
-    ge_batch_add_vertex(fx, fy, u, v, color, -1,-1, fr, fb);
-    ge_batch_add_vertex(fx+fw, fy+fh, u, v, color, 1, 1, fr, fb);
-    ge_batch_add_vertex(fx+fw, fy, u, v, color, 1, -1, fr, fb);
+    ge_batch_add_vertex_shape(x, y, -32767, -32767, norm_r, color, internal_mode, false);
+    ge_batch_add_vertex_shape(x, y + h, -32767, 32767, norm_r, color, internal_mode, false);
+    ge_batch_add_vertex_shape(x + w, y + h, 32767, 32767, norm_r, color, internal_mode, false);
+
+    ge_batch_add_vertex_shape(x, y, -32767, -32767, norm_r, color, internal_mode, false);
+    ge_batch_add_vertex_shape(x + w, y + h, 32767, 32767, norm_r, color, internal_mode, false);
+    ge_batch_add_vertex_shape(x + w, y, 32767, -32767, norm_r, color, internal_mode, false);
 }
 
 void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
@@ -91,12 +72,11 @@ void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
     float w = GE_LINE_WIDTH / 2.0f;
     float px[4] = {(float)x1 + nx * w, (float)x2 + nx * w, (float)x2 - nx * w, (float)x1 - nx * w};
     float py[4] = {(float)y1 + ny * w, (float)y2 + ny * w, (float)y2 - ny * w, (float)y1 - ny * w};
-    float u = s->white_uv[0], v = s->white_uv[1];
     
-    ge_batch_add_vertex(px[0], py[0], u, v, color, 0,0, 0,0);
-    ge_batch_add_vertex(px[1], py[1], u, v, color, 0,0, 0,0);
-    ge_batch_add_vertex(px[2], py[2], u, v, color, 0,0, 0,0);
-    ge_batch_add_vertex(px[0], py[0], u, v, color, 0,0, 0,0);
-    ge_batch_add_vertex(px[2], py[2], u, v, color, 0,0, 0,0);
-    ge_batch_add_vertex(px[3], py[3], u, v, color, 0,0, 0,0);
+    ge_batch_add_vertex_shape((int16_t)px[0], (int16_t)py[0], -32767, -32767, 0, color, 0, false);
+    ge_batch_add_vertex_shape((int16_t)px[1], (int16_t)py[1], -32767, 32767, 0, color, 0, false);
+    ge_batch_add_vertex_shape((int16_t)px[2], (int16_t)py[2], 32767, 32767, 0, color, 0, false);
+    ge_batch_add_vertex_shape((int16_t)px[0], (int16_t)py[0], -32767, -32767, 0, color, 0, false);
+    ge_batch_add_vertex_shape((int16_t)px[2], (int16_t)py[2], 32767, 32767, 0, color, 0, false);
+    ge_batch_add_vertex_shape((int16_t)px[3], (int16_t)py[3], 32767, -32767, 0, color, 0, false);
 }

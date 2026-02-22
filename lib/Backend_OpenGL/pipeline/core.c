@@ -97,15 +97,18 @@ void ge_pipeline_flush_primitives(void) {
         glUseProgram(s->draw_program);
         glUniformMatrix4fv(s->draw_loc_proj, 1, GL_FALSE, s->projection);
         glUniform1i(s->draw_loc_tex, 0);
+        glUniform1f(s->draw_loc_line_width, GE_LINE_WIDTH);
+        
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, s->atlas_id);
         
         glBindBuffer(GL_ARRAY_BUFFER, s->vbo);
         size_t stride = sizeof(GEDrawVertex);
         glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_SHORT, GL_FALSE, stride, (void*)0);
-        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 2, GL_UNSIGNED_SHORT, GL_TRUE, stride, (void*)4);
-        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)8);
-        glEnableVertexAttribArray(3); glVertexAttribPointer(3, 4, GL_UNSIGNED_SHORT_4_4_4_4, GL_TRUE, stride, (void*)12);
-        glEnableVertexAttribArray(4); glVertexAttribPointer(4, 1, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)14);
-        glDisableVertexAttribArray(5);
+        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)4);
+        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 4, GL_SHORT, GL_FALSE, stride, (void*)8);
+        glDisableVertexAttribArray(3);
+        glDisableVertexAttribArray(4);
         s->current_program = s->draw_program;
     }
 

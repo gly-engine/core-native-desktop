@@ -50,23 +50,12 @@ typedef union {
 
 typedef struct __attribute__((packed))
 {
-    int16_t  x, y;        // posição final (GL_SHORT)
-    uint16_t u, v;        // UV atlas (GL_UNSIGNED_SHORT, normalized)
-    uint8_t  r, g, b, a;  // tint (GL_UNSIGNED_BYTE, normalized)
-
+    int16_t x, y;
+    uint8_t r, g, b, a;
     union {
-        uint16_t packed;  // GL_UNSIGNED_SHORT_4_4_4_4 normalized
-        struct {
-            uint16_t lx     : 4;   // local -1..1 (remap no shader)
-            uint16_t ly     : 4;
-            uint16_t border : 4;   // 0..1
-            uint16_t flags  : 4;   // reservado (ex: SDF futuro)
-        };
-    };
-
-    uint8_t radius;       // 0..255 (porcentagem, normalized)
-    uint8_t pad;          // padding p/ fechar 16 bytes
-
+        struct { int16_t u, v, pad1, pad2; } tex; // u > 0 is texture mode
+        struct { int16_t mode, radius, lx, ly; } shape; // u <= 0 shape mode (mode 0 fill, 1 frame)
+    } param;
 } GEDrawVertex;
 
 #include <assert.h>
@@ -89,6 +78,7 @@ typedef struct {
     GLuint current_program;
     GLint  draw_loc_proj;
     GLint  draw_loc_tex;
+    GLint  draw_loc_line_width;
 
     GLuint vbo;
     
@@ -122,7 +112,10 @@ void ge_pipeline_end(void);
 void ge_pipeline_flush(void);
 void ge_pipeline_flush_primitives(void);
 void ge_atlas_alloc(int w, int h, int *ox, int *oy);
-void ge_batch_add_vertex(float x, float y, float u, float v, uint32_t color, float lx, float ly, float r, float b);
+
+void ge_batch_add_vertex_tex(int16_t x, int16_t y, int16_t u, int16_t v, uint32_t color, bool aa);
+void ge_batch_add_vertex_shape(int16_t x, int16_t y, int16_t lx, int16_t ly, int16_t radius, uint32_t color, int8_t mode, bool aa);
+
 void ge_batch_get_color_u8(uint8_t *c);
 
 void native_text_terminate(void);

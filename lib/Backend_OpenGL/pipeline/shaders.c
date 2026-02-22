@@ -39,10 +39,8 @@ static GLuint create_prog(const shader_src_t* vs, const shader_src_t* fs) {
     glAttachShader(p, f);
     
     glBindAttribLocation(p, 0, "a_pos");
-    glBindAttribLocation(p, 1, "a_uv");
-    glBindAttribLocation(p, 2, "a_color");
-    glBindAttribLocation(p, 3, "a_pack");
-    glBindAttribLocation(p, 4, "a_radius");
+    glBindAttribLocation(p, 1, "a_color");
+    glBindAttribLocation(p, 2, "a_param");
 
     glLinkProgram(p);
     GLint ok;
@@ -72,6 +70,7 @@ void init_all_shaders(bool gles) {
     s->draw_program = create_prog(pick(gles, &ds_vs_gl, &ds_vs_es), pick(gles, &ds_fs_gl, &ds_fs_es));
     s->draw_loc_proj = glGetUniformLocation(s->draw_program, "u_proj");
     s->draw_loc_tex = glGetUniformLocation(s->draw_program, "u_tex");
+    s->draw_loc_line_width = glGetUniformLocation(s->draw_program, "u_line_width");
 }
 
 void terminate_all_shaders(void) {

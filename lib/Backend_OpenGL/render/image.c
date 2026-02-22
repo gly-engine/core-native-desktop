@@ -46,15 +46,20 @@ void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
     GLTexture t = kv_A(s->textures, idx);
     if (!t.width) return;
     static const uint32_t color = 0xFFFFFFFF;
-    float fx = (float)x, fy = (float)y, fw = (float)t.width, fh = (float)t.height;
+    int16_t ix = x, iy = y, iw = (int16_t)t.width, ih = (int16_t)t.height;
     
-    // Pass local coords -1 to 1 to allow SDF logic if needed (currently 0 radius)
-    ge_batch_add_vertex(fx, fy, t.u, t.v, color, -1,-1, 0, 0);
-    ge_batch_add_vertex(fx, fy+fh, t.u, t.v2, color, -1, 1, 0, 0);
-    ge_batch_add_vertex(fx+fw, fy+fh, t.u2, t.v2, color, 1, 1, 0, 0);
-    ge_batch_add_vertex(fx, fy, t.u, t.v, color, -1,-1, 0, 0);
-    ge_batch_add_vertex(fx+fw, fy+fh, t.u2, t.v2, color, 1, 1, 0, 0);
-    ge_batch_add_vertex(fx+fw, fy, t.u2, t.v, color, 1, -1, 0, 0);
+    // UVs are 0..1, shader expects 0..32767. Ensure u > 0 for texture mode.
+    int16_t u1 = (int16_t)(t.u * 32767.0f); if (u1 <= 0) u1 = 1;
+    int16_t v1 = (int16_t)(t.v * 32767.0f);
+    int16_t u2 = (int16_t)(t.u2 * 32767.0f); if (u2 <= 0) u2 = 1;
+    int16_t v2 = (int16_t)(t.v2 * 32767.0f);
+
+    ge_batch_add_vertex_tex(ix, iy, u1, v1, color, false);
+    ge_batch_add_vertex_tex(ix, iy + ih, u1, v2, color, false);
+    ge_batch_add_vertex_tex(ix + iw, iy + ih, u2, v2, color, false);
+    ge_batch_add_vertex_tex(ix, iy, u1, v1, color, false);
+    ge_batch_add_vertex_tex(ix + iw, iy + ih, u2, v2, color, false);
+    ge_batch_add_vertex_tex(ix + iw, iy, u2, v1, color, false);
 }
 
 void native_image_mensure(int32_t image_id, int16_t *w, int16_t *h) {
