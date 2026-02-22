@@ -11,21 +11,33 @@ void ge_batch_get_color_u8(uint8_t *c) {
     memcpy(c, s->current_color.rgba, 4);
 }
 
-void ge_batch_add_vertex(float x, float y, float u, float v, uint32_t color, float lx, float ly, float sw, float sh, float r, float b) {
+void ge_batch_add_vertex(float x, float y, float u, float v, uint32_t color, float lx, float ly, float r, float b) {
     GLBackendState *s = geogl_get_state();
     if (s->batch_count >= GE_MAX_VERTICES) ge_pipeline_flush_primitives();
     
     GEDrawVertex *vertex = &s->batch_buffer[s->batch_count++];
-    vertex->x = x; vertex->y = y;
-    vertex->u = u; vertex->v = v;
-    vertex->color.u32 = color;
+    vertex->x = (int16_t)x; vertex->y = (int16_t)y;
+    vertex->u = (uint16_t)(u * 65535.0f); vertex->v = (uint16_t)(v * 65535.0f);
+    
+    // Copy color bytes directly
+    uint8_t *c = (uint8_t*)&color;
+    vertex->r = c[0]; vertex->g = c[1]; vertex->b = c[2]; vertex->a = c[3];
 
-    vertex->local[0] = (int8_t)(lx * 127.0f);
-    vertex->local[1] = (int8_t)(ly * 127.0f);
-    vertex->sdf[0] = (uint8_t)(r > 255.0f ? 255.0f : r);
-    vertex->sdf[1] = (uint8_t)(b > 255.0f ? 255.0f : b);
-    vertex->size[0] = sw;
-    vertex->size[1] = sh;
+    // Packed 4-bit values: 0..15
+    int ilx = (int)((lx + 1.0f) * 7.5f + 0.5f);
+    int ily = (int)((ly + 1.0f) * 7.5f + 0.5f);
+    int iborder = (int)(b * 15.0f + 0.5f);
+    if (ilx < 0) ilx = 0; if (ilx > 15) ilx = 15;
+    if (ily < 0) ily = 0; if (ily > 15) ily = 15;
+    if (iborder < 0) iborder = 0; if (iborder > 15) iborder = 15;
+
+    vertex->lx = ilx;
+    vertex->ly = ily;
+    vertex->border = iborder;
+    vertex->flags = 0;
+
+    vertex->radius = (uint8_t)(r * 255.0f);
+    vertex->pad = 0;
 }
 
 void native_draw_start(void) {
@@ -57,16 +69,16 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
     uint32_t color = s->current_color.u32;
     float fx = (float)x, fy = (float)y, fw = (float)w, fh = (float)h;
     float fr = (float)r;
-    float fb = (mode == 1) ? GE_LINE_WIDTH : 0.0f;
+    float fb = (mode == 1) ? 0.1f : 0.0f; 
     float u = s->white_uv[0], v = s->white_uv[1];
 
-    ge_batch_add_vertex(fx, fy, u, v, color, -1,-1, fw, fh, fr, fb);
-    ge_batch_add_vertex(fx, fy+fh, u, v, color, -1, 1, fw, fh, fr, fb);
-    ge_batch_add_vertex(fx+fw, fy+fh, u, v, color, 1, 1, fw, fh, fr, fb);
+    ge_batch_add_vertex(fx, fy, u, v, color, -1,-1, fr, fb);
+    ge_batch_add_vertex(fx, fy+fh, u, v, color, -1, 1, fr, fb);
+    ge_batch_add_vertex(fx+fw, fy+fh, u, v, color, 1, 1, fr, fb);
 
-    ge_batch_add_vertex(fx, fy, u, v, color, -1,-1, fw, fh, fr, fb);
-    ge_batch_add_vertex(fx+fw, fy+fh, u, v, color, 1, 1, fw, fh, fr, fb);
-    ge_batch_add_vertex(fx+fw, fy, u, v, color, 1, -1, fw, fh, fr, fb);
+    ge_batch_add_vertex(fx, fy, u, v, color, -1,-1, fr, fb);
+    ge_batch_add_vertex(fx+fw, fy+fh, u, v, color, 1, 1, fr, fb);
+    ge_batch_add_vertex(fx+fw, fy, u, v, color, 1, -1, fr, fb);
 }
 
 void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
@@ -81,10 +93,10 @@ void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
     float py[4] = {(float)y1 + ny * w, (float)y2 + ny * w, (float)y2 - ny * w, (float)y1 - ny * w};
     float u = s->white_uv[0], v = s->white_uv[1];
     
-    ge_batch_add_vertex(px[0], py[0], u, v, color, 0,0, 0,0, 0,0);
-    ge_batch_add_vertex(px[1], py[1], u, v, color, 0,0, 0,0, 0,0);
-    ge_batch_add_vertex(px[2], py[2], u, v, color, 0,0, 0,0, 0,0);
-    ge_batch_add_vertex(px[0], py[0], u, v, color, 0,0, 0,0, 0,0);
-    ge_batch_add_vertex(px[2], py[2], u, v, color, 0,0, 0,0, 0,0);
-    ge_batch_add_vertex(px[3], py[3], u, v, color, 0,0, 0,0, 0,0);
+    ge_batch_add_vertex(px[0], py[0], u, v, color, 0,0, 0,0);
+    ge_batch_add_vertex(px[1], py[1], u, v, color, 0,0, 0,0);
+    ge_batch_add_vertex(px[2], py[2], u, v, color, 0,0, 0,0);
+    ge_batch_add_vertex(px[0], py[0], u, v, color, 0,0, 0,0);
+    ge_batch_add_vertex(px[2], py[2], u, v, color, 0,0, 0,0);
+    ge_batch_add_vertex(px[3], py[3], u, v, color, 0,0, 0,0);
 }

@@ -1,25 +1,27 @@
 #version 100
 precision mediump float;
-attribute vec2 a_pos;    // loc 0
-attribute vec2 a_uv;     // loc 1
-attribute vec4 a_color;  // loc 2
-attribute vec2 a_local;  // loc 3 (int8_t normalized)
-attribute vec2 a_sdf;    // loc 4 (uint8_t)
-attribute vec2 a_size;   // loc 5 (float)
 
-uniform mat4 u_mvp;
+attribute vec2 a_pos;        // GL_SHORT
+attribute vec2 a_uv;         // GL_UNSIGNED_SHORT normalized
+attribute vec4 a_color;      // GL_UNSIGNED_BYTE normalized
+attribute vec4 a_pack;       // GL_UNSIGNED_SHORT_4_4_4_4 normalized
+attribute float a_radius;    // GL_UNSIGNED_BYTE normalized
 
-varying vec2 v_uv;
-varying vec4 v_color;
-varying vec2 v_local;
-varying vec2 v_size;
-varying vec2 v_sdf;
+uniform mat4 u_proj;
 
-void main() {
-    v_uv = a_uv;
-    v_color = a_color;
-    v_local = a_local;
-    v_size = a_size;
-    v_sdf = a_sdf;
-    gl_Position = u_mvp * vec4(a_pos, 0.0, 1.0);
+varying mediump vec2 v_uv;
+varying lowp vec4 v_color;
+varying lowp vec2 v_local;
+varying lowp float v_border;
+varying lowp float v_radius;
+
+void main()
+{
+    gl_Position = u_proj * vec4(a_pos, 0.0, 1.0);
+
+    v_uv     = a_uv;
+    v_color  = a_color;
+    v_local  = a_pack.xy * 2.0 - 1.0;
+    v_border = a_pack.z;
+    v_radius = a_radius;
 }

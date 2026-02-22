@@ -96,16 +96,16 @@ void ge_pipeline_flush_primitives(void) {
     if (s->current_program != s->draw_program) {
         glUseProgram(s->draw_program);
         glUniformMatrix4fv(s->draw_loc_proj, 1, GL_FALSE, s->projection);
-        glUniform1i(s->draw_loc_atlas, 0);
+        glUniform1i(s->draw_loc_tex, 0);
         
         glBindBuffer(GL_ARRAY_BUFFER, s->vbo);
         size_t stride = sizeof(GEDrawVertex);
-        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(GEDrawVertex, x));
-        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(GEDrawVertex, u));
-        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(GEDrawVertex, color));
-        glEnableVertexAttribArray(3); glVertexAttribPointer(3, 2, GL_BYTE, GL_TRUE, stride, (void*)offsetof(GEDrawVertex, local));
-        glEnableVertexAttribArray(4); glVertexAttribPointer(4, 2, GL_UNSIGNED_BYTE, GL_FALSE, stride, (void*)offsetof(GEDrawVertex, sdf));
-        glEnableVertexAttribArray(5); glVertexAttribPointer(5, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(GEDrawVertex, size));  
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_SHORT, GL_FALSE, stride, (void*)0);
+        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 2, GL_UNSIGNED_SHORT, GL_TRUE, stride, (void*)4);
+        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)8);
+        glEnableVertexAttribArray(3); glVertexAttribPointer(3, 4, GL_UNSIGNED_SHORT_4_4_4_4, GL_TRUE, stride, (void*)12);
+        glEnableVertexAttribArray(4); glVertexAttribPointer(4, 1, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)14);
+        glDisableVertexAttribArray(5);
         s->current_program = s->draw_program;
     }
 
