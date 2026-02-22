@@ -32,6 +32,10 @@ void native_draw_start(void) {
     ge_pipeline_start();
 }
 
+void native_draw_flush() {
+    ge_pipeline_end();
+}
+
 void native_draw_finish(void) {
     ge_pipeline_end();
     platform_swap_buffers();
@@ -39,16 +43,13 @@ void native_draw_finish(void) {
 
 void native_draw_color(uint32_t color)
 {
-    color = __builtin_bswap32(color);
-    geogl_get_state()->current_color.u32 = color;
+    geogl_get_state()->current_color.u32 = __builtin_bswap32(color);
 }
 
 void native_draw_clear(uint32_t color) {
-    uint8_t *v = geogl_get_state()->current_color.rgba;
-    v[0] = 0xFF;
-    v[1] = 0x00;
-    v[2] = 0xFF;
-    v[3] = 0xFF;
+    GLBackendState *s = geogl_get_state();
+    native_draw_color(color);
+    native_draw_rect(0, 0, 0, s->window_width, s->window_height, 0);
 }
 
 void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r) {

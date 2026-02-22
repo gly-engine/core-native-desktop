@@ -68,13 +68,14 @@ typedef struct {
     double last_frame_time;
 
     GLuint draw_program;
+    GLuint current_program;
     GLint  draw_loc_proj;
     GLint  draw_loc_atlas;
 
-    GLuint vbos[3]; 
-    int vbo_idx;
+    GLuint vbo;
     
     GLuint atlas_id;
+    bool   atlas_dirty;
     int atlas_width;
     int atlas_height;
     int alloc_cursor_x;
@@ -84,24 +85,8 @@ typedef struct {
 
     float projection[16];
     GEColor current_color;
-    GEColor clear_color;
 
     kvec_t(GLTexture) textures;
-    
-    GLuint video_program;
-    GLint  video_loc_pos, video_loc_texCoord, video_loc_proj;
-    GLint  video_loc_tex_rgba, video_loc_tex_y, video_loc_tex_u, video_loc_tex_v;
-    GLint  video_loc_format, video_loc_bright, video_loc_contrast, video_loc_sat;
-    GLint  video_loc_grain, video_loc_sharpen, video_loc_tsize, video_loc_time, video_loc_scratch, video_loc_jitter;
-    GLuint video_vbo;
-    GLuint video_textures[3];
-    int video_width, video_height, video_format;
-    atomic_int video_update_count;
-
-    GLuint post_program;
-    GLint  post_loc_pos, post_loc_texCoord, post_loc_proj, post_loc_sampler, post_loc_tsize;
-    GLint  post_loc_rotation, post_loc_center, post_loc_crt, post_loc_time;
-    GLuint post_vbo, post_fbo, post_fbo_texture;
 
     GEDrawVertex *batch_buffer;
     int batch_count;
@@ -112,6 +97,7 @@ void init_all_shaders(bool is_gles);
 void terminate_all_shaders(void);
 
 void ge_pipeline_init(uint16_t w, uint16_t h);
+void ge_pipeline_terminate(void);
 void ge_pipeline_resize(uint16_t w, uint16_t h);
 void ge_pipeline_start(void);
 void ge_pipeline_end(void);
@@ -121,7 +107,6 @@ void ge_atlas_alloc(int w, int h, int *ox, int *oy);
 void ge_batch_add_vertex(float x, float y, float u, float v, uint32_t color, float lx, float ly, float sw, float sh, float r, float b);
 void ge_batch_get_color_u8(uint8_t *c);
 
-void native_draw_background_video(void);
 void native_text_terminate(void);
 
 void platform_swap_buffers(void);

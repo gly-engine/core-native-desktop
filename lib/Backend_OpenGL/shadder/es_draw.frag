@@ -19,8 +19,9 @@ void main() {
     if (v_size.x > 0.5) {
         vec2 halfSize = v_size * 0.5;
         vec2 p = v_local * halfSize;
-        vec2 d = abs(p) - halfSize + v_sdf.x;
-        float dist = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - v_sdf.x;
+        float radius = (v_sdf.x / 255.0) * max(v_size.x, v_size.y);
+        vec2 d = abs(p) - halfSize + radius;
+        float dist = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - radius;
         
         lowp float fillMask = clamp(0.5 - dist, 0.0, 1.0);
         lowp float border = v_sdf.y;

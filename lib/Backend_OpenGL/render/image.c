@@ -29,6 +29,7 @@ void native_image_load(const char *path, int32_t image_id, bool *success) {
     if (!reuse) ge_atlas_alloc(ihdr.width, ihdr.height, &ox, &oy);
     glBindTexture(GL_TEXTURE_2D, s->atlas_id);
     glTexSubImage2D(GL_TEXTURE_2D, 0, ox, oy, ihdr.width, ihdr.height, GL_RGBA, GL_UNSIGNED_BYTE, img);
+    s->atlas_dirty = true;
     while (kv_size(s->textures) <= idx) kv_push(GLTexture, s->textures, (GLTexture){0});
     GLTexture *t = &kv_A(s->textures, idx);
     t->id = s->atlas_id; t->width = ihdr.width; t->height = ihdr.height;
@@ -46,12 +47,14 @@ void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
     if (!t.width) return;
     static const uint32_t color = 0xFFFFFFFF;
     float fx = (float)x, fy = (float)y, fw = (float)t.width, fh = (float)t.height;
-    ge_batch_add_vertex(fx, fy, t.u, t.v, color, 0,0, 0,0, 0,0);
-    ge_batch_add_vertex(fx, fy+fh, t.u, t.v2, color, 0,0, 0,0, 0,0);
-    ge_batch_add_vertex(fx+fw, fy+fh, t.u2, t.v2, color, 0,0, 0,0, 0,0);
-    ge_batch_add_vertex(fx, fy, t.u, t.v, color, 0,0, 0,0, 0,0);
-    ge_batch_add_vertex(fx+fw, fy+fh, t.u2, t.v2, color, 0,0, 0,0, 0,0);
-    ge_batch_add_vertex(fx+fw, fy, t.u2, t.v, color, 0,0, 0,0, 0,0);
+    
+    // Pass local coords -1 to 1 and size to allow SDF rounding on images
+    ge_batch_add_vertex(fx, fy, t.u, t.v, color, -1,-1, fw, fh, 0, 0);
+    ge_batch_add_vertex(fx, fy+fh, t.u, t.v2, color, -1, 1, fw, fh, 0, 0);
+    ge_batch_add_vertex(fx+fw, fy+fh, t.u2, t.v2, color, 1, 1, fw, fh, 0, 0);
+    ge_batch_add_vertex(fx, fy, t.u, t.v, color, -1,-1, fw, fh, 0, 0);
+    ge_batch_add_vertex(fx+fw, fy+fh, t.u2, t.v2, color, 1, 1, fw, fh, 0, 0);
+    ge_batch_add_vertex(fx+fw, fy, t.u2, t.v, color, 1, -1, fw, fh, 0, 0);
 }
 
 void native_image_mensure(int32_t image_id, int16_t *w, int16_t *h) {
