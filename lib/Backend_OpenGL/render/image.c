@@ -26,6 +26,15 @@ void native_image_load(const char *path, int32_t image_id, bool *success) {
     spng_decoded_image_size(ctx, SPNG_FMT_RGBA8, &sz);
     unsigned char *img = malloc(sz);
     spng_decode_image(ctx, img, sz, SPNG_FMT_RGBA8, SPNG_DECODE_TRNS | SPNG_DECODE_GAMMA);
+
+    bool is_opaque = true;
+    for (size_t i = 0; i < sz; i += 4) {
+        if (img[i+3] < 254) {
+            is_opaque = false;
+            break;
+        }
+    }
+
     if (!reuse) ge_atlas_alloc(ihdr.width, ihdr.height, &ox, &oy);
     glBindTexture(GL_TEXTURE_2D, s->atlas_id);
     glTexSubImage2D(GL_TEXTURE_2D, 0, ox, oy, ihdr.width, ihdr.height, GL_RGBA, GL_UNSIGNED_BYTE, img);
@@ -35,6 +44,7 @@ void native_image_load(const char *path, int32_t image_id, bool *success) {
     t->id = s->atlas_id; t->width = ihdr.width; t->height = ihdr.height;
     t->u = (float)ox / (float)s->atlas_width; t->v = (float)oy / (float)s->atlas_height;
     t->u2 = (float)(ox + ihdr.width) / (float)s->atlas_width; t->v2 = (float)(oy + ihdr.height) / (float)s->atlas_height;
+    t->is_opaque = is_opaque;
     if (success) *success = true;
     free(img); spng_ctx_free(ctx); fclose(fp);
 }
@@ -54,12 +64,14 @@ void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
     int16_t u2 = (int16_t)(t.u2 * 32767.0f); if (u2 <= 0) u2 = 1;
     int16_t v2 = (int16_t)(t.v2 * 32767.0f);
 
-    ge_batch_add_vertex_tex(ix, iy, u1, v1, color, false);
-    ge_batch_add_vertex_tex(ix, iy + ih, u1, v2, color, false);
-    ge_batch_add_vertex_tex(ix + iw, iy + ih, u2, v2, color, false);
-    ge_batch_add_vertex_tex(ix, iy, u1, v1, color, false);
-    ge_batch_add_vertex_tex(ix + iw, iy + ih, u2, v2, color, false);
-    ge_batch_add_vertex_tex(ix + iw, iy, u2, v1, color, false);
+    ge_batch_add_vertex_tex(ix, iy, u1, v1, color, t.is_opaque);
+    ge_batch_add_vertex_tex(ix, iy + ih, u1, v2, color, t.is_opaque);
+    ge_batch_add_vertex_tex(ix + iw, iy + ih, u2, v2, color, t.is_opaque);
+    ge_batch_add_vertex_tex(ix, iy, u1, v1, color, t.is_opaque);
+    ge_batch_add_vertex_tex(ix + iw, iy + ih, u2, v2, color, t.is_opaque);
+    ge_batch_add_vertex_tex(ix + iw, iy, u2, v1, color, t.is_opaque);
+
+    s->current_z++;
 }
 
 void native_image_mensure(int32_t image_id, int16_t *w, int16_t *h) {

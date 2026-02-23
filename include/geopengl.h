@@ -33,6 +33,7 @@ typedef struct {
     int height;
     float u, v;
     float u2, v2;
+    bool is_opaque;
 } GLTexture;
 
 static inline void mat4_ortho(float *mat, float left, float right, float bottom, float top, float near, float far) {
@@ -50,23 +51,54 @@ typedef union {
 
 typedef struct __attribute__((packed))
 {
-    int16_t x, y;
+    float x, y, z;
+    float lx, ly;
+    float mode, radius;
     uint8_t r, g, b, a;
-    union {
-        struct { int16_t u, v, pad1, pad2; } tex; // u > 0 is texture mode
-        struct { int16_t mode, radius, lx, ly; } shape; // u <= 0 shape mode (mode 0 fill, 1 frame)
-    } param;
-} GEDrawVertex;
+} GEDShapeComplexVertex;
+
+typedef struct __attribute__((packed))
+{
+    float x, y, z;
+    uint8_t r, g, b, a;
+} GESimpleShapeVertex;
+
+typedef struct __attribute__((packed))
+{
+    float x, y, z;
+    uint8_t r, g, b, a;
+    float u0, v0;
+    float u1, v1;
+} GEAtlasVertex;
 
 #include <assert.h>
 #ifndef static_assert
 #define static_assert _Static_assert
 #endif
-static_assert(sizeof(GEDrawVertex) == 16, "Vertex must be 16 bytes");
 
-#define GE_BATCH_SIZE (GE_MAX_VERTICES * sizeof(GEDrawVertex))
-// Slicing for performance on Mali - Must be multiple of 3!
 #define GE_MAX_CHUNK 1020
+
+typedef enum {
+    GE_PROG_SIMPLE,
+    GE_PROG_COMPLEX,
+    GE_PROG_ATLAS,
+    GE_PROG_COUNT
+} GEProgramType;
+
+typedef struct {
+    GLuint id;
+    GLint loc_proj;
+    GLint loc_tex;
+    GLint loc_size;
+    GLint loc_thickness;
+    GLint loc_aa_blur;
+    GLint loc_jitter;
+} GEProgram;
+
+typedef struct {
+    void *buffer;
+    int count;
+} GEBatch;
 
 typedef struct {
     void *window;
@@ -74,13 +106,8 @@ typedef struct {
     uint16_t window_height;
     double last_frame_time;
 
-    GLuint draw_program;
-    GLuint current_program;
-    GLint  draw_loc_proj;
-    GLint  draw_loc_tex;
-    GLint  draw_loc_line_width;
-
-    GLuint vbo;
+    GEProgram programs[GE_PROG_COUNT];
+    GLuint vbo_simple, vbo_complex, vbo_atlas;
     
     GLuint atlas_id;
     bool   atlas_dirty;
@@ -96,8 +123,9 @@ typedef struct {
 
     kvec_t(GLTexture) textures;
 
-    GEDrawVertex *batch_buffer;
-    int batch_count;
+    GEBatch opaque_batches[GE_PROG_COUNT];
+    GEBatch transparent_batches[GE_PROG_COUNT];
+    int16_t current_z;
 } GLBackendState;
 
 GLBackendState* geogl_get_state(void);
@@ -113,7 +141,7 @@ void ge_pipeline_flush(void);
 void ge_pipeline_flush_primitives(void);
 void ge_atlas_alloc(int w, int h, int *ox, int *oy);
 
-void ge_batch_add_vertex_tex(int16_t x, int16_t y, int16_t u, int16_t v, uint32_t color, bool aa);
+void ge_batch_add_vertex_tex(int16_t x, int16_t y, int16_t u, int16_t v, uint32_t color, bool opaque);
 void ge_batch_add_vertex_shape(int16_t x, int16_t y, int16_t lx, int16_t ly, int16_t radius, uint32_t color, int8_t mode, bool aa);
 
 void ge_batch_get_color_u8(uint8_t *c);

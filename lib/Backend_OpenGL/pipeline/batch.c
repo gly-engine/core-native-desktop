@@ -3,22 +3,25 @@
 void ge_batch_add_vertex_tex(int16_t x, int16_t y,
     int16_t u, int16_t v,
     uint32_t color,
-    bool aa) {
-    (void) aa;
-
+    bool opaque) {
+    
     GLBackendState *s = geogl_get_state();
-    if (s->batch_count >= GE_MAX_VERTICES) {
+    GEBatch *b = opaque ? &s->opaque_batches[GE_PROG_ATLAS] : &s->transparent_batches[GE_PROG_ATLAS];
+    
+    if (b->count >= GE_MAX_VERTICES) {
         ge_pipeline_flush_primitives();
+        b = opaque ? &s->opaque_batches[GE_PROG_ATLAS] : &s->transparent_batches[GE_PROG_ATLAS];
     }
 
-    GEDrawVertex *vertex = &s->batch_buffer[s->batch_count++];
+    GEAtlasVertex *vertex = &((GEAtlasVertex*)b->buffer)[b->count++];
     
-    vertex->x = x;
-    vertex->y = y;
-    vertex->param.tex.u = u;
-    vertex->param.tex.v = v;
-    vertex->param.tex.pad1 = 1;
-    vertex->param.tex.pad2 = 1;
+    vertex->x = (float)x;
+    vertex->y = (float)y;
+    vertex->z = (float)s->current_z;
+    vertex->u0 = (float)u / 32767.0f;
+    vertex->v0 = (float)v / 32767.0f;
+    vertex->u1 = 1.0f; 
+    vertex->v1 = 1.0f;
 
     uint8_t *c = (uint8_t*)&color;
     vertex->r = c[0];
@@ -36,24 +39,35 @@ void ge_batch_add_vertex_shape(
     bool aa)
 {
     (void) aa;
-
     GLBackendState *s = geogl_get_state();
-    if (s->batch_count >= GE_MAX_VERTICES) {
+    uint8_t alpha = (color >> 24) & 0xFF;
+    bool opaque = (alpha >= 254);
+    
+    GEProgramType type = (mode == 0) ? GE_PROG_SIMPLE : GE_PROG_COMPLEX;
+    GEBatch *b = opaque ? &s->opaque_batches[type] : &s->transparent_batches[type];
+
+    if (b->count >= GE_MAX_VERTICES) {
         ge_pipeline_flush_primitives();
+        b = opaque ? &s->opaque_batches[type] : &s->transparent_batches[type];
     }
 
-    GEDrawVertex *vertex = &s->batch_buffer[s->batch_count++];
-
-    vertex->x = x;
-    vertex->y = y;
-    vertex->param.shape.mode = -mode;
-    vertex->param.shape.radius = radius;
-    vertex->param.shape.lx = lx;
-    vertex->param.shape.ly = ly;
-
-    uint8_t *c = (uint8_t*)&color;
-    vertex->r = c[0];
-    vertex->g = c[1];
-    vertex->b = c[2];
-    vertex->a = c[3];
+    if (type == GE_PROG_SIMPLE) {
+        GESimpleShapeVertex *vertex = &((GESimpleShapeVertex*)b->buffer)[b->count++];
+        vertex->x = (float)x;
+        vertex->y = (float)y;
+        vertex->z = (float)s->current_z;
+        uint8_t *c = (uint8_t*)&color;
+        vertex->r = c[0]; vertex->g = c[1]; vertex->b = c[2]; vertex->a = c[3];
+    } else {
+        GEDShapeComplexVertex *vertex = &((GEDShapeComplexVertex*)b->buffer)[b->count++];
+        vertex->x = (float)x;
+        vertex->y = (float)y;
+        vertex->z = (float)s->current_z;
+        vertex->lx = (float)lx / 32767.0f;
+        vertex->ly = (float)ly / 32767.0f;
+        vertex->radius = (float)radius / 32767.0f;
+        vertex->mode = (float)(mode < 0 ? -mode : mode);
+        uint8_t *c = (uint8_t*)&color;
+        vertex->r = c[0]; vertex->g = c[1]; vertex->b = c[2]; vertex->a = c[3];
+    }
 }

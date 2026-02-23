@@ -34,7 +34,7 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
     GLBackendState *s = geogl_get_state();
     int x = rect[0], y = rect[1], w = rect[2] - rect[0], h = rect[3] - rect[1];
     if (w <= 0 || h <= 0) return;
-    if (s->batch_count > 0) ge_pipeline_flush_primitives();
+    ge_pipeline_flush_primitives();
     size_t needed = (size_t)(w * h * 4);
     if (gl->scratch_size < needed) {
         gl->scratch = realloc(gl->scratch, needed); gl->scratch_size = needed;
@@ -56,7 +56,6 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
 static void glfons__renderDraw(void* userPtr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts) {
     if (nverts == 0) return;
     GLBackendState *s = geogl_get_state();
-    if (s->batch_count + nverts >= GE_MAX_VERTICES) ge_pipeline_flush_primitives();
     float uv_scale_x = (float)GE_FONT_ATLAS_SIZE / (float)s->atlas_width; 
     float uv_scale_y = (float)GE_FONT_ATLAS_SIZE / (float)s->atlas_height; 
     for (int i = 0; i < nverts; i++) {
@@ -143,6 +142,7 @@ void native_text_print(int16_t x, int16_t y, const char *text) {
     fonsSetColor(fs, glfonsRGBA(c.rgba[0], c.rgba[1], c.rgba[2], c.rgba[3]));
     fonsSetAlign(fs, FONS_ALIGN_LEFT | FONS_ALIGN_TOP);
     fonsDrawText(fs, (float)x, (float)y, text, NULL);
+    state->current_z++;
 }
 
 void native_text_mensure(const char *text, int16_t *w, int16_t *h) {

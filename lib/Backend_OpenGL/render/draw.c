@@ -48,10 +48,13 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
     }
 
     // mode 0: fill, 1: frame (border)
-    // shader expects v_mode <= -1.5 for border. 
-    // batch.c does vertex->param.shape.mode = -mode;
-    // So if mode=2, shader gets -2.
     int8_t internal_mode = (mode == 1) ? 2 : 0;
+
+    if (internal_mode == 2 || norm_r > 0) {
+        GEProgram *p = &s->programs[GE_PROG_COMPLEX];
+        glUseProgram(p->id);
+        glUniform2f(p->loc_size, (float)w, (float)h);
+    }
 
     ge_batch_add_vertex_shape(x, y, -32767, -32767, norm_r, color, internal_mode, false);
     ge_batch_add_vertex_shape(x, y + h, -32767, 32767, norm_r, color, internal_mode, false);
@@ -60,6 +63,8 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
     ge_batch_add_vertex_shape(x, y, -32767, -32767, norm_r, color, internal_mode, false);
     ge_batch_add_vertex_shape(x + w, y + h, 32767, 32767, norm_r, color, internal_mode, false);
     ge_batch_add_vertex_shape(x + w, y, 32767, -32767, norm_r, color, internal_mode, false);
+
+    s->current_z++;
 }
 
 void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
@@ -79,4 +84,6 @@ void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
     ge_batch_add_vertex_shape((int16_t)px[0], (int16_t)py[0], -32767, -32767, 0, color, 0, false);
     ge_batch_add_vertex_shape((int16_t)px[2], (int16_t)py[2], 32767, 32767, 0, color, 0, false);
     ge_batch_add_vertex_shape((int16_t)px[3], (int16_t)py[3], 32767, -32767, 0, color, 0, false);
+
+    s->current_z++;
 }
