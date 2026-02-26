@@ -16,6 +16,7 @@ static ko_longopt_t longopts[] = {
     { "game", ko_required_argument, 305 },
     { "engine", ko_required_argument, 306 },
     { "play", ko_required_argument, 307 },
+    { "libretro", ko_required_argument, 308 },
     { "filter-aa", ko_required_argument, 401 },
     { "filter-color", ko_required_argument, 402 },
     { "filter-grain", ko_required_argument, 403 },
@@ -66,6 +67,21 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
         if (c == 307) {
             native_media_source(0, opt.arg);
             native_media_play(0);
+        }
+        if (c == 308) {
+            char *sep = strstr(opt.arg, "://");
+            if (sep) {
+                *sep = '\0';
+                char *core = opt.arg;
+                char *rom = sep + 3;
+                if (native_libretro_load(core)) {
+                    native_libretro_game(rom);
+                } else {
+                    gly->error_string = "failed to load libretro core!";
+                }
+            } else {
+                gly->error_string = "invalid libretro argument format! use core_path://rom_path";
+            }
         }
         if (c == 401) {
             float a, b, c;

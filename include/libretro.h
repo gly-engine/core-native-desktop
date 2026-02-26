@@ -30,6 +30,10 @@
 #define RETRO_REGION_NTSC  0
 #define RETRO_REGION_PAL   1
 
+#define RETRO_PIXEL_FORMAT_0RGB1555 0
+#define RETRO_PIXEL_FORMAT_XRGB8888 1
+#define RETRO_PIXEL_FORMAT_RGB565   2
+
 #define RETRO_ENVIRONMENT_SET_ROTATION  1
 #define RETRO_ENVIRONMENT_GET_CAN_DUPE   2
 #define RETRO_ENVIRONMENT_GET_VARIABLE   4
@@ -95,7 +99,16 @@
 #define RETRO_ENVIRONMENT_GET_DEVICE_POWER 64
 #define RETRO_ENVIRONMENT_SET_PIXEL_FORMAT 10
 #define RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY 9
-#define RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY 11
+
+#define RETRO_LOG_DEBUG 0
+#define RETRO_LOG_INFO  1
+#define RETRO_LOG_WARN  2
+#define RETRO_LOG_ERROR 3
+
+typedef void (*retro_log_printf_t)(int level, const char *fmt, ...);
+struct retro_log_callback {
+   retro_log_printf_t log;
+};
 
 struct retro_message
 {
