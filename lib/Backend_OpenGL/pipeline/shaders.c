@@ -12,6 +12,8 @@
 #include <gecnd/shadder_es_texture_frag.h>
 #include <gecnd/shadder_es_video_vert.h>
 #include <gecnd/shadder_es_video_frag.h>
+#include <gecnd/shadder_es_post_vert.h>
+#include <gecnd/shadder_es_post_frag.h>
 
 // GL Shaders
 #include <gecnd/shadder_gl_shape_simple_vert.h>
@@ -22,6 +24,8 @@
 #include <gecnd/shadder_gl_texture_frag.h>
 #include <gecnd/shadder_gl_video_vert.h>
 #include <gecnd/shadder_gl_video_frag.h>
+#include <gecnd/shadder_gl_post_vert.h>
+#include <gecnd/shadder_gl_post_frag.h>
 
 typedef struct {
     const char *name;
@@ -46,7 +50,7 @@ static GLuint compile(GLenum type, const char* src, int len, const char* name) {
     return s;
 }
 
-static GLuint create_prog(const shader_src_t* vs, const shader_src_t* fs, GEProgramType type) {
+static GLuint create_prog(const shader_src_t* vs, const shader_src_t* fs, int prog_type) {
     GLuint p = glCreateProgram();
     GLuint v = compile(GL_VERTEX_SHADER, vs->src, vs->len, vs->name);
     GLuint f = compile(GL_FRAGMENT_SHADER, fs->src, fs->len, fs->name);
@@ -55,13 +59,15 @@ static GLuint create_prog(const shader_src_t* vs, const shader_src_t* fs, GEProg
     
     glBindAttribLocation(p, 0, "a_pos");
     glBindAttribLocation(p, 1, "a_color");
-    if (type == GE_PROG_COMPLEX) {
+    if (prog_type == GE_PROG_COMPLEX) {
         glBindAttribLocation(p, 2, "a_local");
         glBindAttribLocation(p, 3, "a_radius");
         glBindAttribLocation(p, 4, "a_mode");
-    } else if (type == GE_PROG_ATLAS) {
+    } else if (prog_type == GE_PROG_ATLAS) {
         glBindAttribLocation(p, 2, "a_uv");
-    } else if (type == GE_PROG_VIDEO) {
+    } else if (prog_type == GE_PROG_VIDEO) {
+        glBindAttribLocation(p, 2, "a_texCoord");
+    } else if (prog_type == 99) { // Post
         glBindAttribLocation(p, 2, "a_texCoord");
     }
 
@@ -135,6 +141,16 @@ void init_all_shaders(bool gles) {
     vp->loc_time = glGetUniformLocation(vp->id, "u_time");
     vp->loc_scratch = glGetUniformLocation(vp->id, "u_scratch");
     vp->loc_jitter = glGetUniformLocation(vp->id, "u_jitter");
+    // Post
+    shader_src_t post_vs_gl = SHADER(shadder_gl_post_vert);
+    shader_src_t post_fs_gl = SHADER(shadder_gl_post_frag);
+    shader_src_t post_vs_es = SHADER(shadder_es_post_vert);
+    shader_src_t post_fs_es = SHADER(shadder_es_post_frag);
+    s->post_program.id = create_prog(pick(gles, &post_vs_gl, &post_vs_es), pick(gles, &post_fs_gl, &post_fs_es), 99);
+    s->post_program.loc_proj = glGetUniformLocation(s->post_program.id, "u_projection");
+    s->post_program.loc_tex = glGetUniformLocation(s->post_program.id, "u_texture");
+    s->post_program.loc_crt = glGetUniformLocation(s->post_program.id, "u_crt");
+    s->post_program.loc_time = glGetUniformLocation(s->post_program.id, "u_time");
 }
 
 void terminate_all_shaders(void) {
@@ -142,4 +158,5 @@ void terminate_all_shaders(void) {
     for (int i = 0; i < GE_PROG_COUNT; i++) {
         if (s->programs[i].id) glDeleteProgram(s->programs[i].id);
     }
+    if (s->post_program.id) glDeleteProgram(s->post_program.id);
 }

@@ -34,7 +34,15 @@ typedef struct {
     float u, v;
     float u2, v2;
     bool is_opaque;
+    int page_index;
 } GLTexture;
+
+typedef struct {
+    GLuint tex_id;
+    int cursor_x;
+    int cursor_y;
+    int row_height;
+} GEAtlasPage;
 
 static inline void mat4_ortho(float *mat, float left, float right, float bottom, float top, float near, float far) {
     mat[0] = 2.0f / (right - left); mat[1] = 0.0f; mat[2] = 0.0f; mat[3] = 0.0f;
@@ -106,11 +114,13 @@ typedef struct {
     GLint loc_film_grain;
     GLint loc_time;
     GLint loc_scratch;
+    GLint loc_crt;
 } GEProgram;
 
 typedef struct {
     void *buffer;
     int count;
+    int page_index;
 } GEBatch;
 
 typedef struct {
@@ -120,15 +130,18 @@ typedef struct {
     double last_frame_time;
 
     GEProgram programs[GE_PROG_COUNT];
-    GLuint vbo_simple, vbo_complex, vbo_atlas;
+    GEProgram post_program;
+    GLuint vbo_simple, vbo_complex, vbo_atlas, vbo_post;
     
-    GLuint atlas_id;
+    GLuint fbo_id;
+    GLuint fbo_tex;
+    int fbo_width, fbo_height;
+
+    kvec_t(GEAtlasPage) atlas_pages;
+    int active_opaque_page_index;
+    int active_transparent_page_index;
+    
     bool   atlas_dirty;
-    int atlas_width;
-    int atlas_height;
-    int alloc_cursor_x;
-    int alloc_cursor_y;
-    int alloc_row_height;
     float white_uv[2]; 
 
     float projection[16];
@@ -159,9 +172,9 @@ void ge_pipeline_start(void);
 void ge_pipeline_end(void);
 void ge_pipeline_flush(void);
 void ge_pipeline_flush_primitives(void);
-void ge_atlas_alloc(int w, int h, int *ox, int *oy);
+void ge_atlas_alloc(int w, int h, int *page_index, int *ox, int *oy);
 
-void ge_batch_add_vertex_tex(int16_t x, int16_t y, int16_t u, int16_t v, uint32_t color, bool opaque);
+void ge_batch_add_vertex_tex(int16_t x, int16_t y, float u, float v, uint32_t color, bool opaque, int page_index);
 void ge_batch_add_vertex_shape(int16_t x, int16_t y, int16_t lx, int16_t ly, int16_t radius, uint32_t color, int8_t mode, bool aa);
 
 void ge_batch_get_color_u8(uint8_t *c);

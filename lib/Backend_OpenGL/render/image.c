@@ -8,7 +8,7 @@ void native_image_load(const char *path, int32_t image_id, bool *success) {
     GLBackendState *s = geogl_get_state();
     size_t idx = image_id - 1;
     bool reuse = false;
-    int ox, oy;
+    int ox, oy, page_idx = 0;
     spng_ctx *ctx = spng_ctx_new(0);
     if (!ctx) { if(success) *success = false; return; }
     FILE *fp = fopen(path, "rb");
@@ -19,7 +19,10 @@ void native_image_load(const char *path, int32_t image_id, bool *success) {
     if (kv_size(s->textures) > idx) {
         GLTexture old = kv_A(s->textures, idx);
         if (old.width == (int)ihdr.width && old.height == (int)ihdr.height) {
-            reuse = true; ox = (int)(old.u * (float)s->atlas_width); oy = (int)(old.v * (float)s->atlas_height);
+            reuse = true; 
+            ox = (int)(old.u * (float)GE_ATLAS_SIZE); 
+            oy = (int)(old.v * (float)GE_ATLAS_SIZE);
+            page_idx = old.page_index;
         }
     }
     size_t sz;
@@ -35,16 +38,17 @@ void native_image_load(const char *path, int32_t image_id, bool *success) {
         }
     }
 
-    if (!reuse) ge_atlas_alloc(ihdr.width, ihdr.height, &ox, &oy);
-    glBindTexture(GL_TEXTURE_2D, s->atlas_id);
+    if (!reuse) ge_atlas_alloc(ihdr.width, ihdr.height, &page_idx, &ox, &oy);
+    glBindTexture(GL_TEXTURE_2D, s->atlas_pages.a[page_idx].tex_id);
     glTexSubImage2D(GL_TEXTURE_2D, 0, ox, oy, ihdr.width, ihdr.height, GL_RGBA, GL_UNSIGNED_BYTE, img);
     s->atlas_dirty = true;
     while (kv_size(s->textures) <= idx) kv_push(GLTexture, s->textures, (GLTexture){0});
     GLTexture *t = &kv_A(s->textures, idx);
-    t->id = s->atlas_id; t->width = ihdr.width; t->height = ihdr.height;
-    t->u = (float)ox / (float)s->atlas_width; t->v = (float)oy / (float)s->atlas_height;
-    t->u2 = (float)(ox + ihdr.width) / (float)s->atlas_width; t->v2 = (float)(oy + ihdr.height) / (float)s->atlas_height;
+    t->id = s->atlas_pages.a[page_idx].tex_id; t->width = ihdr.width; t->height = ihdr.height;
+    t->u = (float)ox / (float)GE_ATLAS_SIZE; t->v = (float)oy / (float)GE_ATLAS_SIZE;
+    t->u2 = (float)(ox + ihdr.width) / (float)GE_ATLAS_SIZE; t->v2 = (float)(oy + ihdr.height) / (float)GE_ATLAS_SIZE;
     t->is_opaque = is_opaque;
+    t->page_index = page_idx;
     if (success) *success = true;
     free(img); spng_ctx_free(ctx); fclose(fp);
 }
@@ -58,18 +62,12 @@ void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
     static const uint32_t color = 0xFFFFFFFF;
     int16_t ix = x, iy = y, iw = (int16_t)t.width, ih = (int16_t)t.height;
     
-    // UVs are 0..1, shader expects 0..32767. Ensure u > 0 for texture mode.
-    int16_t u1 = (int16_t)(t.u * 32767.0f); if (u1 <= 0) u1 = 1;
-    int16_t v1 = (int16_t)(t.v * 32767.0f);
-    int16_t u2 = (int16_t)(t.u2 * 32767.0f); if (u2 <= 0) u2 = 1;
-    int16_t v2 = (int16_t)(t.v2 * 32767.0f);
-
-    ge_batch_add_vertex_tex(ix, iy, u1, v1, color, t.is_opaque);
-    ge_batch_add_vertex_tex(ix, iy + ih, u1, v2, color, t.is_opaque);
-    ge_batch_add_vertex_tex(ix + iw, iy + ih, u2, v2, color, t.is_opaque);
-    ge_batch_add_vertex_tex(ix, iy, u1, v1, color, t.is_opaque);
-    ge_batch_add_vertex_tex(ix + iw, iy + ih, u2, v2, color, t.is_opaque);
-    ge_batch_add_vertex_tex(ix + iw, iy, u2, v1, color, t.is_opaque);
+    ge_batch_add_vertex_tex(ix, iy, t.u, t.v, color, t.is_opaque, t.page_index);
+    ge_batch_add_vertex_tex(ix, iy + ih, t.u, t.v2, color, t.is_opaque, t.page_index);
+    ge_batch_add_vertex_tex(ix + iw, iy + ih, t.u2, t.v2, color, t.is_opaque, t.page_index);
+    ge_batch_add_vertex_tex(ix, iy, t.u, t.v, color, t.is_opaque, t.page_index);
+    ge_batch_add_vertex_tex(ix + iw, iy + ih, t.u2, t.v2, color, t.is_opaque, t.page_index);
+    ge_batch_add_vertex_tex(ix + iw, iy, t.u2, t.v, color, t.is_opaque, t.page_index);
 
     s->current_z++;
 }

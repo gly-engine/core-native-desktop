@@ -18,11 +18,11 @@ void native_draw_start(void) {
 }
 
 void native_draw_flush() {
-    ge_pipeline_end();
+    ge_pipeline_flush();
 }
 
 void native_draw_finish(void) {
-    ge_pipeline_end();
+    ge_pipeline_flush();
     platform_swap_buffers();
 }
 

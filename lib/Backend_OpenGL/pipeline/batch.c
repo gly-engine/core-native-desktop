@@ -1,25 +1,28 @@
 #include "geopengl.h"
 
 void ge_batch_add_vertex_tex(int16_t x, int16_t y,
-    int16_t u, int16_t v,
+    float u, float v,
     uint32_t color,
-    bool opaque) {
+    bool opaque,
+    int page_index) {
     
     GLBackendState *s = geogl_get_state();
     GEBatch *b = opaque ? &s->opaque_batches[GE_PROG_ATLAS] : &s->transparent_batches[GE_PROG_ATLAS];
     
-    if (b->count >= GE_MAX_VERTICES) {
+    if (b->count >= GE_MAX_VERTICES || (b->count > 0 && b->page_index != page_index)) {
         ge_pipeline_flush_primitives();
         b = opaque ? &s->opaque_batches[GE_PROG_ATLAS] : &s->transparent_batches[GE_PROG_ATLAS];
     }
+    
+    b->page_index = page_index;
 
     GEAtlasVertex *vertex = &((GEAtlasVertex*)b->buffer)[b->count++];
     
     vertex->x = (float)x;
     vertex->y = (float)y;
     vertex->z = (float)s->current_z;
-    vertex->u0 = (float)u / 32767.0f;
-    vertex->v0 = (float)v / 32767.0f;
+    vertex->u0 = u;
+    vertex->v0 = v;
     vertex->u1 = 1.0f; 
     vertex->v1 = 1.0f;
 

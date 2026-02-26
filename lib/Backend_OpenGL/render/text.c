@@ -25,7 +25,7 @@ static int glfons__renderCreate(void* userPtr, int width, int height) {
     GLFONScontext* gl = (GLFONScontext*)userPtr;
     GLBackendState *s = geogl_get_state();
     gl->width = width; gl->height = height;
-    gl->tex = s->atlas_id;
+    gl->tex = s->atlas_pages.a[0].tex_id;
     return 1;
 }
 
@@ -46,7 +46,7 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
             dst[col*4+0] = 255; dst[col*4+1] = 255; dst[col*4+2] = 255; dst[col*4+3] = src[col];
         }
     }
-    glBindTexture(GL_TEXTURE_2D, gl->tex);
+    glBindTexture(GL_TEXTURE_2D, s->atlas_pages.a[0].tex_id);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, gl->scratch);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
@@ -56,16 +56,9 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
 static void glfons__renderDraw(void* userPtr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts) {
     if (nverts == 0) return;
     GLBackendState *s = geogl_get_state();
-    float uv_scale_x = (float)GE_FONT_ATLAS_SIZE / (float)s->atlas_width; 
-    float uv_scale_y = (float)GE_FONT_ATLAS_SIZE / (float)s->atlas_height; 
+    (void)userPtr;
     for (int i = 0; i < nverts; i++) {
-        float u = tcoords[i*2] * uv_scale_x;
-        float v = tcoords[i*2+1] * uv_scale_y;
-        
-        int16_t iu = (int16_t)(u * 32767.0f); if (iu <= 0) iu = 1;
-        int16_t iv = (int16_t)(v * 32767.0f);
-
-        ge_batch_add_vertex_tex((int16_t)verts[i*2], (int16_t)verts[i*2+1], iu, iv, colors[i], false);
+        ge_batch_add_vertex_tex((int16_t)verts[i*2], (int16_t)verts[i*2+1], tcoords[i*2], tcoords[i*2+1], colors[i], false, 0);
     }
 }
 
