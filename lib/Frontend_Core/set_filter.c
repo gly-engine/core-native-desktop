@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -13,8 +14,8 @@ gecnd_filter_t *gecnd_filter_get_config() {
 
 static void project_v(gecnd_t *gly, float *x, float *y) {
     if (!gly) return;
-    *x = (*x * 2.0f / (float)gly->width) - 1.0f;
-    *y = (*y * -2.0f / (float)gly->height) + 1.0f;
+    *x = (*x * 2.0f / (float)gly->window_width) - 1.0f;
+    *y = (*y * -2.0f / (float)gly->window_height) + 1.0f;
 }
 
 static void update_video_vertices(gecnd_filter_t *filter, float x, float y, float w, float h) {
@@ -24,21 +25,24 @@ static void update_video_vertices(gecnd_filter_t *filter, float x, float y, floa
     filter->video_size_raw.y = h;
 
     gecnd_t *gly = gecnd_get_root();
-    float x1 = x, y1 = y;
-    float x2 = x + w, y2 = y;
-    float x3 = x + w, y3 = y + h;
-    float x4 = x, y4 = y + h;
+    float x1 = x, y1 = y;         // TL
+    float x2 = x + w, y2 = y;     // TR
+    float x3 = x + w, y3 = y + h; // BR
+    float x4 = x, y4 = y + h;     // BL
 
     project_v(gly, &x1, &y1);
     project_v(gly, &x2, &y2);
     project_v(gly, &x3, &y3);
     project_v(gly, &x4, &y4);
 
+    // 2 Triangles (6 vertices) forming a quad: (TL, TR, BR) and (TL, BR, BL)
     float v[] = {
-        x1, y1, 0.0f, 0.0f,
-        x2, y2, 1.0f, 0.0f,
-        x3, y3, 1.0f, 1.0f,
-        x4, y4, 0.0f, 1.0f
+        x1, y1, 0.0f, 0.0f, // TL
+        x2, y2, 1.0f, 0.0f, // TR
+        x3, y3, 1.0f, 1.0f, // BR
+        x1, y1, 0.0f, 0.0f, // TL
+        x3, y3, 1.0f, 1.0f, // BR
+        x4, y4, 0.0f, 1.0f  // BL
     };
     memcpy(filter->video_vertices, v, sizeof(v));
     filter->video_dirty = true;
@@ -57,10 +61,12 @@ static void update_corner_vertices(gecnd_filter_t *filter, float x1, float y1, f
     project_v(gly, &x4, &y4);
 
     float v[] = {
-        x1, y1, 0.0f, 1.0f,
-        x2, y2, 1.0f, 1.0f,
-        x3, y3, 1.0f, 0.0f,
-        x4, y4, 0.0f, 0.0f
+        x1, y1, 0.0f, 0.0f,
+        x2, y2, 1.0f, 0.0f,
+        x3, y3, 1.0f, 1.0f,
+        x1, y1, 0.0f, 0.0f,
+        x3, y3, 1.0f, 1.0f,
+        x4, y4, 0.0f, 1.0f
     };
     memcpy(filter->corner_vertices, v, sizeof(v));
     filter->post_dirty = true;

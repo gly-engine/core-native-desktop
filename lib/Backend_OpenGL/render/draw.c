@@ -2,6 +2,7 @@
 #include <string.h>
 #include <math.h>
 #include "gecnd.h"
+#include "gebuffer.h"
 #include "gefilter.h"
 #include "gehook.h"
 #include "geopengl.h"
@@ -13,6 +14,7 @@ void ge_batch_get_color_u8(uint8_t *c) {
 
 void native_draw_start(void) {
     ge_pipeline_start();
+    native_draw_background_video();
 }
 
 void native_draw_flush() {
@@ -30,6 +32,7 @@ void native_draw_color(uint32_t color)
 }
 
 void native_draw_clear(uint32_t color) {
+    if (gecnd_get_background_frame()) return;
     GLBackendState *s = geogl_get_state();
     native_draw_color(color);
     native_draw_rect(0, 0, 0, s->window_width, s->window_height, 0);

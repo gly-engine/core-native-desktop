@@ -9,8 +9,8 @@ typedef struct {
 } gecnd_vec2;
 
 typedef struct {
-    float video_vertices[16];
-    float corner_vertices[16];
+    float video_vertices[24];
+    float corner_vertices[24];
 
     gecnd_vec2 corners_raw[4];
     gecnd_vec2 video_pos_raw;

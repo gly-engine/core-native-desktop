@@ -62,23 +62,29 @@ static void threadworker(void *arg) {
 
     if (AV.avformat_find_stream_info(s->fmt, NULL) < 0) {
         fprintf(stderr, "[ffmpeg] Error finding stream info\n");
-        goto cleanup_format;
+        goto cleanup_pkt_frame;
     }
 
     s->video_index = AV.av_find_best_stream(s->fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
     if (s->video_index < 0) {
         fprintf(stderr, "[ffmpeg] No video stream found\n");
-        goto cleanup_format;
+        goto cleanup_pkt_frame;
     }
 
     s->video = s->fmt->streams[s->video_index];
     const AVCodec *vdec = AV.avcodec_find_decoder(s->video->codecpar->codec_id);
-    if (!vdec) goto cleanup_format;
+    if (!vdec) {
+        fprintf(stderr, "[ffmpeg] Could not find decoder for codec %d\n", s->video->codecpar->codec_id);
+        goto cleanup_pkt_frame;
+    }
 
     s->vcodec = AV.avcodec_alloc_context3(vdec);
     if (!s->vcodec) goto cleanup_format;
     AV.avcodec_parameters_to_context(s->vcodec, s->video->codecpar);
-    if (AV.avcodec_open2(s->vcodec, vdec, NULL) < 0) goto cleanup_codec;
+    if (AV.avcodec_open2(s->vcodec, vdec, NULL) < 0) {
+        fprintf(stderr, "[ffmpeg] Error opening codec\n");
+        goto cleanup_codec;
+    }
 
     AVPacket *pkt = AV.av_packet_alloc();
     AVFrame  *vfrm = AV.av_frame_alloc();

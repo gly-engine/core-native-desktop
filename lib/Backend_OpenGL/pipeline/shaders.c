@@ -10,6 +10,8 @@
 #include <gecnd/shadder_es_shape_complex_frag.h>
 #include <gecnd/shadder_es_texture_vert.h>
 #include <gecnd/shadder_es_texture_frag.h>
+#include <gecnd/shadder_es_video_vert.h>
+#include <gecnd/shadder_es_video_frag.h>
 
 // GL Shaders
 #include <gecnd/shadder_gl_shape_simple_vert.h>
@@ -18,6 +20,8 @@
 #include <gecnd/shadder_gl_shape_complex_frag.h>
 #include <gecnd/shadder_gl_texture_vert.h>
 #include <gecnd/shadder_gl_texture_frag.h>
+#include <gecnd/shadder_gl_video_vert.h>
+#include <gecnd/shadder_gl_video_frag.h>
 
 typedef struct {
     const char *name;
@@ -57,6 +61,8 @@ static GLuint create_prog(const shader_src_t* vs, const shader_src_t* fs, GEProg
         glBindAttribLocation(p, 4, "a_mode");
     } else if (type == GE_PROG_ATLAS) {
         glBindAttribLocation(p, 2, "a_uv");
+    } else if (type == GE_PROG_VIDEO) {
+        glBindAttribLocation(p, 2, "a_texCoord");
     }
 
     glLinkProgram(p);
@@ -107,6 +113,28 @@ void init_all_shaders(bool gles) {
     s->programs[GE_PROG_ATLAS].id = create_prog(pick(gles, &atlas_vs_gl, &atlas_vs_es), pick(gles, &atlas_fs_gl, &atlas_fs_es), GE_PROG_ATLAS);
     s->programs[GE_PROG_ATLAS].loc_proj = glGetUniformLocation(s->programs[GE_PROG_ATLAS].id, "u_proj");
     s->programs[GE_PROG_ATLAS].loc_tex = glGetUniformLocation(s->programs[GE_PROG_ATLAS].id, "u_tex");
+
+    // Video
+    shader_src_t video_vs_gl = SHADER(shadder_gl_video_vert);
+    shader_src_t video_fs_gl = SHADER(shadder_gl_video_frag);
+    shader_src_t video_vs_es = SHADER(shadder_es_video_vert);
+    shader_src_t video_fs_es = SHADER(shadder_es_video_frag);
+    GEProgram *vp = &s->programs[GE_PROG_VIDEO];
+    vp->id = create_prog(pick(gles, &video_vs_gl, &video_vs_es), pick(gles, &video_fs_gl, &video_fs_es), GE_PROG_VIDEO);
+    
+    vp->loc_proj = glGetUniformLocation(vp->id, "u_projection");
+    vp->loc_tex = glGetUniformLocation(vp->id, "tex_rgba");
+    vp->loc_tex_y = glGetUniformLocation(vp->id, "tex_y");
+    vp->loc_tex_u = glGetUniformLocation(vp->id, "tex_u");
+    vp->loc_tex_v = glGetUniformLocation(vp->id, "tex_v");
+    vp->loc_format = glGetUniformLocation(vp->id, "format");
+    vp->loc_brightness = glGetUniformLocation(vp->id, "u_brightness");
+    vp->loc_contrast = glGetUniformLocation(vp->id, "u_contrast");
+    vp->loc_saturation = glGetUniformLocation(vp->id, "u_saturation");
+    vp->loc_film_grain = glGetUniformLocation(vp->id, "u_film_grain");
+    vp->loc_time = glGetUniformLocation(vp->id, "u_time");
+    vp->loc_scratch = glGetUniformLocation(vp->id, "u_scratch");
+    vp->loc_jitter = glGetUniformLocation(vp->id, "u_jitter");
 }
 
 void terminate_all_shaders(void) {

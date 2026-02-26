@@ -82,6 +82,7 @@ typedef enum {
     GE_PROG_SIMPLE,
     GE_PROG_COMPLEX,
     GE_PROG_ATLAS,
+    GE_PROG_VIDEO,
     GE_PROG_COUNT
 } GEProgramType;
 
@@ -93,6 +94,18 @@ typedef struct {
     GLint loc_thickness;
     GLint loc_aa_blur;
     GLint loc_jitter;
+    
+    // Video/Filter specific
+    GLint loc_tex_y;
+    GLint loc_tex_u;
+    GLint loc_tex_v;
+    GLint loc_format;
+    GLint loc_brightness;
+    GLint loc_contrast;
+    GLint loc_saturation;
+    GLint loc_film_grain;
+    GLint loc_time;
+    GLint loc_scratch;
 } GEProgram;
 
 typedef struct {
@@ -126,6 +139,13 @@ typedef struct {
     GEBatch opaque_batches[GE_PROG_COUNT];
     GEBatch transparent_batches[GE_PROG_COUNT];
     int16_t current_z;
+
+    // Video State
+    GLuint video_tex[3]; // Y, U, V (or just [0] for RGBA)
+    atomic_int video_update_counter;
+    int video_width;
+    int video_height;
+    int video_format;
 } GLBackendState;
 
 GLBackendState* geogl_get_state(void);
@@ -146,6 +166,7 @@ void ge_batch_add_vertex_shape(int16_t x, int16_t y, int16_t lx, int16_t ly, int
 
 void ge_batch_get_color_u8(uint8_t *c);
 
+void native_draw_background_video(void);
 void native_text_terminate(void);
 
 void platform_swap_buffers(void);

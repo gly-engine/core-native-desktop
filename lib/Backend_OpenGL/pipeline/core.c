@@ -108,6 +108,7 @@ void ge_pipeline_terminate(void) {
     glDeleteBuffers(1, &s->vbo_complex);
     glDeleteBuffers(1, &s->vbo_atlas);
     if (s->atlas_id) glDeleteTextures(1, &s->atlas_id);
+    if (s->video_tex[0]) glDeleteTextures(3, s->video_tex);
     
     for(int i=0; i<GE_PROG_COUNT; i++) {
         free(s->opaque_batches[i].buffer);
