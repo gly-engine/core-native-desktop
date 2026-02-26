@@ -13,7 +13,7 @@ void engine_set_input_button(int id, bool pressed) {
     }
 }
 
-int16_t engine_input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id) {
+int16_t RETRO_CALLCONV engine_input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id) {
     if (port != 0 || device != RETRO_DEVICE_JOYPAD) return 0;
     
     if (id < 16) {
