@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdatomic.h>
+#include <unistd.h>
 #include "libretro.h"
 #include "gemedia.h"
 #include "gecnd.h"
@@ -17,22 +18,41 @@ static LIB_HANDLE core_handle = NULL;
 static char system_dir[1024] = ".";
 
 // Libretro API function pointers
-static void (*p_retro_set_environment)(retro_environment_t);
-static void (*p_retro_set_video_refresh)(retro_video_refresh_t);
-static void (*p_retro_set_audio_sample)(retro_audio_sample_t);
-static void (*p_retro_set_audio_sample_batch)(retro_audio_sample_batch_t);
-static void (*p_retro_set_input_poll)(retro_input_poll_t);
-static void (*p_retro_set_input_state)(retro_input_state_t);
-static void (*p_retro_init)(void);
-static void (*p_retro_deinit)(void);
-static unsigned (*p_retro_api_version)(void);
-static void (*p_retro_get_system_info)(struct retro_system_info*);
-static void (*p_retro_get_system_av_info)(struct retro_system_av_info*);
-static void (*p_retro_set_controller_port_device)(unsigned, unsigned);
-static void (*p_retro_reset)(void);
-static void (*p_retro_run)(void);
-static bool (*p_retro_load_game)(const struct retro_game_info*);
-static void (*p_retro_unload_game)(void);
+static void (*p_retro_set_environment)(retro_environment_t) = NULL;
+static void (*p_retro_set_video_refresh)(retro_video_refresh_t) = NULL;
+static void (*p_retro_set_audio_sample)(retro_audio_sample_t) = NULL;
+static void (*p_retro_set_audio_sample_batch)(retro_audio_sample_batch_t) = NULL;
+static void (*p_retro_set_input_poll)(retro_input_poll_t) = NULL;
+static void (*p_retro_set_input_state)(retro_input_state_t) = NULL;
+static void (*p_retro_init)(void) = NULL;
+static void (*p_retro_deinit)(void) = NULL;
+static unsigned (*p_retro_api_version)(void) = NULL;
+static void (*p_retro_get_system_info)(struct retro_system_info*) = NULL;
+static void (*p_retro_get_system_av_info)(struct retro_system_av_info*) = NULL;
+static void (*p_retro_set_controller_port_device)(unsigned, unsigned) = NULL;
+static void (*p_retro_reset)(void) = NULL;
+static void (*p_retro_run)(void) = NULL;
+static bool (*p_retro_load_game)(const struct retro_game_info*) = NULL;
+static void (*p_retro_unload_game)(void) = NULL;
+
+static void reset_pointers(void) {
+    p_retro_set_environment = NULL;
+    p_retro_set_video_refresh = NULL;
+    p_retro_set_audio_sample = NULL;
+    p_retro_set_audio_sample_batch = NULL;
+    p_retro_set_input_poll = NULL;
+    p_retro_set_input_state = NULL;
+    p_retro_init = NULL;
+    p_retro_deinit = NULL;
+    p_retro_api_version = NULL;
+    p_retro_get_system_info = NULL;
+    p_retro_get_system_av_info = NULL;
+    p_retro_set_controller_port_device = NULL;
+    p_retro_reset = NULL;
+    p_retro_run = NULL;
+    p_retro_load_game = NULL;
+    p_retro_unload_game = NULL;
+}
 
 static void core_log(int level, const char *fmt, ...) {
     const char *levels[] = { "DEBUG", "INFO", "WARN", "ERROR" };
@@ -48,7 +68,7 @@ static void core_video_refresh(const void *data, unsigned width, unsigned height
     if (!data) return;
 
     int ge_fmt = (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) ? GECND_PIX_FMT_RGBA8888 : GECND_PIX_FMT_RGB565;
-    gecnd_buffer_resize(width, height, ge_fmt);
+    gecnd_buffer_resize((int)width, (int)height, ge_fmt);
     
     MediaFrame *f = gecnd_buffer_get_back();
     if (!f) return;
@@ -59,7 +79,7 @@ static void core_video_refresh(const void *data, unsigned width, unsigned height
     } else {
         for (unsigned y = 0; y < height; y++) {
             memcpy(f->data[0] + y * f->linesize[0], 
-                   (const uint8_t*)data + y * pitch, width * bpp);
+                   (const uint8_t*)data + y * pitch, width * (unsigned)bpp);
         }
     }
     
@@ -74,8 +94,7 @@ static void core_input_poll(void) {}
 extern int16_t engine_input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id);
 
 static bool core_environment(unsigned cmd, void *data) {
-    // printf("Libretro: Env cmd %u\n", cmd);
-    switch (cmd) {
+    switch (cmd & ~RETRO_ENVIRONMENT_EXPERIMENTAL) {
         case RETRO_ENVIRONMENT_GET_CAN_DUPE:
             if (data) *(bool*)data = true;
             return true;
@@ -88,7 +107,7 @@ static bool core_environment(unsigned cmd, void *data) {
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
         case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY:
-            if (data) *(const char**)data = system_dir;
+            if (data) *(const char**)data = (system_dir[0] ? system_dir : ".");
             return true;
         case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
             if (data) {
@@ -97,34 +116,55 @@ static bool core_environment(unsigned cmd, void *data) {
             }
             return true;
         case RETRO_ENVIRONMENT_GET_VARIABLE:
-            if (data) {
-                struct retro_variable *var = (struct retro_variable*)data;
-                var->value = NULL; // No specific variables set
-                return true;
-            }
             return false;
+        case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
+            if (data) *(bool*)data = false;
+            return true;
         case RETRO_ENVIRONMENT_GET_LANGUAGE:
             if (data) *(unsigned*)data = 0; // English
             return true;
-        case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
+        case RETRO_ENVIRONMENT_GET_USERNAME:
+            if (data) *(const char**)data = "gecnd";
             return true;
         case RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES:
             if (data) *(uint64_t*)data = (1ULL << RETRO_DEVICE_JOYPAD);
             return true;
-        case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
-            if (data) *(bool*)data = false;
+        case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION:
+            if (data) *(unsigned*)data = 1;
+            return true;
+        case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
+            return true;
+        case RETRO_ENVIRONMENT_SET_GEOMETRY:
+            if (data) {
+                struct retro_game_geometry *geom = (struct retro_game_geometry*)data;
+                int ge_fmt = (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) ? GECND_PIX_FMT_RGBA8888 : GECND_PIX_FMT_RGB565;
+                gecnd_buffer_resize((int)geom->base_width, (int)geom->base_height, ge_fmt);
+            }
+            return true;
+        case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
+        case RETRO_ENVIRONMENT_SET_VARIABLES:
+        case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
+        case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
+        case RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS:
+        case RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL:
+        case RETRO_ENVIRONMENT_SET_MESSAGE:
             return true;
         default:
             return false;
     }
 }
 
-#define LOAD_SYM(name) \
-    p_##name = (void*)get_symbol(core_handle, #name); \
-    if (!p_##name) { fprintf(stderr, "Libretro: failed to load symbol %s\n", #name); return false; }
+#define LOAD_SYM_MANDATORY(name) \
+    *(void**)(&p_##name) = get_symbol(core_handle, #name); \
+    if (!p_##name) { fprintf(stderr, "Libretro: failed to load mandatory symbol %s\n", #name); return false; }
+
+#define LOAD_SYM_OPTIONAL(name) \
+    *(void**)(&p_##name) = get_symbol(core_handle, #name);
 
 bool native_libretro_load(const char *path) {
     if (core_handle) close_library(core_handle);
+    core_handle = NULL;
+    reset_pointers();
     
     char full_path[1024];
     char exe_dir[512];
@@ -144,7 +184,6 @@ bool native_libretro_load(const char *path) {
         "%s_libretro.so"
     };
 
-    core_handle = NULL;
     for (size_t i = 0; i < sizeof(variations)/sizeof(variations[0]); i++) {
         if (i == 0 || i == 4) snprintf(full_path, sizeof(full_path), variations[i], path);
         else snprintf(full_path, sizeof(full_path), variations[i], exe_dir, path);
@@ -158,24 +197,25 @@ bool native_libretro_load(const char *path) {
 
     if (!core_handle) return false;
 
-    LOAD_SYM(retro_set_environment);
-    LOAD_SYM(retro_set_video_refresh);
-    LOAD_SYM(retro_set_audio_sample);
-    LOAD_SYM(retro_set_audio_sample_batch);
-    LOAD_SYM(retro_set_input_poll);
-    LOAD_SYM(retro_set_input_state);
-    LOAD_SYM(retro_init);
-    LOAD_SYM(retro_deinit);
-    LOAD_SYM(retro_api_version);
-    LOAD_SYM(retro_get_system_info);
-    LOAD_SYM(retro_get_system_av_info);
-    LOAD_SYM(retro_set_controller_port_device);
-    LOAD_SYM(retro_reset);
-    LOAD_SYM(retro_run);
-    LOAD_SYM(retro_load_game);
-    LOAD_SYM(retro_unload_game);
+    LOAD_SYM_MANDATORY(retro_set_environment);
+    LOAD_SYM_MANDATORY(retro_set_video_refresh);
+    LOAD_SYM_MANDATORY(retro_set_audio_sample);
+    LOAD_SYM_MANDATORY(retro_set_audio_sample_batch);
+    LOAD_SYM_MANDATORY(retro_set_input_poll);
+    LOAD_SYM_MANDATORY(retro_set_input_state);
+    LOAD_SYM_MANDATORY(retro_init);
+    LOAD_SYM_MANDATORY(retro_deinit);
+    LOAD_SYM_MANDATORY(retro_api_version);
+    LOAD_SYM_MANDATORY(retro_get_system_info);
+    LOAD_SYM_MANDATORY(retro_get_system_av_info);
+    LOAD_SYM_MANDATORY(retro_run);
+    LOAD_SYM_MANDATORY(retro_load_game);
+    LOAD_SYM_MANDATORY(retro_unload_game);
 
-    p_retro_set_environment(core_environment);
+    LOAD_SYM_OPTIONAL(retro_set_controller_port_device);
+    LOAD_SYM_OPTIONAL(retro_reset);
+
+    if (p_retro_set_environment) p_retro_set_environment(core_environment);
     return true;
 }
 
@@ -192,16 +232,19 @@ bool native_libretro_game(const char *path) {
     }
 
     struct retro_system_info sys_info = {0};
-    p_retro_get_system_info(&sys_info);
+    if (p_retro_get_system_info) {
+        printf("Libretro: calling retro_get_system_info\n");
+        p_retro_get_system_info(&sys_info);
+    }
 
     struct retro_game_info info = {0};
     info.path = full_path;
-    info.meta = "";
+    info.meta = NULL;
     
     FILE *f = fopen(full_path, "rb");
     if (f) {
         fseek(f, 0, SEEK_END);
-        info.size = ftell(f);
+        info.size = (size_t)ftell(f);
         fseek(f, 0, SEEK_SET);
         void *data = malloc(info.size);
         if (data) {
@@ -211,54 +254,99 @@ bool native_libretro_game(const char *path) {
             } else info.data = data;
         }
         fclose(f);
-    } else return false;
+    } else {
+        fprintf(stderr, "Libretro: failed to open game: %s\n", full_path);
+        return false;
+    }
 
-    // MANDATORY: Setup callbacks BEFORE init
-    p_retro_set_video_refresh(core_video_refresh);
-    p_retro_set_audio_sample(core_audio_sample);
-    p_retro_set_audio_sample_batch(core_audio_sample_batch);
-    p_retro_set_input_poll(core_input_poll);
-    p_retro_set_input_state(engine_input_state_cb);
+    if (p_retro_set_video_refresh) p_retro_set_video_refresh(core_video_refresh);
+    if (p_retro_set_audio_sample) p_retro_set_audio_sample(core_audio_sample);
+    if (p_retro_set_audio_sample_batch) p_retro_set_audio_sample_batch(core_audio_sample_batch);
+    if (p_retro_set_input_poll) p_retro_set_input_poll(core_input_poll);
+    if (p_retro_set_input_state) p_retro_set_input_state(engine_input_state_cb);
 
     if (!core_init_done) {
-        p_retro_init();
+        if (p_retro_init) {
+            printf("Libretro: calling retro_init\n");
+            p_retro_init();
+        }
         core_init_done = true;
     }
     
-    p_retro_set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
+    if (p_retro_set_controller_port_device) p_retro_set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
     
     printf("Libretro: Loading game: %s\n", full_path);
-    bool ok = p_retro_load_game(&info);
+    bool ok = false;
+    if (p_retro_load_game) ok = p_retro_load_game(&info);
     
     if (info.data) free((void*)info.data);
 
     if (ok) {
+        struct retro_system_av_info av_info = {0};
+        if (p_retro_get_system_av_info) p_retro_get_system_av_info(&av_info);
+        
+        int ge_fmt = (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) ? GECND_PIX_FMT_RGBA8888 : GECND_PIX_FMT_RGB565;
+        if (av_info.geometry.base_width > 0 && av_info.geometry.base_height > 0) {
+            gecnd_buffer_resize((int)av_info.geometry.base_width, (int)av_info.geometry.base_height, ge_fmt);
+        }
+
         core_initialized = true;
         return true;
     }
     return false;
 }
 
-void libretro_init_core(void) {}
+void libretro_init_core(void) {
+}
 
 void libretro_deinit_core(void) {
-    if (core_initialized) p_retro_unload_game();
-    if (core_init_done) p_retro_deinit();
+    if (core_initialized) {
+        if (p_retro_unload_game) p_retro_unload_game();
+    }
+    if (core_init_done) {
+        if (p_retro_deinit) p_retro_deinit();
+    }
     if (core_handle) close_library(core_handle);
     core_initialized = core_init_done = false;
     core_handle = NULL;
+    reset_pointers();
 }
 
 MediaFrame* libretro_get_frame(void) {
-    MediaFrame *f = gecnd_buffer_get_front();
-    if (f && atomic_load(&f->ready)) return f;
-    return NULL;
+    return gecnd_get_background_frame();
 }
 
 void libretro_run_frame(void) {
-    if (core_initialized) p_retro_run();
+    if (core_initialized && p_retro_run) p_retro_run();
 }
 
 bool libretro_is_running(void) {
     return core_initialized;
 }
+
+// Libretro dummy stubs (some cores might expect these if they link against the frontend)
+void retro_init(void) { if (p_retro_init) p_retro_init(); }
+void retro_deinit(void) { if (p_retro_deinit) p_retro_deinit(); }
+unsigned retro_api_version(void) { return p_retro_api_version ? p_retro_api_version() : 0; }
+void retro_set_controller_port_device(unsigned port, unsigned device) { if (p_retro_set_controller_port_device) p_retro_set_controller_port_device(port, device); }
+void retro_get_system_info(struct retro_system_info *info) { if (p_retro_get_system_info) p_retro_get_system_info(info); }
+void retro_get_system_av_info(struct retro_system_av_info *info) { if (p_retro_get_system_av_info) p_retro_get_system_av_info(info); }
+void retro_set_environment(retro_environment_t cb) { if (p_retro_set_environment) p_retro_set_environment(cb); }
+void retro_set_audio_sample(retro_audio_sample_t cb) { if (p_retro_set_audio_sample) p_retro_set_audio_sample(cb); }
+void retro_set_audio_sample_batch(retro_audio_sample_batch_t cb) { if (p_retro_set_audio_sample_batch) p_retro_set_audio_sample_batch(cb); }
+void retro_set_input_poll(retro_input_poll_t cb) { if (p_retro_set_input_poll) p_retro_set_input_poll(cb); }
+void retro_set_input_state(retro_input_state_t cb) { if (p_retro_set_input_state) p_retro_set_input_state(cb); }
+void retro_set_video_refresh(retro_video_refresh_t cb) { if (p_retro_set_video_refresh) p_retro_set_video_refresh(cb); }
+void retro_reset(void) { if (p_retro_reset) p_retro_reset(); }
+void retro_run(void) { if (p_retro_run) p_retro_run(); }
+bool retro_load_game(const struct retro_game_info *info) { return p_retro_load_game ? p_retro_load_game(info) : false; }
+void retro_unload_game(void) { if (p_retro_unload_game) p_retro_unload_game(); }
+unsigned retro_get_region(void) { return 0; }
+bool retro_load_game_special(unsigned type, const struct retro_game_info *info, size_t num) { (void)type; (void)info; (void)num; return false; }
+size_t retro_serialize_size(void) { return 0; }
+bool retro_serialize(void *data, size_t len) { (void)data; (void)len; return false; }
+bool retro_unserialize(const void *data, size_t len) { (void)data; (void)len; return false; }
+void *retro_get_memory_data(unsigned id) { (void)id; return NULL; }
+size_t retro_get_memory_size(unsigned id) { (void)id; return 0; }
+void retro_cheat_reset(void) {}
+void retro_cheat_set(unsigned idx, bool enabled, const char *code) { (void)idx; (void)enabled; (void)code; }
