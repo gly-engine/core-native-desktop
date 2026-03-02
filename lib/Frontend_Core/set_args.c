@@ -25,8 +25,12 @@ static ko_longopt_t longopts[] = {
     { "filter-scratch", ko_required_argument, 406 },
     { "filter-jitter", ko_required_argument, 407 },
     { "offset", ko_required_argument, 408 },
+    { "ir-list", ko_no_argument, 501, },
+    { "ir-aui", ko_required_argument, 502, },
     { NULL, 0, 0 }
 };
+
+bool gecnd_input_open_aui();
 
 static void check_range(gecnd_t *gly, float val, float min, float max, const char *name) {
     if (val < min || val > max) {
@@ -120,6 +124,25 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
                 gecnd_filter_set_corners(x1, y1, x2, y2, x3, y3, x4, y4);
             } else if (sscanf(opt.arg, "%f,%f,%f,%f", &x1, &y1, &x3, &y3) == 4) {
                 gecnd_filter_set_corners(x1, y1, x3, y1, x3, y3, x1, y3);
+            }
+        }
+        if (c == 501) {
+            const char *str;
+            uint32_t i = 0;
+            while((str = gecnd_nec_get_class(i++)) != NULL) {
+                printf("%s\n", str);
+                /* todo safe exit! */
+                gly->error_string = "bye!\n";
+            }   
+        }
+        if (c == 502) {
+            if(!gecnd_nec_set_class(opt.arg)) {
+                gly->error_string = "not found nec class!\n";
+                break;
+            }
+            if (gecnd_input_open_aui() != 0) {
+                gly->error_string = "failed to open aui!\n";
+                break;
             }
         }
     }

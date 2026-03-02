@@ -22,6 +22,22 @@
 #define gecnd_add_flags(gly)  gecnd_set_flags(gly, gecnd_get_flags(gly) | FLAG_A)
 #define gecnd_del_flags(gly)  gecnd_set_flags(gly, gecnd_get_flags(gly) & ~FLAG_A); 
 
+typedef enum {
+    GECND_KEY_NULL,
+    GECND_KEY_A,
+    GECND_KEY_B,
+    GECND_KEY_C,
+    GECND_KEY_D,
+    GECND_KEY_E,
+    GECND_KEY_F,
+    GECND_KEY_UP,
+    GECND_KEY_LEFT,
+    GECND_KEY_DOWN,
+    GECND_KEY_RIGHT,
+    GECND_KEY_MENU,
+    GECND_KEY_COUNT
+} gecnd_key_t;
+
 typedef struct lua_State lua_State;
 
 typedef struct {
@@ -90,5 +106,9 @@ void gecnd_filter_reset_corners();
 void gecnd_filter_reset_video_pos();
 bool gencd_filter_is_zero_corners();
 bool gencd_filter_is_zero_video_pos();
+// inputs
+const char *gecnd_nec_get_class(uint32_t i);
+const char* gecnd_nec_get_key(uint32_t i);
+bool gecnd_nec_set_class(const char *name);
 
 #endif
