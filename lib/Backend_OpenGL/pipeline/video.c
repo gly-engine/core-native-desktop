@@ -22,23 +22,42 @@ static void update_video_textures(GLBackendState *s, MediaFrame *f) {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         }
+
+        // alocate once, then just stream updates with texsubimage
+        // never alocate things over and over again!
+        if (f->format == GECND_PIX_FMT_YUV420P) {
+            glBindTexture(GL_TEXTURE_2D, s->video_tex[0]);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, f->width, f->height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, NULL);
+            glBindTexture(GL_TEXTURE_2D, s->video_tex[1]);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, f->width / 2, f->height / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, NULL);
+            glBindTexture(GL_TEXTURE_2D, s->video_tex[2]);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, f->width / 2, f->height / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, NULL);
+        } else {
+            glBindTexture(GL_TEXTURE_2D, s->video_tex[0]);
+            GLenum fmt = (f->format == GECND_PIX_FMT_RGB565) ? GL_RGB : GL_RGBA;
+            GLenum type = (f->format == GECND_PIX_FMT_RGB565) ? GL_UNSIGNED_SHORT_5_6_5 : GL_UNSIGNED_BYTE;
+            glTexImage2D(GL_TEXTURE_2D, 0, fmt, f->width, f->height, 0, fmt, type, NULL);
+        }
     }
 
+    // alignment 1 hopefully avoids weird row jumps on odd widths/strides
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
     if (f->format == GECND_PIX_FMT_YUV420P) {
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         glBindTexture(GL_TEXTURE_2D, s->video_tex[0]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, f->width, f->height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, f->data[0]);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width, f->height, GL_LUMINANCE, GL_UNSIGNED_BYTE, f->data[0]);
         glBindTexture(GL_TEXTURE_2D, s->video_tex[1]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, f->width / 2, f->height / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, f->data[1]);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width / 2, f->height / 2, GL_LUMINANCE, GL_UNSIGNED_BYTE, f->data[1]);
         glBindTexture(GL_TEXTURE_2D, s->video_tex[2]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, f->width / 2, f->height / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, f->data[2]);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width / 2, f->height / 2, GL_LUMINANCE, GL_UNSIGNED_BYTE, f->data[2]);
     } else {
         glBindTexture(GL_TEXTURE_2D, s->video_tex[0]);
-        GLenum internal_fmt = (f->format == GECND_PIX_FMT_RGB565) ? GL_RGB : GL_RGBA;
+        GLenum fmt = (f->format == GECND_PIX_FMT_RGB565) ? GL_RGB : GL_RGBA;
         GLenum type = (f->format == GECND_PIX_FMT_RGB565) ? GL_UNSIGNED_SHORT_5_6_5 : GL_UNSIGNED_BYTE;
-        glTexImage2D(GL_TEXTURE_2D, 0, internal_fmt, f->width, f->height, 0, internal_fmt, type, f->data[0]);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width, f->height, fmt, type, f->data[0]);
     }
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
 void native_draw_background_video(void) {
