@@ -11,10 +11,19 @@
 #include "gehook.h"
 #include "geopengl.h"
 
+typedef EGLBoolean (EGLAPIENTRYP PFNEGLSWAPINTERVALPROC)(EGLDisplay dpy, EGLint interval);
+
 static GLBackendState g_gl_state;
 static EGLDisplay egl_display = EGL_NO_DISPLAY;
 static EGLContext egl_context = EGL_NO_CONTEXT;
 static EGLSurface egl_surface = EGL_NO_SURFACE;
+static PFNEGLSWAPINTERVALPROC egl_swap_interval_ptr = NULL;
+
+static int ge_vsync_enabled(void) {
+    const char *vsync_env = getenv("GECND_VSYNC");
+    if (!vsync_env) return 1;
+    return strcmp(vsync_env, "0") != 0;
+}
 
 GLBackendState* geogl_get_state(void) {
     return &g_gl_state;
@@ -31,8 +40,6 @@ static void (*glad_gles2_loader(const char *name))(void) {
     if (libgles != NULL) return (void (*)(void)) dlsym(libgles, name);
     return NULL;
 }
-
-typedef EGLBoolean (EGLAPIENTRYP PFNEGLSWAPINTERVALPROC)(EGLDisplay dpy, EGLint interval);
 
 int platform_init(uint16_t width, uint16_t height) {
     if (!gladLoaderLoadEGL(EGL_DEFAULT_DISPLAY)) return -1;
@@ -52,8 +59,8 @@ int platform_init(uint16_t width, uint16_t height) {
     egl_context = eglCreateContext(egl_display, config, EGL_NO_CONTEXT, context_attribs);
     if (!eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context)) return -1;
     
-    PFNEGLSWAPINTERVALPROC eglSwapIntervalPtr = (PFNEGLSWAPINTERVALPROC)eglGetProcAddress("eglSwapInterval");
-    if (eglSwapIntervalPtr) eglSwapIntervalPtr(egl_display, 0);
+    egl_swap_interval_ptr = (PFNEGLSWAPINTERVALPROC)eglGetProcAddress("eglSwapInterval");
+    if (egl_swap_interval_ptr) egl_swap_interval_ptr(egl_display, ge_vsync_enabled() ? 1 : 0);
     
     return 0;
 }
@@ -108,4 +115,12 @@ void gly_hook_display_close(void) {
     gecnd_buffer_free();
     native_text_terminate();
     platform_terminate();
+}
+
+void gly_hook_display_fps(uint8_t fps) {
+    if (egl_display == EGL_NO_DISPLAY || !egl_swap_interval_ptr) return;
+
+    (void)fps;
+    // same behaviour as glfw path: keep vsync unless env says otherwise
+    egl_swap_interval_ptr(egl_display, ge_vsync_enabled() ? 1 : 0);
 }

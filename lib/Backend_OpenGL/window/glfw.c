@@ -66,6 +66,8 @@ int platform_init(uint16_t width, uint16_t height) {
     }
 
     glfwMakeContextCurrent(state->window);
+    // keep swap synced to display to kill tearing by default
+    glfwSwapInterval(1);
     glfwSetKeyCallback(state->window, key_callback);
 
     return 0;
@@ -121,6 +123,14 @@ void gly_hook_display_close(void) {
     gecnd_buffer_free();
     native_text_terminate();
     platform_terminate();
+}
+
+void gly_hook_display_fps(uint8_t fps) {
+    GLFWwindow *window = geogl_get_state()->window;
+    if (!window) return;
+
+    // treat unlocked as no vsync, anything else keeps vsync on
+    glfwSwapInterval(fps == 0 ? 0 : 1);
 }
 
 void gly_hook_input_keyboard(uint8_t index, char** key, bool* press) {
