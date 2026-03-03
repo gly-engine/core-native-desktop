@@ -46,31 +46,51 @@ void ge_batch_add_vertex_shape(
     uint8_t alpha = (color >> 24) & 0xFF;
     bool opaque = (alpha >= 254);
     
-    GEProgramType type = (mode == 0) ? GE_PROG_SIMPLE : GE_PROG_COMPLEX;
-    GEBatch *b = opaque ? &s->opaque_batches[type] : &s->transparent_batches[type];
+    GEBatch *b = opaque ? &s->opaque_batches[GE_PROG_SIMPLE] : &s->transparent_batches[GE_PROG_SIMPLE];
 
     if (b->count >= GE_MAX_VERTICES) {
         ge_pipeline_flush_primitives();
-        b = opaque ? &s->opaque_batches[type] : &s->transparent_batches[type];
+        b = opaque ? &s->opaque_batches[GE_PROG_SIMPLE] : &s->transparent_batches[GE_PROG_SIMPLE];
     }
 
-    if (type == GE_PROG_SIMPLE) {
-        GESimpleShapeVertex *vertex = &((GESimpleShapeVertex*)b->buffer)[b->count++];
-        vertex->x = (float)x;
-        vertex->y = (float)y;
-        vertex->z = (float)s->current_z;
-        uint8_t *c = (uint8_t*)&color;
-        vertex->r = c[0]; vertex->g = c[1]; vertex->b = c[2]; vertex->a = c[3];
-    } else {
-        GEDShapeComplexVertex *vertex = &((GEDShapeComplexVertex*)b->buffer)[b->count++];
-        vertex->x = (float)x;
-        vertex->y = (float)y;
-        vertex->z = (float)s->current_z;
-        vertex->lx = (float)lx / 32767.0f;
-        vertex->ly = (float)ly / 32767.0f;
-        vertex->radius = (float)radius / 32767.0f;
-        vertex->mode = (float)(mode < 0 ? -mode : mode);
-        uint8_t *c = (uint8_t*)&color;
-        vertex->r = c[0]; vertex->g = c[1]; vertex->b = c[2]; vertex->a = c[3];
-    }
+    GESimpleShapeVertex *vertex = &((GESimpleShapeVertex*)b->buffer)[b->count++];
+    vertex->x = (float)x;
+    vertex->y = (float)y;
+    vertex->z = (float)s->current_z;
+    uint8_t *c = (uint8_t*)&color;
+    vertex->r = c[0]; vertex->g = c[1]; vertex->b = c[2]; vertex->a = c[3];
 }
+
+void ge_batch_add_vertex_complex(
+    float x, float y,
+    float px, float py,
+    float hw, float hh,
+    float radius,
+    uint32_t color,
+    float mode)
+{
+    GLBackendState *s = geogl_get_state();
+    uint8_t alpha = (color >> 24) & 0xFF;
+    bool opaque = (alpha >= 254);
+    
+    GEBatch *b = opaque ? &s->opaque_batches[GE_PROG_COMPLEX] : &s->transparent_batches[GE_PROG_COMPLEX];
+
+    if (b->count >= GE_MAX_VERTICES) {
+        ge_pipeline_flush_primitives();
+        b = opaque ? &s->opaque_batches[GE_PROG_COMPLEX] : &s->transparent_batches[GE_PROG_COMPLEX];
+    }
+
+    GEDShapeComplexVertex *vertex = &((GEDShapeComplexVertex*)b->buffer)[b->count++];
+    vertex->x = x;
+    vertex->y = y;
+    vertex->z = (float)s->current_z;
+    vertex->px = px;
+    vertex->py = py;
+    vertex->hw = hw;
+    vertex->hh = hh;
+    vertex->radius = radius;
+    vertex->mode = mode;
+    uint8_t *c = (uint8_t*)&color;
+    vertex->r = c[0]; vertex->g = c[1]; vertex->b = c[2]; vertex->a = c[3];
+}
+

@@ -42,30 +42,37 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
     GLBackendState *s = geogl_get_state();
     uint32_t color = s->current_color.u32;
     
-    int16_t min_dim = (w < h) ? w : h;
-    int16_t norm_r = 0;
-    if (min_dim > 0 && r > 0) {
-        float fr = (float)r / (min_dim * 0.5f);
-        if (fr > 1.0f) fr = 1.0f;
-        norm_r = (int16_t)(fr * 32767.0f);
-    }
-
     // mode 0: fill, 1: frame (border)
     int8_t internal_mode = (mode == 1) ? 2 : 0;
 
-    if (internal_mode == 2 || norm_r > 0) {
-        GEProgram *p = &s->programs[GE_PROG_COMPLEX];
-        glUseProgram(p->id);
-        glUniform2f(p->loc_size, (float)w, (float)h);
+    if (internal_mode == 0 && r == 0) {
+        ge_batch_add_vertex_shape(x, y, 0, 0, 0, color, 0, false);
+        ge_batch_add_vertex_shape(x, y + h, 0, 0, 0, color, 0, false);
+        ge_batch_add_vertex_shape(x + w, y + h, 0, 0, 0, color, 0, false);
+
+        ge_batch_add_vertex_shape(x, y, 0, 0, 0, color, 0, false);
+        ge_batch_add_vertex_shape(x + w, y + h, 0, 0, 0, color, 0, false);
+        ge_batch_add_vertex_shape(x + w, y, 0, 0, 0, color, 0, false);
+    } else {
+        float fw = (float)w, fh = (float)h, fr = (float)r;
+        float hw = fw * 0.5f, hh = fh * 0.5f;
+        if (fr > hw) fr = hw;
+        if (fr > hh) fr = hh;
+
+        float pad = 2.0f;
+        float x1 = (float)x - pad, y1 = (float)y - pad;
+        float x2 = (float)x + fw + pad, y2 = (float)y + fh + pad;
+        float px1 = -hw - pad, py1 = -hh - pad;
+        float px2 = hw + pad, py2 = hh + pad;
+
+        ge_batch_add_vertex_complex(x1, y1, px1, py1, hw, hh, fr, color, (float)internal_mode);
+        ge_batch_add_vertex_complex(x1, y2, px1, py2, hw, hh, fr, color, (float)internal_mode);
+        ge_batch_add_vertex_complex(x2, y2, px2, py2, hw, hh, fr, color, (float)internal_mode);
+
+        ge_batch_add_vertex_complex(x1, y1, px1, py1, hw, hh, fr, color, (float)internal_mode);
+        ge_batch_add_vertex_complex(x2, y2, px2, py2, hw, hh, fr, color, (float)internal_mode);
+        ge_batch_add_vertex_complex(x2, y1, px2, py1, hw, hh, fr, color, (float)internal_mode);
     }
-
-    ge_batch_add_vertex_shape(x, y, -32767, -32767, norm_r, color, internal_mode, false);
-    ge_batch_add_vertex_shape(x, y + h, -32767, 32767, norm_r, color, internal_mode, false);
-    ge_batch_add_vertex_shape(x + w, y + h, 32767, 32767, norm_r, color, internal_mode, false);
-
-    ge_batch_add_vertex_shape(x, y, -32767, -32767, norm_r, color, internal_mode, false);
-    ge_batch_add_vertex_shape(x + w, y + h, 32767, 32767, norm_r, color, internal_mode, false);
-    ge_batch_add_vertex_shape(x + w, y, 32767, -32767, norm_r, color, internal_mode, false);
 
     s->current_z++;
 }

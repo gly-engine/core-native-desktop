@@ -61,8 +61,9 @@ static GLuint create_prog(const shader_src_t* vs, const shader_src_t* fs, int pr
     glBindAttribLocation(p, 1, "a_color");
     if (prog_type == GE_PROG_COMPLEX) {
         glBindAttribLocation(p, 2, "a_local");
-        glBindAttribLocation(p, 3, "a_radius");
+        glBindAttribLocation(p, 3, "a_size");
         glBindAttribLocation(p, 4, "a_mode");
+        glBindAttribLocation(p, 5, "a_radius");
     } else if (prog_type == GE_PROG_ATLAS) {
         glBindAttribLocation(p, 2, "a_uv");
     } else if (prog_type == GE_PROG_VIDEO) {

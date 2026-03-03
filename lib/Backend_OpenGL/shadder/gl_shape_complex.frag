@@ -1,35 +1,32 @@
 #version 120
 
-uniform float u_thickness;
-uniform float u_aa_blur;
-uniform vec2 u_size;
-
 varying vec4 v_color;
 varying vec2 v_pos;
+varying vec2 v_size;
 varying float v_radius;
 varying float v_mode;
 
 void main()
 {
-    // Local coords are now -1.0 to 1.0 (remapped from normalized 0..1 in vertex if needed)
-    // Actually batch.c sends lx, ly as -1.0 to 1.0 if we re-evaluate.
-    // Let's assume lx, ly are -1.0 to 1.0 already.
+    // Pixel-space SDF calculation
+    // v_pos is in pixel offset from center
+    // v_size is half-size in pixels
+    // v_radius is radius in pixels
     
-    vec2 p = v_pos; // v_pos should be -1.0 to 1.0
-    vec2 half_size = vec2(1.0, 1.0);
-    
-    vec2 q = abs(p) - half_size + v_radius;
+    vec2 q = abs(v_pos) - v_size + v_radius;
     float dist = min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - v_radius;
 
-    float smooth_edge = u_aa_blur / min(u_size.x, u_size.y);
-    float alpha = clamp(0.5 - dist / smooth_edge, 0.0, 1.0);
+    // AA in pixel space (assume 1 pixel blur)
+    float alpha = clamp(0.5 - dist, 0.0, 1.0);
 
-    if(v_mode == 2.0) // 2.0 is border mode
+    if(v_mode > 1.0) // 2.0 is border mode
     {
-        float thickness = u_thickness / min(u_size.x, u_size.y);
-        float alpha_inner = clamp(0.5 - (dist + thickness) / smooth_edge, 0.0, 1.0);
+        // For border mode, assume fixed 2px thickness for now
+        float thickness = 2.0;
+        float alpha_inner = clamp(0.5 - (dist + thickness), 0.0, 1.0);
         alpha -= alpha_inner;
     }
 
+    if (alpha <= 0.0) discard;
     gl_FragColor = vec4(v_color.rgb, v_color.a * alpha);
 }

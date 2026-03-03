@@ -60,7 +60,8 @@ typedef union {
 typedef struct __attribute__((packed))
 {
     float x, y, z;
-    float lx, ly;
+    float px, py;      // pixel offset from center
+    float hw, hh;      // half size in pixels
     float mode, radius;
     uint8_t r, g, b, a;
 } GEDShapeComplexVertex;
@@ -176,6 +177,7 @@ void ge_atlas_alloc(int w, int h, int *page_index, int *ox, int *oy);
 
 void ge_batch_add_vertex_tex(int16_t x, int16_t y, float u, float v, uint32_t color, bool opaque, int page_index);
 void ge_batch_add_vertex_shape(int16_t x, int16_t y, int16_t lx, int16_t ly, int16_t radius, uint32_t color, int8_t mode, bool aa);
+void ge_batch_add_vertex_complex(float x, float y, float px, float py, float hw, float hh, float radius, uint32_t color, float mode);
 
 void ge_batch_get_color_u8(uint8_t *c);
 

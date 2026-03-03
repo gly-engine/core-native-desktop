@@ -155,6 +155,7 @@ void ge_pipeline_start(void) {
 
     glViewport(0, 0, s->window_width, s->window_height);
     glClearColor(1, 0, 1, 1);
+    glDepthMask(GL_TRUE);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
     glEnable(GL_BLEND);
@@ -210,7 +211,11 @@ static void flush_batch(GEProgramType type, bool transparent) {
         glEnable(GL_BLEND);
         glDepthMask(GL_FALSE);
     } else {
-        glDisable(GL_BLEND);
+        if (type == GE_PROG_COMPLEX) {
+            glEnable(GL_BLEND);
+        } else {
+            glDisable(GL_BLEND);
+        }
         glDepthMask(GL_TRUE);
     }
 
@@ -227,15 +232,14 @@ static void flush_batch(GEProgramType type, bool transparent) {
         vbo = s->vbo_complex;
         stride = sizeof(GEDShapeComplexVertex);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0); // x,y,z
-        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)12); // lx, ly
-        glEnableVertexAttribArray(4); glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, stride, (void*)20); // mode
-        glEnableVertexAttribArray(3); glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride, (void*)24); // radius
-        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)28); // r,g,b,a
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);  // a_pos
+        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)12); // a_local_pixel (px, py)
+        glEnableVertexAttribArray(3); glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, (void*)20); // a_half_size (hw, hh)
+        glEnableVertexAttribArray(4); glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, stride, (void*)28); // a_mode
+        glEnableVertexAttribArray(5); glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, stride, (void*)32); // a_radius
+        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)36); // a_color (r,g,b,a)
         
-        glUniform2f(p->loc_size, 100.0f, 100.0f); // TODO: pass actual size
-        glUniform1f(p->loc_thickness, 2.0f);
-        glUniform1f(p->loc_aa_blur, 1.0f);
+        glDisableVertexAttribArray(6);
     } else if (type == GE_PROG_ATLAS) {
         vbo = s->vbo_atlas;
         stride = sizeof(GEAtlasVertex);
