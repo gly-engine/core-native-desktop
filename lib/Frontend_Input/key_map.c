@@ -114,6 +114,18 @@ static int keymap_nec_cmp(const void *key, const void *element) {
     return strcmp(name, entry->name);
 }
 
+static int keymap_btn_cmp(const void *key, const void *element) {
+    const char *name = (const char *)key;
+    const keymap_btn_id_t *entry = (const keymap_btn_id_t *)element;
+    return strcmp(name, entry->name);
+}
+
+gecnd_key_t gecnd_key_from_name(const char* name) {
+    if (!name) return GECND_KEY_NULL;
+    keymap_btn_id_t *found = bsearch(name, keymap_btn, keymap_btn_count, sizeof(keymap_btn[0]), keymap_btn_cmp);
+    return found ? found->id : GECND_KEY_NULL;
+}
+
 const char *gecnd_nec_get_class(uint32_t i) {
     if (i >= keymap_nec_count) {
         return NULL;

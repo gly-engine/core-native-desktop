@@ -128,6 +128,20 @@ static void callback_init(gecnd_t *gly) {
     while(0);
 }
 
+void gecnd_dispatch_key_event(gecnd_t *gly, const char* key_name, bool pressed) {
+    if (!gly || !key_name) return;
+
+    gecnd_key_t key = gecnd_key_from_name(key_name);
+    gecnd_key_set_state(key, pressed);
+
+    lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_keyboard);
+    lua_pushstring(gly->L, key_name);
+    lua_pushboolean(gly->L, pressed);
+    if (lua_pcall(gly->L, 2, 0, 0)) {
+        gly->error_string = luaL_checkstring(gly->L, -1);
+    }
+}
+
 static void callback_keyboard(gecnd_t *gly) {
     uint8_t index = 0;
 
@@ -140,7 +154,7 @@ static void callback_keyboard(gecnd_t *gly) {
         index++;
 
         if (key) {
-            gecnd_set_btn_state(gly, key, pressed);
+            gecnd_dispatch_key_event(gly, key, pressed);
             if(gly->error_string) {
                 break;
             }
@@ -203,6 +217,9 @@ bool gecnd_update(gecnd_t * gly)
         }
 
         gecnd_metrics_start_input();
+        if (gecnd_is_root(gly)) {
+            gecnd_input_poll_events(gly);
+        }
         callback_keyboard(gly);
         gecnd_metrics_finish_input();
         if (gly->error_string) break;

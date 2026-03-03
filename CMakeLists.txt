@@ -371,9 +371,6 @@ if(GECND_USE_SQLITE3)
     target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${SQLITE_DIR})
 endif()
 
-# todo move
-target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Core/libretro.c")
-
 if(GECND_USE_RAYLIB)
     if(NOT EXISTS "${RAYLIB_DIR}")
         FetchContent_Populate(dep_raylib URL "${RAYLIB_DOWNLOAD}" SOURCE_DIR ${RAYLIB_DIR})

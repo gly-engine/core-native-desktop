@@ -84,6 +84,7 @@ const char* gecnd_get_errors(gecnd_t *gly);
 // tick
 bool gecnd_update(gecnd_t * gly);
 void gecnd_set_btn_state(gecnd_t *gly, const char* key, bool state);
+void gecnd_dispatch_key_event(gecnd_t *gly, const char* key, bool pressed);
 // utils
 uint32_t gecnd_get_delta_ms(void);
 uint64_t gecnd_get_cur_time(void);
@@ -107,6 +108,10 @@ void gecnd_filter_reset_video_pos();
 bool gencd_filter_is_zero_corners();
 bool gencd_filter_is_zero_video_pos();
 // inputs
+void gecnd_input_poll_events(gecnd_t *gly);
+gecnd_key_t gecnd_key_from_name(const char* name);
+void gecnd_key_set_state(gecnd_key_t key, bool pressed);
+bool gecnd_key_get_state(gecnd_key_t key);
 const char *gecnd_nec_get_class(uint32_t i);
 const char* gecnd_nec_get_key(uint32_t i);
 bool gecnd_nec_set_class(const char *name);
