@@ -1,12 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "gecnd.h"
 #include "gehook.h"
 #include "geopengl.h"
 #include "gebuffer.h"
 
 static GLBackendState g_gl_state;
+
+// hard default cap to avoid gameplay going turbo when timing goes weird
+// yea this is a TEMPORARY guard, but it keeps controls sane for now
+static double g_frame_interval_sec = (1.0 / 60.0);
+static double g_next_frame_time = 0.0;
 
 GLBackendState* geogl_get_state(void) {
     return &g_gl_state;
@@ -15,6 +21,46 @@ GLBackendState* geogl_get_state(void) {
 static void die(const char *msg) {
     fprintf(stderr, "[FATAL] %s\n", msg);
     exit(1);
+}
+
+static void ge_set_frame_cap(uint8_t fps) {
+    if (fps == 0) {
+        // loop mode was efectively uncapped before, so keep it safe
+        fps = 60;
+    }
+    g_frame_interval_sec = 1.0 / (double)fps;
+    g_next_frame_time = 0.0;
+}
+
+static void ge_sleep_seconds(double seconds) {
+    if (seconds <= 0.0) return;
+    struct timespec ts;
+    ts.tv_sec = (time_t)seconds;
+    ts.tv_nsec = (long)((seconds - (double)ts.tv_sec) * 1000000000.0);
+    nanosleep(&ts, NULL);
+}
+
+static void ge_wait_frame_cap(void) {
+    if (g_frame_interval_sec <= 0.0) return;
+
+    double now = glfwGetTime();
+    if (g_next_frame_time <= 0.0) {
+        g_next_frame_time = now + g_frame_interval_sec;
+        return;
+    }
+
+    if (now < g_next_frame_time) {
+        // sleep the remaining time so we stay near the target cadence
+        ge_sleep_seconds(g_next_frame_time - now);
+        now = glfwGetTime();
+    }
+
+    // move the timeline forward and recover from big stalls
+    if (now - g_next_frame_time > 0.5) {
+        g_next_frame_time = now + g_frame_interval_sec;
+    } else {
+        g_next_frame_time += g_frame_interval_sec;
+    }
 }
 
 static const struct {
@@ -78,6 +124,7 @@ void platform_terminate(void) {
 }
 
 void platform_swap_buffers(void) {
+    ge_wait_frame_cap();
     glfwSwapBuffers(geogl_get_state()->window);
 }
 
@@ -129,8 +176,9 @@ void gly_hook_display_fps(uint8_t fps) {
     GLFWwindow *window = geogl_get_state()->window;
     if (!window) return;
 
-    // treat unlocked as no vsync, anything else keeps vsync on
-    glfwSwapInterval(fps == 0 ? 0 : 1);
+    ge_set_frame_cap(fps);
+    // keep vsync on to avoid tearing on desktop
+    glfwSwapInterval(1);
 }
 
 void gly_hook_input_keyboard(uint8_t index, char** key, bool* press) {
