@@ -32,6 +32,36 @@ static const keymap_nec_id_t keymap_century[] = {
     {0x60f7c33c, GECND_KEY_F}
 };
 
+/**
+ * @short SKY-9334
+ */
+static const keymap_nec_id_t keymap_intelbras[] = {
+    {0x11eea857, GECND_KEY_A},
+    {0x11ee26d9, GECND_KEY_A},
+    {0x11eec639, GECND_KEY_B},
+    {0x11eee619, GECND_KEY_C},
+    {0x11ee16e9, GECND_KEY_D},
+    {0x11eea857, GECND_KEY_UP},
+    {0x11eee817, GECND_KEY_LEFT},
+    {0x11ee6897, GECND_KEY_DOWN},
+    {0x11ee18e7, GECND_KEY_RIGHT},
+    {0x11ee12ed, GECND_KEY_MENU},
+    {0x11eec43b, GECND_KEY_VOL_UP},
+    {0x11ee24db, GECND_KEY_VOL_DOWN},
+    {0x11eea45b, GECND_KEY_VOL_MUTE},
+    {0x11eecc33, GECND_KEY_CH_UP},
+    {0x11ee2cd3, GECND_KEY_CH_DOWN},
+    {0x11ee847b, GECND_KEY_SYS_POWER},
+    {0x11eef00f, GECND_KEY_SYS_CONFIG},
+    {0x11ee06f9, GECND_KEY_SYS_INPUTS},
+    {0x11ee629d, GECND_KEY_HOME_AI},
+    {0x11ee12ed, GECND_KEY_HOME_FAV},
+    /* home */
+    {0x11eee21d, GECND_KEY_E},
+    /* tv? */
+    {0x11ee4cb3, GECND_KEY_F}
+};
+
 static const keymap_nec_id_t keymap_montage[] = {
     {0x33b820df, GECND_KEY_A},
     {0x33b824db, GECND_KEY_A},
@@ -99,6 +129,7 @@ static const size_t keymap_btn_count = sizeof(keymap_btn) / sizeof(keymap_btn[0]
  */
 static const keymap_nec_list_t keymap_nec[] = {
     {"century", keymap_century, sizeof(keymap_century)/sizeof(keymap_nec_id_t)},
+    {"intelbras", keymap_intelbras, sizeof(keymap_intelbras)/sizeof(keymap_nec_id_t)},
     {"montage", keymap_montage, sizeof(keymap_montage)/sizeof(keymap_nec_id_t)},
     {"vivensis dtv 3.0", keymap_vivensis_dtv_3_0, sizeof(keymap_vivensis_dtv_3_0)/sizeof(keymap_nec_id_t)},
     {"vivensis vx smart", keymap_vivensis_vx_smart, sizeof(keymap_vivensis_vx_smart)/sizeof(keymap_nec_id_t)}
