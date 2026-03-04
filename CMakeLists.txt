@@ -19,6 +19,7 @@ set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
 
 option(GECND_AS_LIBRARY "build static lib gecnd intead binary" OFF)
 option(GECND_NO_SANITIZE "disable UB flags on clang/llvm" OFF)
+option(GECND_USE_PROFILER "use google gperftools" OFF)
 option(GECND_MOCK_HTTP "add package http but raise error on request" OFF)
 
 # EXE
@@ -41,6 +42,18 @@ if(NOT TARGET gecnd_cc_flags)
 endif()
 target_include_directories(gecnd_header INTERFACE "${CMAKE_CURRENT_LIST_DIR}/include;${CMAKE_BINARY_DIR}/include")
 target_link_libraries(${PROJECT_NAME} PRIVATE gecnd_header gecnd_lua gecnd_cc_flags)
+
+if(GECND_NO_SANITIZE)
+    target_compile_options(gecnd_cc_flags INTERFACE -fno-sanitize=all -fno-sanitize-recover=all)
+endif()
+
+if(GECND_USE_PROFILER)
+    target_compile_options(gecnd_cc_flags INTERFACE -g
+        -fno-omit-frame-pointer -fno-optimize-sibling-calls
+        -fno-unwind-tables -fno-asynchronous-unwind-tables
+    )
+endif()
+
 get_target_property(gecnd_cc_options gecnd_cc_flags INTERFACE_COMPILE_OPTIONS)
 if(NOT gecnd_cc_options)
     set(gecnd_cc_options "")
@@ -255,23 +268,11 @@ set(gperftools_build_benchmark OFF CACHE BOOL "" FORCE)
 set(gperftools_enable_libunwind OFF CACHE BOOL "" FORCE)
 set(gperftools_enable_stacktrace_via_backtrace ON CACHE BOOL "" FORCE)
 set(gperftools_enable_frame_pointers ON CACHE BOOL "" FORCE)
-option(GECND_USE_PROFILER "use google gperftools" OFF)
 
 # Pico HTTP Parser
 set(PHP_DOWNLOAD "https://github.com/h2o/picohttpparser/archive/f8326098f63eefabfa2b6ec595d90e9ed5ed958a.tar.gz")
 set(PHP_DIR "${CMAKE_SOURCE_DIR}/vendor/web/php")
 option(GECND_USE_RC "use remote control in web server" ON)
-
-if(GECND_NO_SANITIZE)
-    target_compile_options(gecnd_cc_flags INTERFACE -fno-sanitize=all -fno-sanitize-recover=all)
-endif()
-
-if(GECND_USE_PROFILER)
-    target_compile_options(gecnd_cc_flags INTERFACE -g
-        -fno-omit-frame-pointer -fno-optimize-sibling-calls
-        -fno-unwind-tables -fno-asynchronous-unwind-tables
-    )
-endif()
 
 if(GECND_USE_LUA51)
     FetchContent_Populate(lua51-static URL "${LUA51_DOWNLOAD}" SOURCE_DIR ${LUA51_DIR})
@@ -561,6 +562,7 @@ endif()
 if(GECND_USE_OPENGL)
     FetchContent_Declare(spng GIT_REPOSITORY ${SPNG_REPO} GIT_TAG ${SPNG_VERSION} SOURCE_DIR ${SPNG_ROOT})
     FetchContent_MakeAvailable(spng)
+    target_compile_options(spng_static PRIVATE ${gecnd_cc_options})
     target_link_libraries(${PROJECT_NAME} PRIVATE spng_static)
     target_include_directories(${PROJECT_NAME} PRIVATE ${SPNG_ROOT}/spng)
 endif()
