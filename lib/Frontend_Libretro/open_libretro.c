@@ -67,11 +67,20 @@ static void RETRO_CALLCONV core_log(enum retro_log_level level, const char *fmt,
 static void RETRO_CALLCONV core_video_refresh(const void *data, unsigned width, unsigned height, size_t pitch) {
     if (!data) return;
 
+    // try direct gpu upload before falling back to the cpu buffer.
     int ge_fmt = (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) ? GECND_PIX_FMT_RGBA8888 : GECND_PIX_FMT_RGB565;
+    if (native_libretro_video_upload(data, width, height, pitch, ge_fmt)) {
+        return;
+    }
+
     gecnd_buffer_resize((int)width, (int)height, ge_fmt);
     
+    gecnd_buffer_lock();
     MediaFrame *f = gecnd_buffer_get_back();
-    if (!f) return;
+    if (!f) {
+        gecnd_buffer_unlock();
+        return;
+    }
     int bpp = (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) ? 4 : 2;
 
     if (pitch == (size_t)f->linesize[0]) {
@@ -85,6 +94,7 @@ static void RETRO_CALLCONV core_video_refresh(const void *data, unsigned width, 
     
     atomic_store(&f->ready, true);
     gecnd_buffer_swap();
+    gecnd_buffer_unlock();
 }
 
 static void RETRO_CALLCONV core_audio_sample(int16_t left, int16_t right) { (void)left; (void)right; }

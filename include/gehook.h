@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 //! @cond
 typedef struct lua_State lua_State;
@@ -50,3 +51,4 @@ CREATE_GLY_HOOK(void, gly_hook_keyboard_has_media, (bool*))
 CREATE_GLY_HOOK(void, gly_hook_input_keyboard, (uint8_t, char**, bool*))
 CREATE_GLY_HOOK(bool, native_libretro_load, (const char*))
 CREATE_GLY_HOOK(bool, native_libretro_game, (const char*))
+CREATE_GLY_HOOK(bool, native_libretro_video_upload, (const void*, unsigned, unsigned, size_t, int))

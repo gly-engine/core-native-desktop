@@ -160,6 +160,8 @@ typedef struct {
     int video_width;
     int video_height;
     int video_format;
+    bool video_fastpath_active;
+    bool video_fastpath_ready;
 } GLBackendState;
 
 GLBackendState* geogl_get_state(void);

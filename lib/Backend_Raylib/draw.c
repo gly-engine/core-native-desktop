@@ -1,6 +1,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "raylib.h"
@@ -157,6 +158,15 @@ void native_text_font_default(uint8_t index) {
         gly_font_loaded = false;
     }
     gly_current_font = GetFontDefault();
+}
+
+bool native_libretro_video_upload(const void *data, unsigned width, unsigned height, size_t pitch, int format) {
+    (void)data;
+    (void)width;
+    (void)height;
+    (void)pitch;
+    (void)format;
+    return false;
 }
 
 void native_text_font_previous(void) {}

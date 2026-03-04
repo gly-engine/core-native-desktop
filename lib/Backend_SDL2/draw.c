@@ -2,6 +2,7 @@
 #include <SDL_ttf.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
@@ -129,6 +130,15 @@ void native_text_print(int16_t x, int16_t y, const char *text) {
     SDL_FreeSurface(surf);
     SDL_RenderCopy(gly_renderer, tex, NULL, &dst);
     SDL_DestroyTexture(tex);
+}
+
+bool native_libretro_video_upload(const void *data, unsigned width, unsigned height, size_t pitch, int format) {
+    (void)data;
+    (void)width;
+    (void)height;
+    (void)pitch;
+    (void)format;
+    return false;
 }
 
 void native_text_mensure(const char *text, int16_t *w, int16_t *h) {

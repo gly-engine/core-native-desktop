@@ -3,6 +3,7 @@
 #include "geopengl.h"
 #include "gebuffer.h"
 #include "gefilter.h"
+#include "gehook.h"
 
 static void update_video_textures(GLBackendState *s, MediaFrame *f) {
     bool need_realloc = (s->video_width != f->width || s->video_height != f->height || s->video_format != f->format);
@@ -62,14 +63,25 @@ static void update_video_textures(GLBackendState *s, MediaFrame *f) {
 
 void native_draw_background_video(void) {
     GLBackendState *s = geogl_get_state();
-    MediaFrame *f = gecnd_get_background_frame();
-    if (!f) return;
+    // fast path: libretro already pushed pixels to the gpu.
+    if (s->video_fastpath_active) {
+        if (!s->video_fastpath_ready || !s->video_tex[0]) return;
+    } else {
+        // normal path: upload from the shared buffer under lock.
+        gecnd_buffer_lock();
+        MediaFrame *f = gecnd_get_background_frame();
+        if (!f) {
+            gecnd_buffer_unlock();
+            return;
+        }
 
-    if (gecnd_buffer_check_update(&s->video_update_counter)) {
-        update_video_textures(s, f);
+        if (gecnd_buffer_check_update(&s->video_update_counter)) {
+            update_video_textures(s, f);
+        }
+        gecnd_buffer_unlock();
+
+        if (!s->video_tex[0]) return;
     }
-
-    if (!s->video_tex[0]) return;
 
     gecnd_filter_t *filter = gecnd_filter_get_config();
     GEProgram *p = &s->programs[GE_PROG_VIDEO];
@@ -86,7 +98,7 @@ void native_draw_background_video(void) {
     glUniformMatrix4fv(p->loc_proj, 1, GL_FALSE, identity);
 
     // Textures
-    if (f->format == GECND_PIX_FMT_YUV420P) {
+    if (s->video_format == GECND_PIX_FMT_YUV420P) {
         glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, s->video_tex[0]); glUniform1i(p->loc_tex_y, 0);
         glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, s->video_tex[1]); glUniform1i(p->loc_tex_u, 1);
         glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, s->video_tex[2]); glUniform1i(p->loc_tex_v, 2);
@@ -120,4 +132,31 @@ void native_draw_background_video(void) {
 
     glDisableVertexAttribArray(0);
     glDisableVertexAttribArray(2);
+}
+
+bool native_libretro_video_upload(const void *data, unsigned width, unsigned height, size_t pitch, int format) {
+    // direct libretro upload to skip the extra cpu copy.
+    GLBackendState *s = geogl_get_state();
+
+    s->video_fastpath_active = false;
+    s->video_fastpath_ready = false;
+
+    if (!data || width == 0 || height == 0) return false;
+
+    int bpp = (format == GECND_PIX_FMT_RGB565) ? 2 : 4;
+    if (pitch != (size_t)(width * (unsigned)bpp)) {
+        return false;
+    }
+
+    MediaFrame temp = {0};
+    temp.width = (int)width;
+    temp.height = (int)height;
+    temp.format = format;
+    temp.data[0] = (uint8_t*)data;
+
+    update_video_textures(s, &temp);
+
+    s->video_fastpath_active = true;
+    s->video_fastpath_ready = true;
+    return true;
 }
