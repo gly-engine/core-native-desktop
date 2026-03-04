@@ -545,6 +545,7 @@ if (GECND_USE_LIBUV)
     FetchContent_MakeAvailable(uv_a)
     target_link_libraries(${PROJECT_NAME} PRIVATE uv_a)
     target_compile_options(uv_a PRIVATE ${gecnd_cc_options})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE GECND_LIBUV)
 endif()
 
 if(GECND_USE_OPENGL OR GECND_USE_CURL)

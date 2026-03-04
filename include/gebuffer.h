@@ -30,6 +30,8 @@ void gecnd_buffer_notify_update(void);
 bool gecnd_buffer_check_update(atomic_int *local_counter);
 void gecnd_buffer_resize(int w, int h, int format);
 void gecnd_buffer_free(void);
+void gecnd_buffer_lock(void);
+void gecnd_buffer_unlock(void);
 
 // Main background frame getter
 MediaFrame* gecnd_get_background_frame(void);

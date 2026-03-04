@@ -7,6 +7,36 @@
 static MediaFrame frames[2] = {0};
 static atomic_int front_idx = 0;
 static atomic_int update_counter = 0;
+#if defined(GECND_LIBUV)
+#include <uv.h>
+static uv_mutex_t buffer_mutex;
+static uv_once_t buffer_mutex_once = UV_ONCE_INIT;
+
+static void gecnd_buffer_mutex_init(void) {
+    uv_mutex_init(&buffer_mutex);
+}
+
+void gecnd_buffer_lock(void) {
+    uv_once(&buffer_mutex_once, gecnd_buffer_mutex_init);
+    uv_mutex_lock(&buffer_mutex);
+}
+
+void gecnd_buffer_unlock(void) {
+    uv_once(&buffer_mutex_once, gecnd_buffer_mutex_init);
+    uv_mutex_unlock(&buffer_mutex);
+}
+#else
+static atomic_flag buffer_lock = ATOMIC_FLAG_INIT;
+
+void gecnd_buffer_lock(void) {
+    while (atomic_flag_test_and_set_explicit(&buffer_lock, memory_order_acquire)) {
+    }
+}
+
+void gecnd_buffer_unlock(void) {
+    atomic_flag_clear_explicit(&buffer_lock, memory_order_release);
+}
+#endif
 
 MediaFrame* gecnd_buffer_get_front(void) {
     return &frames[atomic_load(&front_idx)];
@@ -76,12 +106,16 @@ static void frame_resize(MediaFrame *f, int w, int h, int format) {
 }
 
 void gecnd_buffer_resize(int w, int h, int format) {
+    gecnd_buffer_lock();
     frame_resize(&frames[0], w, h, format);
     frame_resize(&frames[1], w, h, format);
+    gecnd_buffer_unlock();
 }
 
 void gecnd_buffer_free(void) {
+    gecnd_buffer_lock();
     if (frames[0].data[0]) free(frames[0].data[0]);
     if (frames[1].data[0]) free(frames[1].data[0]);
     memset(frames, 0, sizeof(frames));
+    gecnd_buffer_unlock();
 }

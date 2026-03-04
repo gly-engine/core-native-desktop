@@ -120,11 +120,13 @@ static void threadworker(void *arg) {
                     double delay = target - now_sec();
                     if (delay > 0.001) usleep((useconds_t)(delay * 1e6));
 
+                    gecnd_buffer_lock();
                     MediaFrame *f = gecnd_buffer_get_back();
                     frame_copy(vfrm, f);
                     f->pts = pts;
                     atomic_store(&f->ready, true);
                     gecnd_buffer_swap();
+                    gecnd_buffer_unlock();
 
                     AV.av_frame_unref(vfrm);
                 }
