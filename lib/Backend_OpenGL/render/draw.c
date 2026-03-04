@@ -41,6 +41,7 @@ void native_draw_clear(uint32_t color) {
 void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r) {
     GLBackendState *s = geogl_get_state();
     uint32_t color = s->current_color.u32;
+    r = 0; /** @todo optmize radius*/
     
     // mode 0: fill, 1: frame (border)
     int8_t internal_mode = (mode == 1) ? 2 : 0;

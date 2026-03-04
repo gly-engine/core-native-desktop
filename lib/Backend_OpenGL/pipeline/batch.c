@@ -71,7 +71,7 @@ void ge_batch_add_vertex_complex(
 {
     GLBackendState *s = geogl_get_state();
     uint8_t alpha = (color >> 24) & 0xFF;
-    bool opaque = (alpha >= 254);
+    bool opaque = false;
     
     GEBatch *b = opaque ? &s->opaque_batches[GE_PROG_COMPLEX] : &s->transparent_batches[GE_PROG_COMPLEX];
 

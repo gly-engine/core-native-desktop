@@ -61,6 +61,7 @@ static void update_video_textures(GLBackendState *s, MediaFrame *f) {
 }
 
 void native_draw_background_video(void) {
+    return; /** @todo: enable */
     GLBackendState *s = geogl_get_state();
     MediaFrame *f = gecnd_get_background_frame();
     if (!f) return;

@@ -26,6 +26,8 @@
 #define GE_FONT_ATLAS_SIZE 1024
 // Max vertices in a single batch (multiple of 6, approx 256KB)
 #define GE_MAX_VERTICES 8190
+// Max layers for 2D depth sorting
+#define GE_MAX_LAYERS 4096
 
 typedef struct {
     GLuint id;

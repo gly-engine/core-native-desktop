@@ -12,7 +12,7 @@ void ge_pipeline_resize(uint16_t w, uint16_t h) {
     GLBackendState *s = geogl_get_state();
     s->window_width = w; s->window_height = h;
     glViewport(0, 0, w, h);
-    mat4_ortho(s->projection, 0, (float)w, (float)h, 0, -1, 1);
+    mat4_ortho(s->projection, 0, (float)w, (float)h, 0, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
 }
 
 static void init_batch(GEBatch *b, size_t stride) {
@@ -164,7 +164,7 @@ void ge_pipeline_start(void) {
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
 
-    mat4_ortho(s->projection, 0, (float)s->window_width, (float)s->window_height, 0, -1000, 1000);
+    mat4_ortho(s->projection, 0, (float)s->window_width, (float)s->window_height, 0, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
     
     for(int i=0; i<GE_PROG_COUNT; i++) {
         s->opaque_batches[i].count = 0;
@@ -211,11 +211,7 @@ static void flush_batch(GEProgramType type, bool transparent) {
         glEnable(GL_BLEND);
         glDepthMask(GL_FALSE);
     } else {
-        if (type == GE_PROG_COMPLEX) {
-            glEnable(GL_BLEND);
-        } else {
-            glDisable(GL_BLEND);
-        }
+        glDisable(GL_BLEND);
         glDepthMask(GL_TRUE);
     }
 
@@ -274,7 +270,6 @@ void ge_pipeline_flush_primitives(void) {
     // Flush Opaque first
     flush_batch(GE_PROG_SIMPLE, false);
     flush_batch(GE_PROG_ATLAS, false);
-    flush_batch(GE_PROG_COMPLEX, false);
 
     // Flush Transparent
     flush_batch(GE_PROG_SIMPLE, true);

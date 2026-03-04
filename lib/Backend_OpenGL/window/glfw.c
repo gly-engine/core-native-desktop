@@ -98,7 +98,7 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     ge_pipeline_init(width, height);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    mat4_ortho(s->projection, 0, width, height, 0, -1, 1);
+    mat4_ortho(s->projection, 0, width, height, 0, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
     s->last_frame_time = platform_get_time();
 }
 
