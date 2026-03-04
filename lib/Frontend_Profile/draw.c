@@ -129,31 +129,29 @@ void gecnd_metrics_render(gecnd_t *gly)
         uint32_t tint = gecnd_metrics_get_tint_time();
         uint32_t wait = gecnd_metrics_get_wait_time();
         uint32_t total = io_worst + loop + draw + post + tint + wait;
+        if (total == 0) total = 1;
 
-        if (total > 0)
-        {
-            snprintf(buf, sizeof(buf), "I/O: %3d ms (%.1f%%)", io_worst, (io_worst * 100.0f) / total);
-            native_text_print(margin + (margin / 2), ly, buf);
-            ly += line_h;
+        snprintf(buf, sizeof(buf), "I/O: %3d ms (%.1f%%)", io_worst, (io_worst * 100.0f) / total);
+        native_text_print(margin + (margin / 2), ly, buf);
+        ly += line_h;
 
-            snprintf(buf, sizeof(buf), "Loop: %3d ms (%.1f%%)", loop, (loop * 100.0f) / total);
-            native_text_print(margin + (margin / 2), ly, buf);
-            ly += line_h;
+        snprintf(buf, sizeof(buf), "Loop: %3d ms (%.1f%%)", loop, (loop * 100.0f) / total);
+        native_text_print(margin + (margin / 2), ly, buf);
+        ly += line_h;
 
-            snprintf(buf, sizeof(buf), "Draw: %3d ms (%.1f%%)", draw, (draw * 100.0f) / total);
-            native_text_print(margin + (margin / 2), ly, buf);
-            ly += line_h;
+        snprintf(buf, sizeof(buf), "Draw: %3d ms (%.1f%%)", draw, (draw * 100.0f) / total);
+        native_text_print(margin + (margin / 2), ly, buf);
+        ly += line_h;
 
-            snprintf(buf, sizeof(buf), "Post: %3d ms (%.1f%%)", post, (post * 100.0f) / total);
-            native_text_print(margin + (margin / 2), ly, buf);
-            ly += line_h;
+        snprintf(buf, sizeof(buf), "Post: %3d ms (%.1f%%)", post, (post * 100.0f) / total);
+        native_text_print(margin + (margin / 2), ly, buf);
+        ly += line_h;
 
-            snprintf(buf, sizeof(buf), "Tint: %3d ms (%.1f%%)", tint, (tint * 100.0f) / total);
-            native_text_print(margin + (margin / 2), ly, buf);
-            ly += line_h;
+        snprintf(buf, sizeof(buf), "Tint: %3d ms (%.1f%%)", tint, (tint * 100.0f) / total);
+        native_text_print(margin + (margin / 2), ly, buf);
+        ly += line_h;
 
-            snprintf(buf, sizeof(buf), "Wait: %3d ms (%.1f%%)", wait, (wait * 100.0f) / total);
-            native_text_print(margin + (margin / 2), ly, buf);
-        }
+        snprintf(buf, sizeof(buf), "Wait: %3d ms (%.1f%%)", wait, (wait * 100.0f) / total);
+        native_text_print(margin + (margin / 2), ly, buf);
     }
 }
