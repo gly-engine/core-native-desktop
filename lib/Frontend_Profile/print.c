@@ -43,6 +43,18 @@ void gecnd_metrics_print(void)
     format_memory(gecnd_metrics_get_lua_avg(), s_avg, sizeof(s_avg));
     format_memory(gecnd_metrics_get_lua_peak(), s_peak, sizeof(s_peak));
 
-    printf("[METRICS] FPS avg: %u | z-depth: %.3f | Lua Mem: cur=%s, avg=%s, peak=%s\n",
-           fps, 1.0, s_cur, s_avg, s_peak);
+    if (flags & GECND_METRICS_PERF) {
+        uint32_t input = gecnd_metrics_get_input_time();
+        uint32_t loop = gecnd_metrics_get_loop_time();
+        uint32_t draw = gecnd_metrics_get_draw_time();
+        uint32_t post = gecnd_metrics_get_post_time();
+        uint32_t tint = gecnd_metrics_get_tint_time();
+        uint32_t wait = gecnd_metrics_get_wait_time();
+
+        printf("[METRICS] FPS avg: %u | Lua Mem: cur=%s, avg=%s, peak=%s | input=%ums loop=%ums draw=%ums post=%ums swap=%ums wait=%ums\n",
+               fps, s_cur, s_avg, s_peak, input, loop, draw, post, tint, wait);
+    } else {
+        printf("[METRICS] FPS avg: %u | Lua Mem: cur=%s, avg=%s, peak=%s\n",
+               fps, s_cur, s_avg, s_peak);
+    }
 }

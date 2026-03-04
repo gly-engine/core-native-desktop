@@ -50,4 +50,6 @@ uint16_t gecnd_metrics_get_fps_worst(void);
 uint16_t gecnd_metrics_get_fps_percent(void);
 uint16_t gecnd_metrics_get_fps_drops(void);
 
+void gecnd_metrics_print(void);
+
 #endif

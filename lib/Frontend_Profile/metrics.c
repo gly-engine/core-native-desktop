@@ -1,5 +1,6 @@
 #include "gemetrics.h"
 #include <string.h>
+#include <stdlib.h>
 #include <lua.h>
 
 typedef struct
@@ -258,6 +259,11 @@ void gecnd_metrics_update(void)
         state.input_worst_cur_sec = 0;
         state.lua_mem_accumulated = 0;
         state.lua_mem_frame_count = 0;
+
+        const char *stdout_metrics = getenv("GECND_METRICS_STDOUT");
+        if (stdout_metrics && stdout_metrics[0] != '\0') {
+            gecnd_metrics_print();
+        }
     }
 }
 
