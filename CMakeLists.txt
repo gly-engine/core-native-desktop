@@ -513,7 +513,7 @@ endif()
 
 if(GECND_USE_FFMPEG)
     FILE(GLOB gecnd_ffmpeg_files "${CMAKE_CURRENT_LIST_DIR}/lib/Stream_AVlib/*.c")
-    if (NOT EXISTS "${FFMPEG_DIR}/libavcodec")
+    if (NOT EXISTS "${FFMPEG_DIR}/libavutil/avconfig.h")
         FetchContent_Populate(dep_ffmpeg URL ${FFMPEG_DOWNLOAD} SOURCE_DIR ${FFMPEG_DIR})
         execute_process(
             COMMAND ./configure --prefix=${FFMPEG_DIR}/build --enable-static --disable-shared
