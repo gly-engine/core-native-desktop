@@ -12,6 +12,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_SKIP_INSTALL_RULES ON CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
@@ -242,6 +243,20 @@ set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
 set(CURL_USE_LIBSSH2 OFF CACHE BOOL "" FORCE)
 option(GECND_USE_CURL "use curl" ON)
 
+# Google GPERF/PPERF
+set(GPERFTOOLS_VERSION "gperftools-2.18")
+set(GPERFTOOLS_REPO "https://github.com/gperftools/gperftools.git")
+set(GPERFTOOLS_DIR "${CMAKE_SOURCE_DIR}/vendor/gperftools")
+set(GPERFTOOLS_BUILD_CPU_PROFILER ON CACHE BOOL "" FORCE)
+set(GPERFTOOLS_BUILD_HEAP_PROFILER OFF CACHE BOOL "" FORCE)
+set(GPERFTOOLS_BUILD_DEBUGALLOC OFF CACHE BOOL "" FORCE)
+set(gperftools_build_minimal OFF CACHE BOOL "" FORCE)
+set(gperftools_build_benchmark OFF CACHE BOOL "" FORCE)
+set(gperftools_enable_libunwind OFF CACHE BOOL "" FORCE)
+set(gperftools_enable_stacktrace_via_backtrace ON CACHE BOOL "" FORCE)
+set(gperftools_enable_frame_pointers ON CACHE BOOL "" FORCE)
+option(GECND_USE_PROFILER "use google gperftools" OFF)
+
 # Pico HTTP Parser
 set(PHP_DOWNLOAD "https://github.com/h2o/picohttpparser/archive/f8326098f63eefabfa2b6ec595d90e9ed5ed958a.tar.gz")
 set(PHP_DIR "${CMAKE_SOURCE_DIR}/vendor/web/php")
@@ -249,6 +264,13 @@ option(GECND_USE_RC "use remote control in web server" ON)
 
 if(GECND_NO_SANITIZE)
     target_compile_options(gecnd_cc_flags INTERFACE -fno-sanitize=all -fno-sanitize-recover=all)
+endif()
+
+if(GECND_USE_PROFILER)
+    target_compile_options(gecnd_cc_flags INTERFACE -g
+        -fno-omit-frame-pointer -fno-optimize-sibling-calls
+        -fno-unwind-tables -fno-asynchronous-unwind-tables
+    )
 endif()
 
 if(GECND_USE_LUA51)
@@ -576,6 +598,13 @@ endif()
 
 if(GECND_MOCK_HTTP)
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Api/http_mock.c")
+endif()
+
+if(GECND_USE_PROFILER)
+    enable_language(CXX)
+    FetchContent_Declare(profiler GIT_REPOSITORY ${GPERFTOOLS_REPO} GIT_TAG ${GPERFTOOLS_VERSION} SOURCE_DIR ${GPERFTOOLS_DIR})
+    FetchContent_MakeAvailable(profiler)
+    target_link_libraries(${PROJECT_NAME} PRIVATE profiler)
 endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
