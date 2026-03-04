@@ -48,10 +48,7 @@ if(GECND_NO_SANITIZE)
 endif()
 
 if(GECND_USE_PROFILER)
-    target_compile_options(gecnd_cc_flags INTERFACE -g
-        -fno-omit-frame-pointer -fno-optimize-sibling-calls
-        -fno-unwind-tables -fno-asynchronous-unwind-tables
-    )
+    target_compile_options(gecnd_cc_flags INTERFACE -g -O1 -fno-omit-frame-pointer)
 endif()
 
 get_target_property(gecnd_cc_options gecnd_cc_flags INTERFACE_COMPILE_OPTIONS)
@@ -265,7 +262,7 @@ set(GPERFTOOLS_BUILD_HEAP_PROFILER OFF CACHE BOOL "" FORCE)
 set(GPERFTOOLS_BUILD_DEBUGALLOC OFF CACHE BOOL "" FORCE)
 set(gperftools_build_minimal OFF CACHE BOOL "" FORCE)
 set(gperftools_build_benchmark OFF CACHE BOOL "" FORCE)
-set(gperftools_enable_libunwind OFF CACHE BOOL "" FORCE)
+set(gperftools_enable_libunwind ON CACHE BOOL "" FORCE)
 set(gperftools_enable_stacktrace_via_backtrace ON CACHE BOOL "" FORCE)
 set(gperftools_enable_frame_pointers ON CACHE BOOL "" FORCE)
 
