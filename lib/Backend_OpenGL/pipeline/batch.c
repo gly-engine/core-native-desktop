@@ -21,10 +21,8 @@ void ge_batch_add_vertex_tex(int16_t x, int16_t y,
     vertex->x = (float)x;
     vertex->y = (float)y;
     vertex->z = (float)s->current_z;
-    vertex->u0 = u;
-    vertex->v0 = v;
-    vertex->u1 = 1.0f; 
-    vertex->v1 = 1.0f;
+    vertex->u = u;
+    vertex->v = v;
 
     uint8_t *c = (uint8_t*)&color;
     vertex->r = c[0];

@@ -279,7 +279,7 @@ static void flush_batch(GEProgramType type, bool transparent) {
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0); // x,y,z
         glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)12); // r,g,b,a
-        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride, (void*)16); // u0,v0,u1,v1
+        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)16); // u,v
         glDisableVertexAttribArray(3); glDisableVertexAttribArray(4);
 
         glActiveTexture(GL_TEXTURE0);

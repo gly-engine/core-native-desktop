@@ -78,8 +78,7 @@ typedef struct __attribute__((packed))
 {
     float x, y, z;
     uint8_t r, g, b, a;
-    float u0, v0;
-    float u1, v1;
+    float u, v;
 } GEAtlasVertex;
 
 #include <assert.h>
