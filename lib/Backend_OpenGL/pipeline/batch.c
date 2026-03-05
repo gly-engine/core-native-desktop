@@ -21,6 +21,7 @@ void ge_batch_add_vertex_tex(int16_t x, int16_t y,
     vertex->x = (int16_t)x;
     vertex->y = (int16_t)y;
     vertex->z = (int16_t)s->current_z;
+    vertex->w = 1;
     vertex->u = (uint16_t)(u * 65535.0f);
     vertex->v = (uint16_t)(v * 65535.0f);
 
@@ -55,6 +56,7 @@ void ge_batch_add_vertex_shape(
     vertex->x = (int16_t)x;
     vertex->y = (int16_t)y;
     vertex->z = (int16_t)s->current_z;
+    vertex->w = 1;
     uint8_t *c = (uint8_t*)&color;
     vertex->r = c[0];
     vertex->g = c[1];

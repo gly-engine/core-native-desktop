@@ -258,7 +258,7 @@ static void flush_batch(GEProgramType type, bool transparent) {
         vbo = s->vbo_simple;
         stride = sizeof(GESimpleShapeVertex);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_SHORT, GL_FALSE, stride, (void*)offsetof(GESimpleShapeVertex, x));
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_SHORT, GL_FALSE, stride, (void*)offsetof(GESimpleShapeVertex, x));
         glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(GESimpleShapeVertex, r));
         glDisableVertexAttribArray(2); glDisableVertexAttribArray(3); glDisableVertexAttribArray(4);
     } else if (type == GE_PROG_COMPLEX) {
@@ -277,7 +277,7 @@ static void flush_batch(GEProgramType type, bool transparent) {
         vbo = s->vbo_atlas;
         stride = sizeof(GEAtlasVertex);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_SHORT, GL_FALSE, stride, (void*)offsetof(GEAtlasVertex, x));
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_SHORT, GL_FALSE, stride, (void*)offsetof(GEAtlasVertex, x));
         glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(GEAtlasVertex, r));
         glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_UNSIGNED_SHORT, GL_TRUE, stride, (void*)offsetof(GEAtlasVertex, u));
         glDisableVertexAttribArray(3); glDisableVertexAttribArray(4);

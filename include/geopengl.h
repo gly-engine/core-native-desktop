@@ -70,13 +70,13 @@ typedef struct __attribute__((packed))
 
 typedef struct __attribute__((packed))
 {
-    int16_t x, y, z, _pad;
+    int16_t x, y, z, w;
     uint8_t r, g, b, a;
 } GESimpleShapeVertex;
 
 typedef struct __attribute__((packed))
 {
-    int16_t x, y, z, _pad;
+    int16_t x, y, z, w;
     uint8_t r, g, b, a;
     uint16_t u, v;
 } GEAtlasVertex;
