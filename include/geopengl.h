@@ -61,24 +61,24 @@ typedef union {
 
 typedef struct __attribute__((packed))
 {
-    float x, y, z;
-    float px, py;      // pixel offset from center
-    float hw, hh;      // half size in pixels
-    float mode, radius;
+    int16_t x, y, z, w;
+    int16_t px, py;
+    int16_t hw, hh;
+    int16_t radius, pad;
     uint8_t r, g, b, a;
 } GEDShapeComplexVertex;
 
 typedef struct __attribute__((packed))
 {
-    float x, y, z;
+    int16_t x, y, z, _pad;
     uint8_t r, g, b, a;
 } GESimpleShapeVertex;
 
 typedef struct __attribute__((packed))
 {
-    float x, y, z;
+    int16_t x, y, z, _pad;
     uint8_t r, g, b, a;
-    float u, v;
+    uint16_t u, v;
 } GEAtlasVertex;
 
 #include <assert.h>
