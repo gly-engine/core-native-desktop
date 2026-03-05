@@ -146,6 +146,8 @@ typedef struct {
     
     bool   atlas_dirty;
     float white_uv[2]; 
+    float corner_uv[4]; // u, v, u2, v2
+    int corner_page_index;
 
     float projection[16];
     GEColor current_color;

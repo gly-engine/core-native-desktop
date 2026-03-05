@@ -11,6 +11,9 @@
 
 #include "gecnd/notosans.h"
 
+static int atlas_w = GE_FONT_ATLAS_SIZE; // Font area width
+static int atlas_h = GE_FONT_ATLAS_SIZE; // Font area height
+
 struct GLFONScontext {
     GLuint tex;
     int width, height;
@@ -34,6 +37,10 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
     GLBackendState *s = geogl_get_state();
     int x = rect[0], y = rect[1], w = rect[2] - rect[0], h = rect[3] - rect[1];
     if (w <= 0 || h <= 0) return;
+    
+    // Fonts live in the top 1024 pixels of Page 0
+    if (y + h > GE_FONT_ATLAS_SIZE) return; 
+
     ge_pipeline_flush_primitives();
     size_t needed = (size_t)(w * h * 4);
     if (gl->scratch_size < needed) {
@@ -58,7 +65,10 @@ static void glfons__renderDraw(void* userPtr, const float* verts, const float* t
     GLBackendState *s = geogl_get_state();
     (void)userPtr;
     for (int i = 0; i < nverts; i++) {
-        ge_batch_add_vertex_tex((int16_t)verts[i*2], (int16_t)verts[i*2+1], tcoords[i*2], tcoords[i*2+1], colors[i], false, 0);
+        // Texture coords for Page 0 are relative to GE_ATLAS_SIZE (2048)
+        float u = tcoords[i*2]   * (float)GE_FONT_ATLAS_SIZE / (float)GE_ATLAS_SIZE;
+        float v = tcoords[i*2+1] * (float)GE_FONT_ATLAS_SIZE / (float)GE_ATLAS_SIZE;
+        ge_batch_add_vertex_tex((int16_t)verts[i*2], (int16_t)verts[i*2+1], u, v, colors[i], false, 0);
     }
 }
 
@@ -96,7 +106,6 @@ static FONScontext *fs;
 static int fs_font = FONS_INVALID;
 static float current_size = 16.0f;
 static int initialized = 0;
-static int atlas_w = GE_FONT_ATLAS_SIZE, atlas_h = GE_FONT_ATLAS_SIZE;
 static unsigned char *default_font_mem;
 static size_t default_font_size;
 

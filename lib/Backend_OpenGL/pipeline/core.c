@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stddef.h>
+#include <math.h>
 #include "gecnd.h"
 #include "gefilter.h"
 #include "geopengl.h"
@@ -41,8 +42,8 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
     kv_init(s->atlas_pages);
-    // Page 0: Font Atlas
-    create_atlas_page(s, GE_FONT_ATLAS_SIZE, GE_FONT_ATLAS_SIZE);
+    // Page 0: Font Atlas (Top Half 1024x1024) + System Glyphs/Images (Bottom Half 1024x2048)
+    create_atlas_page(s, GE_ATLAS_SIZE, GE_ATLAS_SIZE);
     // Page 1: General Atlas
     create_atlas_page(s, GE_ATLAS_SIZE, GE_ATLAS_SIZE);
 
@@ -79,12 +80,48 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     s->fbo_width = 0;
     s->fbo_height = 0;
     
-    int wx, wy, wp; ge_atlas_alloc(1, 1, &wp, &wx, &wy); 
+    // Page 0 setup
+    GEAtlasPage *p0 = &s->atlas_pages.a[0];
+    p0->cursor_x = 0;
+    p0->cursor_y = 1024; // Reservado: Metade de cima para Fontes, Baixo para imagens
+    p0->row_height = 0;
+
+    // White pixel
     uint32_t white = 0xFFFFFFFF;
-    glBindTexture(GL_TEXTURE_2D, s->atlas_pages.a[wp].tex_id);
+    int wx = p0->cursor_x++;
+    int wy = p0->cursor_y;
+    if (p0->row_height < 1) p0->row_height = 1;
+    glBindTexture(GL_TEXTURE_2D, p0->tex_id);
     glTexSubImage2D(GL_TEXTURE_2D, 0, wx, wy, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, &white);
     s->white_uv[0] = ((float)wx + 0.5f) / (float)GE_ATLAS_SIZE;
     s->white_uv[1] = ((float)wy + 0.5f) / (float)GE_ATLAS_SIZE;
+
+    // Corner mask (64x64)
+    int cx = p0->cursor_x; int cy = p0->cursor_y;
+    p0->cursor_x += 64;
+    if (p0->row_height < 64) p0->row_height = 64;
+
+    unsigned char *pixels = malloc(64 * 64 * 4);
+    for (int y = 0; y < 64; y++) {
+        for (int x = 0; x < 64; x++) {
+            float dx = (float)x + 0.5f;
+            float dy = (float)y + 0.5f;
+            float dist = sqrtf((64.0f - dx)*(64.0f - dx) + (64.0f - dy)*(64.0f - dy));
+            uint8_t alpha = 255;
+            if (dist > 64.0f) alpha = 0;
+            else if (dist > 63.0f) alpha = (uint8_t)((64.0f - dist) * 255.0f);
+            int idx = (y * 64 + x) * 4;
+            pixels[idx] = 255; pixels[idx+1] = 255; pixels[idx+2] = 255; pixels[idx+3] = alpha;
+        }
+    }
+    glTexSubImage2D(GL_TEXTURE_2D, 0, cx, cy, 64, 64, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    free(pixels);
+
+    s->corner_uv[0] = (float)cx / (float)GE_ATLAS_SIZE;
+    s->corner_uv[1] = (float)cy / (float)GE_ATLAS_SIZE;
+    s->corner_uv[2] = (float)(cx + 64) / (float)GE_ATLAS_SIZE;
+    s->corner_uv[3] = (float)(cy + 64) / (float)GE_ATLAS_SIZE;
+    s->corner_page_index = 0;
 
     // Batches
     init_batch(&s->opaque_batches[GE_PROG_SIMPLE], sizeof(GESimpleShapeVertex));
@@ -97,8 +134,8 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
 
 void ge_atlas_alloc(int w, int h, int *page_index, int *ox, int *oy) {
     GLBackendState *s = geogl_get_state();
-    // Search from page 1 onwards (page 0 is for fonts)
-    for (int i = 1; i < (int)kv_size(s->atlas_pages); i++) {
+    // Search all pages including Page 0 (bottom half)
+    for (int i = 0; i < (int)kv_size(s->atlas_pages); i++) {
         GEAtlasPage *p = &s->atlas_pages.a[i];
         if (p->cursor_x + w > GE_ATLAS_SIZE) {
             p->cursor_x = 0; p->cursor_y += p->row_height; p->row_height = 0;
