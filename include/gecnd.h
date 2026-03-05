@@ -68,6 +68,7 @@ typedef struct {
     int ref_native_callback_draw;
     int ref_native_callback_keyboard;
     bool want_blit;
+    bool disable_radius;
     char *lua_game_code;
     char *lua_engine_code;
     const char* error_string;

@@ -17,6 +17,7 @@ static ko_longopt_t longopts[] = {
     { "engine", ko_required_argument, 306 },
     { "play", ko_required_argument, 307 },
     { "libretro", ko_required_argument, 308 },
+    { "disable-radius", ko_no_argument, 309, },
     { "filter-aa", ko_required_argument, 401 },
     { "filter-color", ko_required_argument, 402 },
     { "filter-grain", ko_required_argument, 403 },
@@ -86,6 +87,9 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
             } else {
                 gly->error_string = "invalid libretro argument format! use core_path://rom_path";
             }
+        }
+        if (c == 309) {
+            gly->disable_radius = true;
         }
         if (c == 401) {
             float a, b, c;
