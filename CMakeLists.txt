@@ -208,6 +208,7 @@ set(ZLIB_LIBRARY "${CMAKE_SOURCE_DIR}/build/_deps/zlib-build/libz.a" CACHE FILEP
 set(ZLIB_INCLUDE_DIR "${ZLIB_DIR}" CACHE PATH "")
 set(ZLIB_FOUND TRUE CACHE BOOL "")
 set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+option(GECND_USE_ZLIB "fetch zlib" ON)
 
 # SPNG
 set(SPNG_VERSION "v0.7.4")
@@ -547,7 +548,7 @@ if (GECND_USE_LIBUV)
     target_compile_options(uv_a PRIVATE ${gecnd_cc_options})
 endif()
 
-if(GECND_USE_OPENGL OR GECND_USE_CURL)
+if((GECND_USE_OPENGL OR GECND_USE_CURL) AND GECND_USE_ZLIB)
     FetchContent_Declare(zlib GIT_REPOSITORY ${ZLIB_REPO} GIT_TAG ${ZLIB_VERSION} SOURCE_DIR ${ZLIB_DIR})
     FetchContent_MakeAvailable(zlib)
     target_link_libraries(${PROJECT_NAME} PRIVATE zlib)
