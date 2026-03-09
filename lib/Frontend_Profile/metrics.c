@@ -61,7 +61,7 @@ uint32_t gecnd_metrics_get_flags(void)
 
 void gecnd_metrics_start_input(void)
 {
-    if (state.flags & GECND_METRICS_PERF)
+    if (state.flags)
     {
         state.input_start = gecnd_get_cur_time();
     }
@@ -69,7 +69,7 @@ void gecnd_metrics_start_input(void)
 
 void gecnd_metrics_finish_input(void)
 {
-    if (state.flags & GECND_METRICS_PERF)
+    if (state.flags)
     {
         state.input_time = (uint32_t)(gecnd_get_cur_time() - state.input_start);
         if (state.input_time > state.input_worst_cur_sec)
@@ -81,7 +81,7 @@ void gecnd_metrics_finish_input(void)
 
 void gecnd_metrics_start_loop(void)
 {
-    if (state.flags & GECND_METRICS_PERF)
+    if (state.flags)
     {
         state.loop_start = gecnd_get_cur_time();
     }
@@ -89,7 +89,7 @@ void gecnd_metrics_start_loop(void)
 
 void gecnd_metrics_finish_loop(void)
 {
-    if (state.flags & GECND_METRICS_PERF)
+    if (state.flags)
     {
         state.loop_time = (uint32_t)(gecnd_get_cur_time() - state.loop_start);
     }
@@ -97,7 +97,7 @@ void gecnd_metrics_finish_loop(void)
 
 void gecnd_metrics_start_draw(void)
 {
-    if (state.flags & GECND_METRICS_PERF)
+    if (state.flags)
     {
         state.draw_start = gecnd_get_cur_time();
     }
@@ -105,7 +105,7 @@ void gecnd_metrics_start_draw(void)
 
 void gecnd_metrics_finish_draw(void)
 {
-    if (state.flags & GECND_METRICS_PERF)
+    if (state.flags)
     {
         state.draw_time = (uint32_t)(gecnd_get_cur_time() - state.draw_start);
     }
@@ -113,7 +113,7 @@ void gecnd_metrics_finish_draw(void)
 
 void gecnd_metrics_start_post(void)
 {
-    if (state.flags & GECND_METRICS_PERF)
+    if (state.flags)
     {
         state.post_start = gecnd_get_cur_time();
     }
@@ -121,7 +121,7 @@ void gecnd_metrics_start_post(void)
 
 void gecnd_metrics_finish_post(void)
 {
-    if (state.flags & GECND_METRICS_PERF)
+    if (state.flags)
     {
         state.post_time = (uint32_t)(gecnd_get_cur_time() - state.post_start);
     }
@@ -129,7 +129,7 @@ void gecnd_metrics_finish_post(void)
 
 void gecnd_metrics_start_tint(void)
 {
-    if (state.flags & GECND_METRICS_PERF)
+    if (state.flags)
     {
         state.tint_start = gecnd_get_cur_time();
     }
@@ -137,7 +137,7 @@ void gecnd_metrics_start_tint(void)
 
 void gecnd_metrics_finish_tint(void)
 {
-    if (state.flags & GECND_METRICS_PERF)
+    if (state.flags)
     {
         state.tint_time = (uint32_t)(gecnd_get_cur_time() - state.tint_start);
     }
@@ -145,7 +145,7 @@ void gecnd_metrics_finish_tint(void)
 
 void gecnd_metrics_start_wait(void)
 {
-    if (state.flags & GECND_METRICS_PERF)
+    if (state.flags)
     {
         state.wait_start = gecnd_get_cur_time();
     }
@@ -153,7 +153,7 @@ void gecnd_metrics_start_wait(void)
 
 void gecnd_metrics_finish_wait(void)
 {
-    if (state.flags & GECND_METRICS_PERF)
+    if (state.flags)
     {
         state.wait_time = (uint32_t)(gecnd_get_cur_time() - state.wait_start);
     }
@@ -161,6 +161,9 @@ void gecnd_metrics_finish_wait(void)
 
 void gecnd_metrics_update(void)
 {
+    if (!state.flags) return;
+    gecnd_metrics_print();
+
     uint64_t now = gecnd_get_cur_time();
     state.frame_count++;
 
@@ -203,22 +206,19 @@ void gecnd_metrics_update(void)
         state.current_sec_worst_fps = state.fps_immediate;
     }
 
-    if (state.flags & GECND_METRICS_LUA)
+    if (root && root->L)
     {
-        if (root && root->L)
+        uint64_t count = (uint64_t)lua_gc(root->L, LUA_GCCOUNT, 0);
+        uint64_t countb = (uint64_t)lua_gc(root->L, LUA_GCCOUNTB, 0);
+        uint64_t mem = (count * 1024) + countb;
+        
+        if (mem > state.lua_mem_peak)
         {
-            uint64_t count = (uint64_t)lua_gc(root->L, LUA_GCCOUNT, 0);
-            uint64_t countb = (uint64_t)lua_gc(root->L, LUA_GCCOUNTB, 0);
-            uint64_t mem = (count * 1024) + countb;
-            
-            if (mem > state.lua_mem_peak)
-            {
-                state.lua_mem_peak = mem;
-            }
-
-            state.lua_mem_accumulated += mem;
-            state.lua_mem_frame_count++;
+            state.lua_mem_peak = mem;
         }
+
+        state.lua_mem_accumulated += mem;
+        state.lua_mem_frame_count++;
     }
 
     if (now - state.last_sec_time >= 1000)
@@ -228,12 +228,7 @@ void gecnd_metrics_update(void)
         state.fps_drops = (uint16_t)state.current_sec_drops;
         state.input_worst_last_sec = state.input_worst_cur_sec;
         
-        // Calculate percentage: (current_avg / target) * 100
-        // But user asked for 100% if frames are stable.
-        // Let's use (good_frames / total_frames) * 100 for stability,
-        // but also consider the speed (avg_fps / target_fps).
-        
-        float stability = (float)state.current_sec_good_frames / state.frame_count;
+        float stability = (float)state.current_sec_good_frames / (state.frame_count > 0 ? state.frame_count : 1);
         float speed = (float)state.fps_average / target;
         
         if (speed > 1.05f) 

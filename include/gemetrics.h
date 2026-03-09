@@ -4,10 +4,8 @@
 #include <stdint.h>
 #include "gecnd.h"
 
-#define GECND_METRICS_FPS  (1u << 0)
-#define GECND_METRICS_LUA  (1u << 1)
-#define GECND_METRICS_PERF (1u << 2)
-#define GECND_METRICS_BG   (1u << 3)
+#define GECND_METRICS_PRINT (1u << 0) // 1
+#define GECND_METRICS_DRAW  (1u << 1) // 2
 
 void gecnd_metrics_start_input(void);
 void gecnd_metrics_finish_input(void);
@@ -29,6 +27,7 @@ void gecnd_metrics_finish_wait(void);
 
 void gecnd_metrics_update(void);
 void gecnd_metrics_render(gecnd_t *gly);
+void gecnd_metrics_print(void);
 
 void gecnd_metrics_setup(uint32_t flags);
 uint32_t gecnd_metrics_get_flags(void);
