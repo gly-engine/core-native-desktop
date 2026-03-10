@@ -16,6 +16,7 @@
 #define GECND_INTERNAL_MALLOC           (1u)
 #define GECND_INTERNAL_RUNNING          (2u)
 #define GECND_INTERNAL_WANT_EXIT        (4u)
+#define GECND_INTERNAL_BROWSER          (8u)
 #endif
 
 // alias:
@@ -63,6 +64,7 @@ typedef struct {
     int16_t window_width;
     int16_t window_height;
     int16_t delta_time;
+    float scale_factor;
     int ref_native_callback_init;
     int ref_native_callback_loop;
     int ref_native_callback_draw;
@@ -71,6 +73,7 @@ typedef struct {
     bool disable_radius;
     char *lua_game_code;
     char *lua_engine_code;
+    char *browser_bin;
     const char* error_string;
 } gecnd_t;
 

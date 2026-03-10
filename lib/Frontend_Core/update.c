@@ -137,11 +137,17 @@ static void callback_init(gecnd_t *gly) {
     while(0);
 }
 
+void open_cef_key_handler(gecnd_key_t key, bool pressed);
+
 void gecnd_dispatch_key_event(gecnd_t *gly, const char* key_name, bool pressed) {
     if (!gly || !key_name) return;
 
     gecnd_key_t key = gecnd_key_from_name(key_name);
     gecnd_key_set_state(key, pressed);
+
+    if (gly->internal & GECND_INTERNAL_BROWSER) {
+        open_cef_key_handler(key, pressed);
+    }
 
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_keyboard);
     lua_pushstring(gly->L, key_name);
@@ -237,6 +243,12 @@ bool gecnd_update(gecnd_t * gly)
         callback_loop(gly);
         gecnd_metrics_finish_loop();
         if (gly->error_string) break;
+
+        if (gly->internal & GECND_INTERNAL_BROWSER) {
+            gecnd_metrics_update();
+            gecnd_metrics_start_wait();
+            break;
+        }
 
         if (gly->frameskip_count++ >= gly->frameskip) {
             gly->frameskip_count = 0;

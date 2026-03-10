@@ -26,6 +26,8 @@ static ko_longopt_t longopts[] = {
     { "filter-scratch", ko_required_argument, 406 },
     { "filter-jitter", ko_required_argument, 407 },
     { "offset", ko_required_argument, 408 },
+    { "browser-bin", ko_required_argument, 409 },
+    { "browser-url", ko_required_argument, 410 },
     { "ir-list", ko_no_argument, 501, },
     { "ir-aui", ko_required_argument, 502, },
     { NULL, 0, 0 }
@@ -129,6 +131,12 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
             } else if (sscanf(opt.arg, "%f,%f,%f,%f", &x1, &y1, &x3, &y3) == 4) {
                 gecnd_filter_set_corners(x1, y1, x3, y1, x3, y3, x1, y3);
             }
+        }
+        if (c == 409) {
+            gly->browser_bin = opt.arg;
+        }
+        if (c == 410) {
+            native_browser_url(opt.arg);
         }
         if (c == 501) {
             const char *str;

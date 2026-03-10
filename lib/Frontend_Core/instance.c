@@ -30,6 +30,7 @@ extern const luaL_Reg frontend_api_text[];
 extern const luaL_Reg frontend_api_image[];
 extern const luaL_Reg frontend_api_media[];
 extern const luaL_Reg frontend_api_system[];
+extern const luaL_Reg frontend_api_browser[];
 
 static gecnd_t *instance;
 
@@ -62,6 +63,7 @@ gecnd_t *gecnd_new(lua_State* L) {
         gly->height = GECND_DEFAULT_HEIGHT;
         gly->target_fps = GECND_DEFAULT_FPS;
         gly->frameskip = GECND_DEFAULT_FRAMESKIP;
+        gly->scale_factor = 1.0f;
         gly->flags = GECND_FLAG_TIMER_PREFER_BACKEND;
 
         for (int i = 0; frontend_api_log[i].name != NULL; i++) {
@@ -81,6 +83,9 @@ gecnd_t *gecnd_new(lua_State* L) {
         }
         for (int i = 0; frontend_api_system[i].name != NULL; i++) {
             lua_register(L, frontend_api_system[i].name, frontend_api_system[i].func);
+        }
+        for (int i = 0; frontend_api_browser[i].name != NULL; i++) {
+            lua_register(L, frontend_api_browser[i].name, frontend_api_browser[i].func);
         }
 
         gly_hook_keyboard_has_media(&native_keyboard_has_media);

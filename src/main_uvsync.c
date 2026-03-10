@@ -15,11 +15,11 @@ int main(int argc, char* argv[]) {
     
     luaL_openlibs(L);
     uv_loop_init(&loop);
-    gecnd_set_args(gly, argc, argv);
     gecnd_set_loop(gly, (void*) &loop);
+    gecnd_set_args(gly, argc, argv);
 
     /** @todo move */
-    main_rc(&loop);
+    //main_rc(&loop);
 
     do {
         uv_run(&loop, UV_RUN_NOWAIT);
