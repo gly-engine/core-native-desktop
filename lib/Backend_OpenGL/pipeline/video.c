@@ -40,7 +40,7 @@ static void update_video_textures(GLBackendState *s, MediaFrame *f) {
         }
     }
 
-    // alignment 1 hopefully avoids weird row jumps on odd widths/strides
+    ge_pipeline_flush_primitives();
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
     if (f->format == GECND_PIX_FMT_YUV420P) {

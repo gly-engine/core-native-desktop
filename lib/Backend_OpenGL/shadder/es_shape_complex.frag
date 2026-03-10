@@ -4,7 +4,7 @@ precision mediump float;
 varying lowp vec4 v_color;
 varying vec2 v_pos;
 varying vec2 v_size;
-varying lowp float v_radius;
+varying float v_radius;
 
 void main()
 {

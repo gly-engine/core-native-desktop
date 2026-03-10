@@ -29,6 +29,8 @@ static void create_atlas_page(GLBackendState *s, int width, int height) {
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     page.cursor_x = 0;
     page.cursor_y = 0;
     page.row_height = 0;
@@ -137,14 +139,15 @@ void ge_atlas_alloc(int w, int h, int *page_index, int *ox, int *oy) {
     // Search all pages including Page 0 (bottom half)
     for (int i = 0; i < (int)kv_size(s->atlas_pages); i++) {
         GEAtlasPage *p = &s->atlas_pages.a[i];
-        if (p->cursor_x + w > GE_ATLAS_SIZE) {
+        int pw = w + 1, ph = h + 1;
+        if (p->cursor_x + pw > GE_ATLAS_SIZE) {
             p->cursor_x = 0; p->cursor_y += p->row_height; p->row_height = 0;
         }
-        if (p->cursor_y + h <= GE_ATLAS_SIZE) {
+        if (p->cursor_y + ph <= GE_ATLAS_SIZE) {
             *page_index = i;
             *ox = p->cursor_x; *oy = p->cursor_y;
-            p->cursor_x += w;
-            if (h > p->row_height) p->row_height = h;
+            p->cursor_x += pw;
+            if (ph > p->row_height) p->row_height = ph;
             return;
         }
     }
@@ -154,8 +157,8 @@ void ge_atlas_alloc(int w, int h, int *page_index, int *ox, int *oy) {
     GEAtlasPage *p = &s->atlas_pages.a[next_page];
     *page_index = next_page;
     *ox = p->cursor_x; *oy = p->cursor_y;
-    p->cursor_x += w;
-    p->row_height = h;
+    p->cursor_x += w + 1;
+    p->row_height = h + 1;
 }
 
 static void ensure_fbo(GLBackendState *s) {
@@ -187,8 +190,6 @@ static void ensure_fbo(GLBackendState *s) {
 
 void ge_pipeline_start(void) {
     GLBackendState *s = geogl_get_state();
-
-    glFinish();
     // ensure_fbo(s);
     // glBindFramebuffer(GL_FRAMEBUFFER, s->fbo_id);
 

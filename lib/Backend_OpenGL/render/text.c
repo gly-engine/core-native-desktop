@@ -57,7 +57,6 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, gl->scratch);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    glFinish(); 
     s->atlas_dirty = true;
 }
 

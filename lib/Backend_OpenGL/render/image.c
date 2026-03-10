@@ -39,6 +39,7 @@ void native_image_load(const char *path, int32_t image_id, bool *success) {
     }
 
     if (!reuse) ge_atlas_alloc(ihdr.width, ihdr.height, &page_idx, &ox, &oy);
+    ge_pipeline_flush_primitives();
     glBindTexture(GL_TEXTURE_2D, s->atlas_pages.a[page_idx].tex_id);
     glTexSubImage2D(GL_TEXTURE_2D, 0, ox, oy, ihdr.width, ihdr.height, GL_RGBA, GL_UNSIGNED_BYTE, img);
     s->atlas_dirty = true;

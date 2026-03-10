@@ -1,3 +1,5 @@
+#version 100
+precision mediump float;
 attribute vec4 a_pos;
 attribute vec2 a_uv;
 attribute vec4 a_color;

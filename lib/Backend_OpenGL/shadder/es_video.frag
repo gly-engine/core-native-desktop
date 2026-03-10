@@ -27,7 +27,7 @@ void main() {
     uv.x += (rand(vec2(jTime, 0.0)) - 0.5) * 0.003 * u_jitter;
   }
 
-  lowp vec4 color;
+  vec4 color;
   if (format == 1) {
     float y = texture2D(tex_y, uv).r;
     float u = texture2D(tex_u, uv).r - 0.5;
@@ -47,7 +47,7 @@ void main() {
   }
   
   if (abs(u_saturation - 1.0) > 0.01) {
-    lowp float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+    float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
     color.rgb = mix(vec3(gray), color.rgb, u_saturation);
   }
 

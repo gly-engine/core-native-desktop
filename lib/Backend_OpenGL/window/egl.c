@@ -33,6 +33,7 @@ static void (*glad_gles2_loader(const char *name))(void) {
 }
 
 typedef EGLBoolean (EGLAPIENTRYP PFNEGLSWAPINTERVALPROC)(EGLDisplay dpy, EGLint interval);
+static PFNEGLSWAPINTERVALPROC s_eglSwapInterval = NULL;
 
 int platform_init(uint16_t width, uint16_t height) {
     if (!gladLoaderLoadEGL(EGL_DEFAULT_DISPLAY)) return -1;
@@ -52,8 +53,8 @@ int platform_init(uint16_t width, uint16_t height) {
     egl_context = eglCreateContext(egl_display, config, EGL_NO_CONTEXT, context_attribs);
     if (!eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context)) return -1;
     
-    PFNEGLSWAPINTERVALPROC eglSwapIntervalPtr = (PFNEGLSWAPINTERVALPROC)eglGetProcAddress("eglSwapInterval");
-    if (eglSwapIntervalPtr) eglSwapIntervalPtr(egl_display, 1);
+    s_eglSwapInterval = (PFNEGLSWAPINTERVALPROC)eglGetProcAddress("eglSwapInterval");
+    if (s_eglSwapInterval) s_eglSwapInterval(egl_display, 1);
     
     return 0;
 }
@@ -100,6 +101,11 @@ void gly_hook_display_dt(int16_t *delta_time) {
 
 void gly_hook_should_close(bool *should_close) {
     *should_close = false;
+}
+
+void gly_hook_display_fps(uint8_t fps) {
+    if (s_eglSwapInterval && egl_display != EGL_NO_DISPLAY)
+        s_eglSwapInterval(egl_display, fps == 0 ? 0 : 1);
 }
 
 void gly_hook_display_close(void) {

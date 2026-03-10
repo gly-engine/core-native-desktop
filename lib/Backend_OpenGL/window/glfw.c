@@ -91,6 +91,7 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     GLBackendState *s = geogl_get_state();
     if (platform_init(width, height) != 0) exit(1);
     if (!gladLoadGL((GLADloadfunc)platform_get_proc_address)) die("GLAD load failed");
+    glfwSwapInterval(1);
     const char *ver = (const char*)glGetString(GL_VERSION);
     bool gles = ver && strstr(ver, "OpenGL ES");
     kv_init(s->textures);
@@ -113,6 +114,10 @@ void gly_hook_should_close(bool *should_close) {
     if (geogl_get_state()->window) {
         *should_close = glfwWindowShouldClose(geogl_get_state()->window);
     }
+}
+
+void gly_hook_display_fps(uint8_t fps) {
+    glfwSwapInterval(fps == 0 ? 0 : 1);
 }
 
 void gly_hook_display_close(void) {

@@ -28,7 +28,6 @@
 #define GE_MAX_VERTICES 8190
 // Max layers for 2D depth sorting
 #define GE_MAX_LAYERS 4096
-#define GE_Z_SPACING 2
 
 typedef struct {
     GLuint id;
