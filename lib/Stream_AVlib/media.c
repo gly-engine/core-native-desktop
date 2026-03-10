@@ -51,7 +51,8 @@ static void threadworker(void *arg) {
     AV.av_dict_set(&opts, "timeout", "5000000", 0);
     AV.av_dict_set(&opts, "probesize", "50000000", 0);
     AV.av_dict_set(&opts, "analyzeduration", "10000000", 0);
-
+    AV.av_dict_set(&opts, "tls_verify", "0", 0);
+    
     if (AV.avformat_open_input(&s->fmt, s->url, NULL, &opts) < 0) {
         fprintf(stderr, "[ffmpeg] Error opening file: %s\n", s->url);
         atomic_store(&s->running, 0);

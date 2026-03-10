@@ -19,23 +19,16 @@ static int lua_native_media_bootstrap(lua_State *L) {
     return 1;
 }
 
-static int lua_native_media_stop(lua_State *L);
-
 static int lua_native_media_source(lua_State *L) {
-    uint8_t channel = luaL_checkinteger(L, 1);
-    const char* url =  luaL_checkstring(L, 2);
+    uint8_t channel = (uint8_t)luaL_checkinteger(L, 1);
+    const char* url = luaL_checkstring(L, 2);
     
     if (channel == 0) {
-        lua_pushinteger(L, channel);
-        lua_native_media_stop(L);
-        lua_pop(L, 1);
-
-        native_media_source(channel, url);
+        native_media_stop(channel);
         g_media_mode = MEDIA_MODE_VIDEO;
-    } else {
-        native_media_source(channel, url);
     }
     
+    native_media_source(channel, url);
     lua_settop(L, 0);
     return 0;
 }

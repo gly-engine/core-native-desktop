@@ -24,7 +24,10 @@ void native_media_source(uint8_t channel, const char* url) {
         g_background_video = NULL;
     }
 
-    g_background_video = stream_create(url);
+    /**
+     * @bug strdup generate a memory leak?
+     */
+    g_background_video = stream_create(strdup(url));
     if (!g_background_video) {
         fprintf(stderr, "[ffmpeg] Failed to create video stream for %s\n", url);
     }
