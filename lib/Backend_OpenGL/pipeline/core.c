@@ -187,6 +187,8 @@ static void ensure_fbo(GLBackendState *s) {
 
 void ge_pipeline_start(void) {
     GLBackendState *s = geogl_get_state();
+
+    glFinish();
     // ensure_fbo(s);
     // glBindFramebuffer(GL_FRAMEBUFFER, s->fbo_id);
 
