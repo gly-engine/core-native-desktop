@@ -23,30 +23,39 @@ static const char *reader(lua_State *L, void *ud, size_t *size) {
     return n ? data->buf : NULL;
 }
 
-static const char* open_script(gecnd_t *gly, char** lua_code, char* lua_name, int lua_ret) {
+/**
+ * @todo rewrite this bullshit code!
+ */
+static const char* open_script(gecnd_t *gly, const char *lua_code, const char *lua_name, int lua_ret)
+{
     gecnd_buffer_t data;
+    char path[512];
 
-    if (!*lua_code) {
-        size_t len = gecnd_utils_get_exe_cwd(data.buf, sizeof(data.buf));
-        (void) snprintf(data.buf + len, sizeof(data.buf) - len, "/%s.lua", lua_name);
-        printf("[%s]\n", data.buf);
-        *lua_code = data.buf;
+    if (!lua_code) {
+        size_t len = gecnd_utils_get_exe_cwd(path, sizeof(path));
+        snprintf(path + len, sizeof(path) - len, "/%s.lua", lua_name);
+        printf("[%s]\n", path);
+        lua_code = path;
     }
 
-    data.fp = fopen(*lua_code, "rb");
+    data.fp = fopen(lua_code, "rb");
 
     if (!data.fp) {
-        (void) snprintf(data.buf, sizeof(data.buf), "file not found: %s.lua", lua_name);
-        return strdup(data.buf); /** @todo causes leaks */
+        snprintf(path, sizeof(path), "file not found: %s.lua", lua_name);
+        return strdup(path);
     }
 
-    #if LUA_VERSION_NUM >= 502
-        if (lua_load(gly->L, reader, &data, lua_name, "t")) {
-    #else
-        if (lua_load(gly->L, reader, &data, lua_name)) {
-    #endif
+#if LUA_VERSION_NUM >= 502
+    if (lua_load(gly->L, reader, &data, lua_name, "t"))
+#else
+    if (lua_load(gly->L, reader, &data, lua_name))
+#endif
+    {
+        fclose(data.fp);
         return luaL_checkstring(gly->L, -1);
     }
+
+    fclose(data.fp);
 
     if (lua_pcall(gly->L, 0, lua_ret, 0)) {
         return luaL_checkstring(gly->L, -1);
@@ -80,7 +89,7 @@ static void callback_init(gecnd_t *gly) {
             gly_hook_display_fps(gly->target_fps);
         }
         
-        gly->error_string = open_script(gly, &gly->lua_engine_code, "main", 0);
+        gly->error_string = open_script(gly, gly->lua_engine_code, "main", 0);
         if (gly->error_string) {
             break;
         }
@@ -94,7 +103,7 @@ static void callback_init(gecnd_t *gly) {
         lua_pushnumber(gly->L, gly->width);
         lua_pushnumber(gly->L, gly->height);
 
-        gly->error_string = open_script(gly, &gly->lua_game_code, "game", 1);
+        gly->error_string = open_script(gly, gly->lua_game_code, "game", 1);
         if (gly->error_string) {
             break;
         }
