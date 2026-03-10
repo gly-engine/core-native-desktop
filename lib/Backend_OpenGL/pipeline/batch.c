@@ -7,6 +7,10 @@ void ge_batch_add_vertex_tex(int16_t x, int16_t y,
     int page_index) {
     
     GLBackendState *s = geogl_get_state();
+    if (s->current_z != s->last_added_z) {
+        ge_pipeline_flush_primitives();
+        s->last_added_z = s->current_z;
+    }
     GEBatch *b = opaque ? &s->opaque_batches[GE_PROG_ATLAS] : &s->transparent_batches[GE_PROG_ATLAS];
     
     if (b->count >= GE_MAX_VERTICES || (b->count > 0 && b->page_index != page_index)) {
@@ -20,7 +24,7 @@ void ge_batch_add_vertex_tex(int16_t x, int16_t y,
     
     vertex->x = (int16_t)x;
     vertex->y = (int16_t)y;
-    vertex->z = (int16_t)s->current_z;
+    vertex->z = (int16_t)(s->current_z * GE_Z_SPACING);
     vertex->w = 1;
     vertex->u = (uint16_t)(u * 65535.0f);
     vertex->v = (uint16_t)(v * 65535.0f);
@@ -45,6 +49,10 @@ void ge_batch_add_vertex_shape(
     uint8_t alpha = (color >> 24) & 0xFF;
     bool opaque = (alpha >= 254);
     
+    if (s->current_z != s->last_added_z) {
+        ge_pipeline_flush_primitives();
+        s->last_added_z = s->current_z;
+    }
     GEBatch *b = opaque ? &s->opaque_batches[GE_PROG_SIMPLE] : &s->transparent_batches[GE_PROG_SIMPLE];
 
     if (b->count >= GE_MAX_VERTICES) {
@@ -55,7 +63,7 @@ void ge_batch_add_vertex_shape(
     GESimpleShapeVertex *vertex = &((GESimpleShapeVertex*)b->buffer)[b->count++];
     vertex->x = (int16_t)x;
     vertex->y = (int16_t)y;
-    vertex->z = (int16_t)s->current_z;
+    vertex->z = (int16_t)(s->current_z * GE_Z_SPACING);
     vertex->w = 1;
     uint8_t *c = (uint8_t*)&color;
     vertex->r = c[0];
@@ -76,6 +84,10 @@ void ge_batch_add_vertex_complex(
     uint8_t alpha = (color >> 24) & 0xFF;
     bool opaque = false;
     
+    if (s->current_z != s->last_added_z) {
+        ge_pipeline_flush_primitives();
+        s->last_added_z = s->current_z;
+    }
     GEBatch *b = opaque ? &s->opaque_batches[GE_PROG_COMPLEX] : &s->transparent_batches[GE_PROG_COMPLEX];
 
     if (b->count >= GE_MAX_VERTICES) {
@@ -86,7 +98,7 @@ void ge_batch_add_vertex_complex(
     GEDShapeComplexVertex *vertex = &((GEDShapeComplexVertex*)b->buffer)[b->count++];
     vertex->x = (int16_t)x;
     vertex->y = (int16_t)y;
-    vertex->z = (int16_t)s->current_z;
+    vertex->z = (int16_t)(s->current_z * GE_Z_SPACING);
     vertex->w = 1;
     vertex->px = (int16_t)px;
     vertex->py = (int16_t)py;
