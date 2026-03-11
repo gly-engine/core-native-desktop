@@ -20,6 +20,7 @@ static void init_batch(GEBatch *b, size_t stride) {
     b->buffer = malloc(MAX_VERTICES * stride);
     b->count = 0;
     b->page_index = -1;
+    b->stride = stride;
 }
 
 static void create_atlas_page(GLBackendState *s, int width, int height) {
@@ -123,6 +124,8 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     s->corner_uv[3] = (float)(cy + 64) / (float)GE_ATLAS_SIZE;
     s->corner_page_index = 0;
 
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     // Batches
     init_batch(&s->opaque_batches[GE_PROG_SIMPLE], sizeof(GESimpleShapeVertex));
     init_batch(&s->opaque_batches[GE_PROG_COMPLEX], sizeof(GEDShapeComplexVertex));
@@ -187,23 +190,23 @@ static void ensure_fbo(GLBackendState *s) {
 
 void ge_pipeline_start(void) {
     GLBackendState *s = geogl_get_state();
-    // ensure_fbo(s);
-    // glBindFramebuffer(GL_FRAMEBUFFER, s->fbo_id);
 
     glViewport(0, 0, s->window_width, s->window_height);
     glClearColor(1, 0, 1, 1);
     glDepthMask(GL_TRUE);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
+
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    
+
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
 
-    mat4_ortho(s->projection, 0, (float)s->window_width, (float)s->window_height, 0, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
-    
-    for(int i=0; i<GE_PROG_COUNT; i++) {
+    for (int i = 0; i < GE_PROG_COUNT; i++) {
+        glUseProgram(s->programs[i].id);
+        glUniformMatrix4fv(s->programs[i].loc_proj, 1, GL_FALSE, s->projection);
+    }
+
+    for (int i = 0; i < GE_PROG_COUNT; i++) {
         s->opaque_batches[i].count = 0;
         s->transparent_batches[i].count = 0;
     }
@@ -242,44 +245,26 @@ static void flush_batch(GEProgramType type, bool transparent) {
 
     GEProgram *p = &s->programs[type];
     glUseProgram(p->id);
-    glUniformMatrix4fv(p->loc_proj, 1, GL_FALSE, s->projection);
 
-    if (transparent) {
-        glEnable(GL_BLEND);
-        glDepthMask(GL_FALSE);
-    } else {
-        glDisable(GL_BLEND);
-        glDepthMask(GL_TRUE);
-    }
-
-    GLuint vbo = 0;
-    size_t stride = 0;
     if (type == GE_PROG_SIMPLE) {
-        vbo = s->vbo_simple;
-        stride = sizeof(GESimpleShapeVertex);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_SHORT, GL_FALSE, stride, (void*)offsetof(GESimpleShapeVertex, x));
-        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(GESimpleShapeVertex, r));
+        glBindBuffer(GL_ARRAY_BUFFER, s->vbo_simple);
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_SHORT, GL_FALSE, b->stride, (void*)offsetof(GESimpleShapeVertex, x));
+        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, b->stride, (void*)offsetof(GESimpleShapeVertex, r));
         glDisableVertexAttribArray(2); glDisableVertexAttribArray(3); glDisableVertexAttribArray(4);
     } else if (type == GE_PROG_COMPLEX) {
-        vbo = s->vbo_complex;
-        stride = sizeof(GEDShapeComplexVertex);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_SHORT, GL_FALSE, stride, (void*)offsetof(GEDShapeComplexVertex, x));
-        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_SHORT, GL_FALSE, stride, (void*)offsetof(GEDShapeComplexVertex, px));
-        glEnableVertexAttribArray(3); glVertexAttribPointer(3, 2, GL_SHORT, GL_FALSE, stride, (void*)offsetof(GEDShapeComplexVertex, hw));
-        glEnableVertexAttribArray(5); glVertexAttribPointer(5, 1, GL_SHORT, GL_FALSE, stride, (void*)offsetof(GEDShapeComplexVertex, radius));
-        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(GEDShapeComplexVertex, r));
-        glDisableVertexAttribArray(4); // Mode removed
-        
+        glBindBuffer(GL_ARRAY_BUFFER, s->vbo_complex);
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_SHORT, GL_FALSE, b->stride, (void*)offsetof(GEDShapeComplexVertex, x));
+        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_SHORT, GL_FALSE, b->stride, (void*)offsetof(GEDShapeComplexVertex, px));
+        glEnableVertexAttribArray(3); glVertexAttribPointer(3, 2, GL_SHORT, GL_FALSE, b->stride, (void*)offsetof(GEDShapeComplexVertex, hw));
+        glEnableVertexAttribArray(5); glVertexAttribPointer(5, 1, GL_SHORT, GL_FALSE, b->stride, (void*)offsetof(GEDShapeComplexVertex, radius));
+        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, b->stride, (void*)offsetof(GEDShapeComplexVertex, r));
+        glDisableVertexAttribArray(4);
         glDisableVertexAttribArray(6);
     } else if (type == GE_PROG_ATLAS) {
-        vbo = s->vbo_atlas;
-        stride = sizeof(GEAtlasVertex);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_SHORT, GL_FALSE, stride, (void*)offsetof(GEAtlasVertex, x));
-        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(GEAtlasVertex, r));
-        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_UNSIGNED_SHORT, GL_TRUE, stride, (void*)offsetof(GEAtlasVertex, u));
+        glBindBuffer(GL_ARRAY_BUFFER, s->vbo_atlas);
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_SHORT, GL_FALSE, b->stride, (void*)offsetof(GEAtlasVertex, x));
+        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, b->stride, (void*)offsetof(GEAtlasVertex, r));
+        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_UNSIGNED_SHORT, GL_TRUE, b->stride, (void*)offsetof(GEAtlasVertex, u));
         glDisableVertexAttribArray(3); glDisableVertexAttribArray(4);
 
         glActiveTexture(GL_TEXTURE0);
@@ -289,9 +274,8 @@ static void flush_batch(GEProgramType type, bool transparent) {
         glUniform1i(p->loc_tex, 0);
     }
 
-    // Orphan the buffer to avoid driver stalls/crashes
-    glBufferData(GL_ARRAY_BUFFER, MAX_VERTICES * stride, NULL, GL_STREAM_DRAW);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, b->count * stride, b->buffer);
+    glBufferData(GL_ARRAY_BUFFER, b->count * b->stride, NULL, GL_STREAM_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, b->count * b->stride, b->buffer);
     
     int offset = 0;
     while (offset < b->count) {
@@ -304,11 +288,13 @@ static void flush_batch(GEProgramType type, bool transparent) {
 }
 
 void ge_pipeline_flush_primitives(void) {
-    // Flush Opaque first
+    glDisable(GL_BLEND);
+    glDepthMask(GL_TRUE);
     flush_batch(GE_PROG_SIMPLE, false);
     flush_batch(GE_PROG_ATLAS, false);
 
-    // Flush Transparent
+    glEnable(GL_BLEND);
+    glDepthMask(GL_FALSE);
     flush_batch(GE_PROG_SIMPLE, true);
     flush_batch(GE_PROG_ATLAS, true);
     flush_batch(GE_PROG_COMPLEX, true);

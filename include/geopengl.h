@@ -123,6 +123,7 @@ typedef struct {
     void *buffer;
     int count;
     int page_index;
+    size_t stride;
 } GEBatch;
 
 typedef struct {

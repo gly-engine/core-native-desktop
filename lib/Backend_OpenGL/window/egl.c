@@ -53,7 +53,12 @@ int platform_init(uint16_t width, uint16_t height) {
     if (!eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context)) return -1;
     
     PFNEGLSWAPINTERVALPROC eglSwapIntervalPtr = (PFNEGLSWAPINTERVALPROC)eglGetProcAddress("eglSwapInterval");
-    if (eglSwapIntervalPtr) eglSwapIntervalPtr(egl_display, 0);
+    if (!eglSwapIntervalPtr) {
+        void *libEGL = dlopen("libEGL.so.1", RTLD_LAZY | RTLD_GLOBAL);
+        if (!libEGL) libEGL = dlopen("libEGL.so", RTLD_LAZY | RTLD_GLOBAL);
+        if (libEGL) eglSwapIntervalPtr = (PFNEGLSWAPINTERVALPROC)dlsym(libEGL, "eglSwapInterval");
+    }
+    if (eglSwapIntervalPtr) eglSwapIntervalPtr(egl_display, 1);
     
     return 0;
 }

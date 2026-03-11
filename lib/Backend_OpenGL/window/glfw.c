@@ -66,6 +66,7 @@ int platform_init(uint16_t width, uint16_t height) {
     }
 
     glfwMakeContextCurrent(state->window);
+    glfwSwapInterval(1);
     glfwSetKeyCallback(state->window, key_callback);
 
     return 0;
