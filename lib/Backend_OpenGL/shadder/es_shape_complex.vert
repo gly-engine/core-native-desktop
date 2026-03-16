@@ -4,14 +4,14 @@ attribute vec4 a_pos;
 attribute vec2 a_local;
 attribute lowp vec4 a_color;
 attribute vec2 a_size;
-attribute lowp float a_radius;
+attribute float a_radius;
 
 uniform mat4 u_proj;
 
 varying lowp vec4 v_color;
 varying vec2 v_pos;
 varying vec2 v_size;
-varying lowp float v_radius;
+varying float v_radius;
 
 void main()
 {

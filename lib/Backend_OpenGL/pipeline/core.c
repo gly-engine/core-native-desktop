@@ -98,33 +98,6 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     s->white_uv[0] = ((float)wx + 0.5f) / (float)GE_ATLAS_SIZE;
     s->white_uv[1] = ((float)wy + 0.5f) / (float)GE_ATLAS_SIZE;
 
-    // Corner mask (64x64)
-    int cx = p0->cursor_x; int cy = p0->cursor_y;
-    p0->cursor_x += 64;
-    if (p0->row_height < 64) p0->row_height = 64;
-
-    unsigned char *pixels = malloc(64 * 64 * 4);
-    for (int y = 0; y < 64; y++) {
-        for (int x = 0; x < 64; x++) {
-            float dx = (float)x + 0.5f;
-            float dy = (float)y + 0.5f;
-            float dist = sqrtf((64.0f - dx)*(64.0f - dx) + (64.0f - dy)*(64.0f - dy));
-            uint8_t alpha = 255;
-            if (dist > 64.0f) alpha = 0;
-            else if (dist > 63.0f) alpha = (uint8_t)((64.0f - dist) * 255.0f);
-            int idx = (y * 64 + x) * 4;
-            pixels[idx] = 255; pixels[idx+1] = 255; pixels[idx+2] = 255; pixels[idx+3] = alpha;
-        }
-    }
-    glTexSubImage2D(GL_TEXTURE_2D, 0, cx, cy, 64, 64, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-    free(pixels);
-
-    s->corner_uv[0] = (float)cx / (float)GE_ATLAS_SIZE;
-    s->corner_uv[1] = (float)cy / (float)GE_ATLAS_SIZE;
-    s->corner_uv[2] = (float)(cx + 64) / (float)GE_ATLAS_SIZE;
-    s->corner_uv[3] = (float)(cy + 64) / (float)GE_ATLAS_SIZE;
-    s->corner_page_index = 0;
-
     // Batches
     init_batch(&s->opaque_batches[GE_PROG_SIMPLE], sizeof(GESimpleShapeVertex));
     init_batch(&s->opaque_batches[GE_PROG_COMPLEX], sizeof(GEDShapeComplexVertex));
@@ -211,6 +184,7 @@ void ge_pipeline_start(void) {
     s->active_opaque_page_index = -1;
     s->active_transparent_page_index = -1;
     s->current_z = 0;
+    s->complex_batch_is_fill = -1;
 }
 
 void ge_pipeline_terminate(void) {
@@ -263,6 +237,8 @@ static void flush_batch(GEProgramType type, bool transparent) {
         glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(GESimpleShapeVertex, r));
         glDisableVertexAttribArray(2); glDisableVertexAttribArray(3); glDisableVertexAttribArray(4);
     } else if (type == GE_PROG_COMPLEX) {
+        if (p->loc_fill >= 0)
+            glUniform1i(p->loc_fill, s->complex_batch_is_fill);
         vbo = s->vbo_complex;
         stride = sizeof(GEDShapeComplexVertex);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);

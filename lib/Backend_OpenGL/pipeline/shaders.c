@@ -111,6 +111,7 @@ void init_all_shaders(bool gles) {
     s->programs[GE_PROG_COMPLEX].loc_size = glGetUniformLocation(s->programs[GE_PROG_COMPLEX].id, "u_size");
     s->programs[GE_PROG_COMPLEX].loc_thickness = glGetUniformLocation(s->programs[GE_PROG_COMPLEX].id, "u_thickness");
     s->programs[GE_PROG_COMPLEX].loc_aa_blur = glGetUniformLocation(s->programs[GE_PROG_COMPLEX].id, "u_aa_blur");
+    s->programs[GE_PROG_COMPLEX].loc_fill = glGetUniformLocation(s->programs[GE_PROG_COMPLEX].id, "u_fill");
 
     // Atlas Texture
     shader_src_t atlas_vs_gl = SHADER(shadder_gl_texture_vert);

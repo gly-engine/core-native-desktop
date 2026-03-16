@@ -1,10 +1,12 @@
 #version 100
 precision mediump float;
 
+uniform int u_fill;
+
 varying lowp vec4 v_color;
 varying vec2 v_pos;
 varying vec2 v_size;
-varying lowp float v_radius;
+varying float v_radius;
 
 void main()
 {
@@ -13,10 +15,11 @@ void main()
 
     float alpha = clamp(0.5 - dist, 0.0, 1.0);
 
-    // Outline mode (fixed 2px thickness)
-    float thickness = 2.0;
-    float alpha_inner = clamp(0.5 - (dist + thickness), 0.0, 1.0);
-    alpha -= alpha_inner;
+    if (u_fill == 0) {
+        float thickness = 2.0;
+        float alpha_inner = clamp(0.5 - (dist + thickness), 0.0, 1.0);
+        alpha -= alpha_inner;
+    }
 
     if (alpha <= 0.0) discard;
     gl_FragColor = vec4(v_color.rgb, v_color.a * alpha);

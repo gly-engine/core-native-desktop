@@ -1,5 +1,16 @@
 #include "geopengl.h"
 
+static void flush_if_other_transparent(GLBackendState *s, GEProgramType self) {
+    bool need = false;
+    for (int i = 0; i < GE_PROG_COUNT; i++) {
+        if (i != (int)self && s->transparent_batches[i].count > 0) {
+            need = true;
+            break;
+        }
+    }
+    if (need) ge_pipeline_flush_primitives();
+}
+
 void ge_batch_add_vertex_tex(int16_t x, int16_t y,
     float u, float v,
     uint32_t color,
@@ -7,6 +18,10 @@ void ge_batch_add_vertex_tex(int16_t x, int16_t y,
     int page_index) {
     
     GLBackendState *s = geogl_get_state();
+
+    if (!opaque)
+        flush_if_other_transparent(s, GE_PROG_ATLAS);
+
     GEBatch *b = opaque ? &s->opaque_batches[GE_PROG_ATLAS] : &s->transparent_batches[GE_PROG_ATLAS];
     
     if (b->count >= GE_MAX_VERTICES || (b->count > 0 && b->page_index != page_index)) {
@@ -44,7 +59,10 @@ void ge_batch_add_vertex_shape(
     GLBackendState *s = geogl_get_state();
     uint8_t alpha = (color >> 24) & 0xFF;
     bool opaque = (alpha >= 254);
-    
+
+    if (!opaque)
+        flush_if_other_transparent(s, GE_PROG_SIMPLE);
+
     GEBatch *b = opaque ? &s->opaque_batches[GE_PROG_SIMPLE] : &s->transparent_batches[GE_PROG_SIMPLE];
 
     if (b->count >= GE_MAX_VERTICES) {
@@ -70,17 +88,26 @@ void ge_batch_add_vertex_complex(
     float hw, float hh,
     float radius,
     uint32_t color,
-    float mode)
+    float mode,
+    bool fill)
 {
     GLBackendState *s = geogl_get_state();
-    uint8_t alpha = (color >> 24) & 0xFF;
-    bool opaque = false;
-    
-    GEBatch *b = opaque ? &s->opaque_batches[GE_PROG_COMPLEX] : &s->transparent_batches[GE_PROG_COMPLEX];
+    (void)(color >> 24);
+
+    flush_if_other_transparent(s, GE_PROG_COMPLEX);
+
+    GEBatch *b = &s->transparent_batches[GE_PROG_COMPLEX];
+
+    int fill_mode = fill ? 1 : 0;
+    if (b->count > 0 && s->complex_batch_is_fill != fill_mode) {
+        ge_pipeline_flush_primitives();
+        b = &s->transparent_batches[GE_PROG_COMPLEX];
+    }
+    s->complex_batch_is_fill = fill_mode;
 
     if (b->count >= GE_MAX_VERTICES) {
         ge_pipeline_flush_primitives();
-        b = opaque ? &s->opaque_batches[GE_PROG_COMPLEX] : &s->transparent_batches[GE_PROG_COMPLEX];
+        b = &s->transparent_batches[GE_PROG_COMPLEX];
     }
 
     GEDShapeComplexVertex *vertex = &((GEDShapeComplexVertex*)b->buffer)[b->count++];

@@ -103,6 +103,7 @@ typedef struct {
     GLint loc_size;
     GLint loc_thickness;
     GLint loc_aa_blur;
+    GLint loc_fill;
     GLint loc_jitter;
     
     // Video/Filter specific
@@ -156,6 +157,7 @@ typedef struct {
     GEBatch opaque_batches[GE_PROG_COUNT];
     GEBatch transparent_batches[GE_PROG_COUNT];
     int16_t current_z;
+    int complex_batch_is_fill;
 
     // Video State
     GLuint video_tex[3]; // Y, U, V (or just [0] for RGBA)
@@ -180,7 +182,7 @@ void ge_atlas_alloc(int w, int h, int *page_index, int *ox, int *oy);
 
 void ge_batch_add_vertex_tex(int16_t x, int16_t y, float u, float v, uint32_t color, bool opaque, int page_index);
 void ge_batch_add_vertex_shape(int16_t x, int16_t y, int16_t lx, int16_t ly, int16_t radius, uint32_t color, int8_t mode, bool aa);
-void ge_batch_add_vertex_complex(float x, float y, float px, float py, float hw, float hh, float radius, uint32_t color, float mode);
+void ge_batch_add_vertex_complex(float x, float y, float px, float py, float hw, float hh, float radius, uint32_t color, float mode, bool fill);
 
 void ge_batch_get_color_u8(uint8_t *c);
 

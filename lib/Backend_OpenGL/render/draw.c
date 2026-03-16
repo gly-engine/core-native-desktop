@@ -41,8 +41,6 @@ void native_draw_clear(uint32_t color) {
 void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r) {
     GLBackendState *s = geogl_get_state();
     uint32_t color = s->current_color.u32;
-    uint8_t alpha = (color >> 24) & 0xFF;
-    bool opaque = (alpha >= 254);
 
     if (r < 0) r = 0;
     if (r * 2 > w) r = w / 2;
@@ -57,66 +55,20 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
             ge_batch_add_vertex_shape(x + w, y + h, 0, 0, 0, color, 0, false);
             ge_batch_add_vertex_shape(x + w, y, 0, 0, 0, color, 0, false);
         } else {
-            float u0 = s->corner_uv[0], v0 = s->corner_uv[1];
-            float u1 = s->corner_uv[2], v1 = s->corner_uv[3];
-            float wu = s->white_uv[0], wv = s->white_uv[1];
+            float fw = (float)w, fh = (float)h, fr = (float)r;
+            float hw = fw * 0.5f, hh = fh * 0.5f;
+            float pad = 2.0f;
+            float x1 = (float)x - pad, y1 = (float)y - pad;
+            float x2 = (float)x + fw + pad, y2 = (float)y + fh + pad;
+            float px1 = -hw - pad, py1 = -hh - pad;
+            float px2 = hw + pad, py2 = hh + pad;
 
-            if (h > 2 * r) {
-                ge_batch_add_vertex_tex(x, y + r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x, y + h - r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w, y + h - r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x, y + r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w, y + h - r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w, y + r, wu, wv, color, opaque, 0);
-            }
-            if (w > 2 * r) {
-                ge_batch_add_vertex_tex(x + r, y, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + r, y + r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w - r, y + r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + r, y, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w - r, y + r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w - r, y, wu, wv, color, opaque, 0);
-
-                ge_batch_add_vertex_tex(x + r, y + h - r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + r, y + h, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w - r, y + h, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + r, y + h - r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w - r, y + h, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w - r, y + h - r, wu, wv, color, opaque, 0);
-            }
-
-            // Corners always use transparent batch (opaque=false) to ensure blending works for the glyph shape
-            // TL
-            ge_batch_add_vertex_tex(x, y, u0, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x, y + r, u0, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + r, y + r, u1, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x, y, u0, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + r, y + r, u1, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + r, y, u1, v0, color, false, 0);
-
-            // TR
-            ge_batch_add_vertex_tex(x + w - r, y, u1, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + w - r, y + r, u1, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + w, y + r, u0, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + w - r, y, u1, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + w, y + r, u0, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + w, y, u0, v0, color, false, 0);
-
-            // BL
-            ge_batch_add_vertex_tex(x, y + h - r, u0, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x, y + h, u0, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + r, y + h, u1, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x, y + h - r, u0, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + r, y + h, u1, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + r, y + h - r, u1, v1, color, false, 0);
-
-            // BR
-            ge_batch_add_vertex_tex(x + w - r, y + h - r, u1, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + w - r, y + h, u1, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + w, y + h, u0, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + w - r, y + h - r, u1, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + w, y + h, u0, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + w, y + h - r, u0, v1, color, false, 0);
+            ge_batch_add_vertex_complex(x1, y1, px1, py1, hw, hh, fr, color, 0.0f, true);
+            ge_batch_add_vertex_complex(x1, y2, px1, py2, hw, hh, fr, color, 0.0f, true);
+            ge_batch_add_vertex_complex(x2, y2, px2, py2, hw, hh, fr, color, 0.0f, true);
+            ge_batch_add_vertex_complex(x1, y1, px1, py1, hw, hh, fr, color, 0.0f, true);
+            ge_batch_add_vertex_complex(x2, y2, px2, py2, hw, hh, fr, color, 0.0f, true);
+            ge_batch_add_vertex_complex(x2, y1, px2, py1, hw, hh, fr, color, 0.0f, true);
         }
     } else {
         if (r == 0) {
@@ -157,12 +109,12 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
             float px1 = -hw - pad, py1 = -hh - pad;
             float px2 = hw + pad, py2 = hh + pad;
 
-            ge_batch_add_vertex_complex(x1, y1, px1, py1, hw, hh, fr, color, 2.0f);
-            ge_batch_add_vertex_complex(x1, y2, px1, py2, hw, hh, fr, color, 2.0f);
-            ge_batch_add_vertex_complex(x2, y2, px2, py2, hw, hh, fr, color, 2.0f);
-            ge_batch_add_vertex_complex(x1, y1, px1, py1, hw, hh, fr, color, 2.0f);
-            ge_batch_add_vertex_complex(x2, y2, px2, py2, hw, hh, fr, color, 2.0f);
-            ge_batch_add_vertex_complex(x2, y1, px2, py1, hw, hh, fr, color, 2.0f);
+            ge_batch_add_vertex_complex(x1, y1, px1, py1, hw, hh, fr, color, 2.0f, false);
+            ge_batch_add_vertex_complex(x1, y2, px1, py2, hw, hh, fr, color, 2.0f, false);
+            ge_batch_add_vertex_complex(x2, y2, px2, py2, hw, hh, fr, color, 2.0f, false);
+            ge_batch_add_vertex_complex(x1, y1, px1, py1, hw, hh, fr, color, 2.0f, false);
+            ge_batch_add_vertex_complex(x2, y2, px2, py2, hw, hh, fr, color, 2.0f, false);
+            ge_batch_add_vertex_complex(x2, y1, px2, py1, hw, hh, fr, color, 2.0f, false);
         }
     }
     s->current_z++;
