@@ -7,20 +7,11 @@
 #include "gefilter.h"
 #include "geopengl.h"
 
-#define MAX_VERTICES GE_MAX_VERTICES
-
 void ge_pipeline_resize(uint16_t w, uint16_t h) {
     GLBackendState *s = geogl_get_state();
     s->window_width = w; s->window_height = h;
     glViewport(0, 0, w, h);
-    mat4_ortho(s->projection, 0, (float)w, (float)h, 0, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
-}
-
-static void init_batch(GEBatch *b, size_t stride) {
-    b->buffer = malloc(MAX_VERTICES * stride);
-    b->count = 0;
-    b->page_index = -1;
-    b->stride = stride;
+    mat4_ortho(s->projection, 0, (float)w, (float)h, 0, -1.0f, 1.0f);
 }
 
 static void create_atlas_page(GLBackendState *s, int width, int height) {
@@ -30,40 +21,25 @@ static void create_atlas_page(GLBackendState *s, int width, int height) {
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    page.cursor_x = 0;
-    page.cursor_y = 0;
-    page.row_height = 0;
     kv_push(GEAtlasPage, s->atlas_pages, page);
 }
 
 void ge_pipeline_init(uint16_t w, uint16_t h) {
     GLBackendState *s = geogl_get_state();
     s->window_width = w; s->window_height = h;
-    
+
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
     kv_init(s->atlas_pages);
-    // Page 0: Font Atlas (Top Half 1024x1024) + System Glyphs/Images (Bottom Half 1024x2048)
     create_atlas_page(s, GE_ATLAS_SIZE, GE_ATLAS_SIZE);
-    // Page 1: General Atlas
     create_atlas_page(s, GE_ATLAS_SIZE, GE_ATLAS_SIZE);
 
     s->atlas_dirty = false;
-    
-    // VBOs
-    glGenBuffers(1, &s->vbo_simple);
-    glBindBuffer(GL_ARRAY_BUFFER, s->vbo_simple);
-    glBufferData(GL_ARRAY_BUFFER, MAX_VERTICES * sizeof(GESimpleShapeVertex), NULL, GL_STREAM_DRAW);
 
-    glGenBuffers(1, &s->vbo_complex);
-    glBindBuffer(GL_ARRAY_BUFFER, s->vbo_complex);
-    glBufferData(GL_ARRAY_BUFFER, MAX_VERTICES * sizeof(GEDShapeComplexVertex), NULL, GL_STREAM_DRAW);
+    glGenBuffers(1, &s->vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, s->vbo);
+    glBufferData(GL_ARRAY_BUFFER, GE_MAX_VERTICES * sizeof(GEComplexVertex), NULL, GL_STREAM_DRAW);
 
-    glGenBuffers(1, &s->vbo_atlas);
-    glBindBuffer(GL_ARRAY_BUFFER, s->vbo_atlas);
-    glBufferData(GL_ARRAY_BUFFER, MAX_VERTICES * sizeof(GEAtlasVertex), NULL, GL_STREAM_DRAW);
-
-    // Post-processing VBO (Full screen quad)
     float post_verts[] = {
         0, 0, 0, 0,
         0, 1, 0, 1,
@@ -80,14 +56,12 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     s->fbo_tex = 0;
     s->fbo_width = 0;
     s->fbo_height = 0;
-    
-    // Page 0 setup
+
     GEAtlasPage *p0 = &s->atlas_pages.a[0];
     p0->cursor_x = 0;
-    p0->cursor_y = 1024; // Reservado: Metade de cima para Fontes, Baixo para imagens
+    p0->cursor_y = 1024;
     p0->row_height = 0;
 
-    // White pixel
     uint32_t white = 0xFFFFFFFF;
     int wx = p0->cursor_x++;
     int wy = p0->cursor_y;
@@ -97,7 +71,6 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     s->white_uv[0] = ((float)wx + 0.5f) / (float)GE_ATLAS_SIZE;
     s->white_uv[1] = ((float)wy + 0.5f) / (float)GE_ATLAS_SIZE;
 
-    // Corner mask (64x64)
     int cx = p0->cursor_x; int cy = p0->cursor_y;
     p0->cursor_x += 64;
     if (p0->row_height < 64) p0->row_height = 64;
@@ -118,26 +91,24 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     glTexSubImage2D(GL_TEXTURE_2D, 0, cx, cy, 64, 64, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
     free(pixels);
 
-    s->corner_uv[0] = (float)cx / (float)GE_ATLAS_SIZE;
-    s->corner_uv[1] = (float)cy / (float)GE_ATLAS_SIZE;
-    s->corner_uv[2] = (float)(cx + 64) / (float)GE_ATLAS_SIZE;
-    s->corner_uv[3] = (float)(cy + 64) / (float)GE_ATLAS_SIZE;
+    s->corner_uv[0] = ((float)cx + 0.5f) / (float)GE_ATLAS_SIZE;
+    s->corner_uv[1] = ((float)cy + 0.5f) / (float)GE_ATLAS_SIZE;
+    s->corner_uv[2] = ((float)(cx + 63) + 0.5f) / (float)GE_ATLAS_SIZE;
+    s->corner_uv[3] = ((float)(cy + 63) + 0.5f) / (float)GE_ATLAS_SIZE;
     s->corner_page_index = 0;
 
+    glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // Batches
-    init_batch(&s->opaque_batches[GE_PROG_SIMPLE], sizeof(GESimpleShapeVertex));
-    init_batch(&s->opaque_batches[GE_PROG_COMPLEX], sizeof(GEDShapeComplexVertex));
-    init_batch(&s->opaque_batches[GE_PROG_ATLAS], sizeof(GEAtlasVertex));
-    init_batch(&s->transparent_batches[GE_PROG_SIMPLE], sizeof(GESimpleShapeVertex));
-    init_batch(&s->transparent_batches[GE_PROG_COMPLEX], sizeof(GEDShapeComplexVertex));
-    init_batch(&s->transparent_batches[GE_PROG_ATLAS], sizeof(GEAtlasVertex));
+    s->batch.raw    = malloc(GE_MAX_VERTICES * sizeof(GEComplexVertex));
+    s->batch.count  = 0;
+    s->batch.page_index = -1;
+    s->active_prog  = -1;
+    s->active_page  = -1;
 }
 
 void ge_atlas_alloc(int w, int h, int *page_index, int *ox, int *oy) {
     GLBackendState *s = geogl_get_state();
-    // Search all pages including Page 0 (bottom half)
     for (int i = 0; i < (int)kv_size(s->atlas_pages); i++) {
         GEAtlasPage *p = &s->atlas_pages.a[i];
         if (p->cursor_x + w > GE_ATLAS_SIZE) {
@@ -151,7 +122,6 @@ void ge_atlas_alloc(int w, int h, int *page_index, int *ox, int *oy) {
             return;
         }
     }
-    // All pages full, create a new one
     int next_page = (int)kv_size(s->atlas_pages);
     create_atlas_page(s, GE_ATLAS_SIZE, GE_ATLAS_SIZE);
     GEAtlasPage *p = &s->atlas_pages.a[next_page];
@@ -191,113 +161,91 @@ static void ensure_fbo(GLBackendState *s) {
 void ge_pipeline_start(void) {
     GLBackendState *s = geogl_get_state();
 
+    glFinish();
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
     glViewport(0, 0, s->window_width, s->window_height);
     glClearColor(1, 0, 1, 1);
-    glDepthMask(GL_TRUE);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT);
 
     glEnable(GL_BLEND);
-
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LEQUAL);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     for (int i = 0; i < GE_PROG_COUNT; i++) {
         glUseProgram(s->programs[i].id);
         glUniformMatrix4fv(s->programs[i].loc_proj, 1, GL_FALSE, s->projection);
     }
 
-    for (int i = 0; i < GE_PROG_COUNT; i++) {
-        s->opaque_batches[i].count = 0;
-        s->transparent_batches[i].count = 0;
-    }
-    s->active_opaque_page_index = -1;
-    s->active_transparent_page_index = -1;
-    s->current_z = 0;
+    s->batch.count  = 0;
+    s->active_prog  = -1;
+    s->active_page  = -1;
 }
 
 void ge_pipeline_terminate(void) {
     GLBackendState *s = geogl_get_state();
-    glDeleteBuffers(1, &s->vbo_simple);
-    glDeleteBuffers(1, &s->vbo_complex);
-    glDeleteBuffers(1, &s->vbo_atlas);
+    glDeleteBuffers(1, &s->vbo);
     if (s->video_tex[0]) glDeleteTextures(3, s->video_tex);
     glDeleteBuffers(1, &s->vbo_post);
 
     if (s->fbo_id) glDeleteFramebuffers(1, &s->fbo_id);
     if (s->fbo_tex) glDeleteTextures(1, &s->fbo_tex);
-    
+
     for (int i = 0; i < (int)kv_size(s->atlas_pages); i++) {
         glDeleteTextures(1, &s->atlas_pages.a[i].tex_id);
     }
     kv_destroy(s->atlas_pages);
-    
-    for(int i=0; i<GE_PROG_COUNT; i++) {
-        free(s->opaque_batches[i].buffer);
-        free(s->transparent_batches[i].buffer);
-    }
+
+    free(s->batch.raw);
     kv_destroy(s->textures);
 }
 
-static void flush_batch(GEProgramType type, bool transparent) {
+static void flush_batch(void) {
     GLBackendState *s = geogl_get_state();
-    GEBatch *b = transparent ? &s->transparent_batches[type] : &s->opaque_batches[type];
-    if (b->count == 0) return;
+    if (s->batch.count == 0) return;
 
-    GEProgram *p = &s->programs[type];
+    GEProgram *p = &s->programs[s->active_prog];
     glUseProgram(p->id);
+    glBindBuffer(GL_ARRAY_BUFFER, s->vbo);
 
-    if (type == GE_PROG_SIMPLE) {
-        glBindBuffer(GL_ARRAY_BUFFER, s->vbo_simple);
-        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_SHORT, GL_FALSE, b->stride, (void*)offsetof(GESimpleShapeVertex, x));
-        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, b->stride, (void*)offsetof(GESimpleShapeVertex, r));
-        glDisableVertexAttribArray(2); glDisableVertexAttribArray(3); glDisableVertexAttribArray(4);
-    } else if (type == GE_PROG_COMPLEX) {
-        glBindBuffer(GL_ARRAY_BUFFER, s->vbo_complex);
-        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_SHORT, GL_FALSE, b->stride, (void*)offsetof(GEDShapeComplexVertex, x));
-        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_SHORT, GL_FALSE, b->stride, (void*)offsetof(GEDShapeComplexVertex, px));
-        glEnableVertexAttribArray(3); glVertexAttribPointer(3, 2, GL_SHORT, GL_FALSE, b->stride, (void*)offsetof(GEDShapeComplexVertex, hw));
-        glEnableVertexAttribArray(5); glVertexAttribPointer(5, 1, GL_SHORT, GL_FALSE, b->stride, (void*)offsetof(GEDShapeComplexVertex, radius));
-        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, b->stride, (void*)offsetof(GEDShapeComplexVertex, r));
-        glDisableVertexAttribArray(4);
-        glDisableVertexAttribArray(6);
-    } else if (type == GE_PROG_ATLAS) {
-        glBindBuffer(GL_ARRAY_BUFFER, s->vbo_atlas);
-        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_SHORT, GL_FALSE, b->stride, (void*)offsetof(GEAtlasVertex, x));
-        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, b->stride, (void*)offsetof(GEAtlasVertex, r));
-        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_UNSIGNED_SHORT, GL_TRUE, b->stride, (void*)offsetof(GEAtlasVertex, u));
+    size_t stride;
+    if (s->active_prog == GE_PROG_TEXTURE) {
+        stride = sizeof(GETexVertex);
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_SHORT,          GL_FALSE, stride, (void*)offsetof(GETexVertex, x));
+        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE,  GL_TRUE,  stride, (void*)offsetof(GETexVertex, r));
+        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_UNSIGNED_SHORT, GL_TRUE,  stride, (void*)offsetof(GETexVertex, u));
         glDisableVertexAttribArray(3); glDisableVertexAttribArray(4);
 
         glActiveTexture(GL_TEXTURE0);
-        if (b->page_index >= 0 && b->page_index < (int)kv_size(s->atlas_pages)) {
-            glBindTexture(GL_TEXTURE_2D, s->atlas_pages.a[b->page_index].tex_id);
-        }
+        glBindTexture(GL_TEXTURE_2D, s->atlas_pages.a[s->batch.page_index].tex_id);
         glUniform1i(p->loc_tex, 0);
+    } else {
+        stride = sizeof(GEComplexVertex);
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_SHORT,         GL_FALSE, stride, (void*)offsetof(GEComplexVertex, x));
+        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE,  stride, (void*)offsetof(GEComplexVertex, r));
+        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_SHORT,         GL_FALSE, stride, (void*)offsetof(GEComplexVertex, px));
+        glEnableVertexAttribArray(3); glVertexAttribPointer(3, 2, GL_SHORT,         GL_FALSE, stride, (void*)offsetof(GEComplexVertex, hw));
+        glEnableVertexAttribArray(4); glVertexAttribPointer(4, 1, GL_SHORT,         GL_FALSE, stride, (void*)offsetof(GEComplexVertex, radius));
+        glDisableVertexAttribArray(5);
     }
 
-    glBufferData(GL_ARRAY_BUFFER, b->count * b->stride, NULL, GL_STREAM_DRAW);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, b->count * b->stride, b->buffer);
-    
+    glBufferData(GL_ARRAY_BUFFER, GE_MAX_VERTICES * sizeof(GEComplexVertex), NULL, GL_STREAM_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, s->batch.count * stride, s->batch.raw);
+
     int offset = 0;
-    while (offset < b->count) {
-        int chunk = (b->count - offset > GE_MAX_CHUNK) ? GE_MAX_CHUNK : (b->count - offset);
+    while (offset < s->batch.count) {
+        int chunk = (s->batch.count - offset > GE_MAX_CHUNK) ? GE_MAX_CHUNK : (s->batch.count - offset);
         glDrawArrays(GL_TRIANGLES, offset, chunk);
         offset += chunk;
     }
 
-    b->count = 0;
+    s->batch.count = 0;
 }
 
 void ge_pipeline_flush_primitives(void) {
-    glDisable(GL_BLEND);
-    glDepthMask(GL_TRUE);
-    flush_batch(GE_PROG_SIMPLE, false);
-    flush_batch(GE_PROG_ATLAS, false);
-
-    glEnable(GL_BLEND);
-    glDepthMask(GL_FALSE);
-    flush_batch(GE_PROG_SIMPLE, true);
-    flush_batch(GE_PROG_ATLAS, true);
-    flush_batch(GE_PROG_COMPLEX, true);
+    GLBackendState *s = geogl_get_state();
+    if (s->active_prog >= 0) flush_batch();
+    s->active_prog = -1;
+    s->active_page = -1;
 }
 
 void ge_pipeline_end(void) {

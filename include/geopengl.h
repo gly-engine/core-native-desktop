@@ -20,14 +20,9 @@
 #define GE_LINE_WIDTH 2.0f
 #endif
 
-// Metaatlas Size
 #define GE_ATLAS_SIZE 2048
-// Font Atlas part (within metaatlas)
 #define GE_FONT_ATLAS_SIZE 1024
-// Max vertices in a single batch (multiple of 6, approx 256KB)
 #define GE_MAX_VERTICES 8190
-// Max layers for 2D depth sorting
-#define GE_MAX_LAYERS 4096
 
 typedef struct {
     GLuint id;
@@ -61,25 +56,20 @@ typedef union {
 
 typedef struct __attribute__((packed))
 {
-    int16_t x, y, z, w;
+    int16_t x, y;
     int16_t px, py;
     int16_t hw, hh;
-    int16_t radius, pad;
+    int16_t radius;
+    int16_t _pad;
     uint8_t r, g, b, a;
-} GEDShapeComplexVertex;
+} GEComplexVertex;
 
 typedef struct __attribute__((packed))
 {
-    int16_t x, y, z, w;
-    uint8_t r, g, b, a;
-} GESimpleShapeVertex;
-
-typedef struct __attribute__((packed))
-{
-    int16_t x, y, z, w;
-    uint8_t r, g, b, a;
+    int16_t  x, y;
+    uint8_t  r, g, b, a;
     uint16_t u, v;
-} GEAtlasVertex;
+} GETexVertex;
 
 #include <assert.h>
 #ifndef static_assert
@@ -89,9 +79,8 @@ typedef struct __attribute__((packed))
 #define GE_MAX_CHUNK 1020
 
 typedef enum {
-    GE_PROG_SIMPLE,
+    GE_PROG_TEXTURE,
     GE_PROG_COMPLEX,
-    GE_PROG_ATLAS,
     GE_PROG_VIDEO,
     GE_PROG_COUNT
 } GEProgramType;
@@ -104,8 +93,7 @@ typedef struct {
     GLint loc_thickness;
     GLint loc_aa_blur;
     GLint loc_jitter;
-    
-    // Video/Filter specific
+
     GLint loc_tex_y;
     GLint loc_tex_u;
     GLint loc_tex_v;
@@ -120,10 +108,13 @@ typedef struct {
 } GEProgram;
 
 typedef struct {
-    void *buffer;
+    union {
+        GETexVertex     *tex;
+        GEComplexVertex *complex;
+        void            *raw;
+    };
     int count;
     int page_index;
-    size_t stride;
 } GEBatch;
 
 typedef struct {
@@ -134,32 +125,29 @@ typedef struct {
 
     GEProgram programs[GE_PROG_COUNT];
     GEProgram post_program;
-    GLuint vbo_simple, vbo_complex, vbo_atlas, vbo_post;
-    
+    GLuint vbo, vbo_post;
+
     GLuint fbo_id;
     GLuint fbo_tex;
     int fbo_width, fbo_height;
 
     kvec_t(GEAtlasPage) atlas_pages;
-    int active_opaque_page_index;
-    int active_transparent_page_index;
-    
-    bool   atlas_dirty;
-    float white_uv[2]; 
-    float corner_uv[4]; // u, v, u2, v2
-    int corner_page_index;
 
-    float projection[16];
+    bool  atlas_dirty;
+    float white_uv[2];
+    float corner_uv[4];
+    int   corner_page_index;
+
+    float   projection[16];
     GEColor current_color;
 
     kvec_t(GLTexture) textures;
 
-    GEBatch opaque_batches[GE_PROG_COUNT];
-    GEBatch transparent_batches[GE_PROG_COUNT];
-    int16_t current_z;
+    GEBatch batch;
+    int active_prog;
+    int active_page;
 
-    // Video State
-    GLuint video_tex[3]; // Y, U, V (or just [0] for RGBA)
+    GLuint video_tex[3];
     atomic_int video_update_counter;
     int video_width;
     int video_height;
@@ -180,8 +168,7 @@ void ge_pipeline_flush_primitives(void);
 void ge_atlas_alloc(int w, int h, int *page_index, int *ox, int *oy);
 
 void ge_batch_add_vertex_tex(int16_t x, int16_t y, float u, float v, uint32_t color, bool opaque, int page_index);
-void ge_batch_add_vertex_shape(int16_t x, int16_t y, int16_t lx, int16_t ly, int16_t radius, uint32_t color, int8_t mode, bool aa);
-void ge_batch_add_vertex_complex(float x, float y, float px, float py, float hw, float hh, float radius, uint32_t color, float mode);
+void ge_batch_add_vertex_complex(float x, float y, float px, float py, float hw, float hh, float radius, uint32_t color, bool opaque);
 
 void ge_batch_get_color_u8(uint8_t *c);
 

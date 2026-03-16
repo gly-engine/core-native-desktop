@@ -43,7 +43,8 @@ int platform_init(uint16_t width, uint16_t height) {
     if (!eglInitialize(egl_display, NULL, NULL)) return -1;
     const EGLint attribs[] = {
         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-        EGL_BLUE_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_RED_SIZE, 8, EGL_ALPHA_SIZE, 8, EGL_DEPTH_SIZE, 16, EGL_NONE
+        EGL_BLUE_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_RED_SIZE, 8, EGL_ALPHA_SIZE, 8,
+        EGL_DEPTH_SIZE, 0, EGL_STENCIL_SIZE, 0, EGL_NONE
     };
     EGLConfig config; EGLint num_config;
     if (!eglChooseConfig(egl_display, attribs, &config, 1, &num_config)) return -1;
@@ -92,7 +93,7 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     ge_pipeline_init(width, height);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    mat4_ortho(s->projection, 0, width, height, 0, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
+    mat4_ortho(s->projection, 0, width, height, 0, -1.0f, 1.0f);
     s->last_frame_time = platform_get_time();
 }
 

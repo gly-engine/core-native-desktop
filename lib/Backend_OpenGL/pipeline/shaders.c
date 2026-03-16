@@ -3,9 +3,6 @@
 #include <string.h>
 #include "geopengl.h"
 
-// ES Shaders
-#include <gecnd/shadder_es_shape_simple_vert.h>
-#include <gecnd/shadder_es_shape_simples_frag.h>
 #include <gecnd/shadder_es_shape_complex_vert.h>
 #include <gecnd/shadder_es_shape_complex_frag.h>
 #include <gecnd/shadder_es_texture_vert.h>
@@ -15,9 +12,6 @@
 #include <gecnd/shadder_es_post_vert.h>
 #include <gecnd/shadder_es_post_frag.h>
 
-// GL Shaders
-#include <gecnd/shadder_gl_shape_simple_vert.h>
-#include <gecnd/shadder_gl_shape_simple_frag.h>
 #include <gecnd/shadder_gl_shape_complex_vert.h>
 #include <gecnd/shadder_gl_shape_complex_frag.h>
 #include <gecnd/shadder_gl_texture_vert.h>
@@ -56,19 +50,18 @@ static GLuint create_prog(const shader_src_t* vs, const shader_src_t* fs, int pr
     GLuint f = compile(GL_FRAGMENT_SHADER, fs->src, fs->len, fs->name);
     glAttachShader(p, v);
     glAttachShader(p, f);
-    
+
     glBindAttribLocation(p, 0, "a_pos");
     glBindAttribLocation(p, 1, "a_color");
     if (prog_type == GE_PROG_COMPLEX) {
         glBindAttribLocation(p, 2, "a_local");
         glBindAttribLocation(p, 3, "a_size");
-        glBindAttribLocation(p, 4, "a_mode");
-        glBindAttribLocation(p, 5, "a_radius");
-    } else if (prog_type == GE_PROG_ATLAS) {
+        glBindAttribLocation(p, 4, "a_radius");
+    } else if (prog_type == GE_PROG_TEXTURE) {
         glBindAttribLocation(p, 2, "a_uv");
     } else if (prog_type == GE_PROG_VIDEO) {
         glBindAttribLocation(p, 2, "a_texCoord");
-    } else if (prog_type == 99) { // Post
+    } else if (prog_type == 99) {
         glBindAttribLocation(p, 2, "a_texCoord");
     }
 
@@ -93,64 +86,52 @@ static inline const shader_src_t* pick(bool gles, const shader_src_t *gl, const 
 void init_all_shaders(bool gles) {
     GLBackendState *s = geogl_get_state();
 
-    // Simple Shape
-    shader_src_t simple_vs_gl = SHADER(shadder_gl_shape_simple_vert);
-    shader_src_t simple_fs_gl = SHADER(shadder_gl_shape_simple_frag);
-    shader_src_t simple_vs_es = SHADER(shadder_es_shape_simple_vert);
-    shader_src_t simple_fs_es = SHADER(shadder_es_shape_simples_frag);
-    s->programs[GE_PROG_SIMPLE].id = create_prog(pick(gles, &simple_vs_gl, &simple_vs_es), pick(gles, &simple_fs_gl, &simple_fs_es), GE_PROG_SIMPLE);
-    s->programs[GE_PROG_SIMPLE].loc_proj = glGetUniformLocation(s->programs[GE_PROG_SIMPLE].id, "u_proj");
+    shader_src_t tex_vs_gl = SHADER(shadder_gl_texture_vert);
+    shader_src_t tex_fs_gl = SHADER(shadder_gl_texture_frag);
+    shader_src_t tex_vs_es = SHADER(shadder_es_texture_vert);
+    shader_src_t tex_fs_es = SHADER(shadder_es_texture_frag);
+    s->programs[GE_PROG_TEXTURE].id = create_prog(pick(gles, &tex_vs_gl, &tex_vs_es), pick(gles, &tex_fs_gl, &tex_fs_es), GE_PROG_TEXTURE);
+    s->programs[GE_PROG_TEXTURE].loc_proj = glGetUniformLocation(s->programs[GE_PROG_TEXTURE].id, "u_proj");
+    s->programs[GE_PROG_TEXTURE].loc_tex  = glGetUniformLocation(s->programs[GE_PROG_TEXTURE].id, "u_tex");
 
-    // Complex Shape
     shader_src_t complex_vs_gl = SHADER(shadder_gl_shape_complex_vert);
     shader_src_t complex_fs_gl = SHADER(shadder_gl_shape_complex_frag);
     shader_src_t complex_vs_es = SHADER(shadder_es_shape_complex_vert);
     shader_src_t complex_fs_es = SHADER(shadder_es_shape_complex_frag);
     s->programs[GE_PROG_COMPLEX].id = create_prog(pick(gles, &complex_vs_gl, &complex_vs_es), pick(gles, &complex_fs_gl, &complex_fs_es), GE_PROG_COMPLEX);
-    s->programs[GE_PROG_COMPLEX].loc_proj = glGetUniformLocation(s->programs[GE_PROG_COMPLEX].id, "u_proj");
-    s->programs[GE_PROG_COMPLEX].loc_size = glGetUniformLocation(s->programs[GE_PROG_COMPLEX].id, "u_size");
+    s->programs[GE_PROG_COMPLEX].loc_proj     = glGetUniformLocation(s->programs[GE_PROG_COMPLEX].id, "u_proj");
+    s->programs[GE_PROG_COMPLEX].loc_size     = glGetUniformLocation(s->programs[GE_PROG_COMPLEX].id, "u_size");
     s->programs[GE_PROG_COMPLEX].loc_thickness = glGetUniformLocation(s->programs[GE_PROG_COMPLEX].id, "u_thickness");
-    s->programs[GE_PROG_COMPLEX].loc_aa_blur = glGetUniformLocation(s->programs[GE_PROG_COMPLEX].id, "u_aa_blur");
+    s->programs[GE_PROG_COMPLEX].loc_aa_blur  = glGetUniformLocation(s->programs[GE_PROG_COMPLEX].id, "u_aa_blur");
 
-    // Atlas Texture
-    shader_src_t atlas_vs_gl = SHADER(shadder_gl_texture_vert);
-    shader_src_t atlas_fs_gl = SHADER(shadder_gl_texture_frag);
-    shader_src_t atlas_vs_es = SHADER(shadder_es_texture_vert);
-    shader_src_t atlas_fs_es = SHADER(shadder_es_texture_frag);
-    s->programs[GE_PROG_ATLAS].id = create_prog(pick(gles, &atlas_vs_gl, &atlas_vs_es), pick(gles, &atlas_fs_gl, &atlas_fs_es), GE_PROG_ATLAS);
-    s->programs[GE_PROG_ATLAS].loc_proj = glGetUniformLocation(s->programs[GE_PROG_ATLAS].id, "u_proj");
-    s->programs[GE_PROG_ATLAS].loc_tex = glGetUniformLocation(s->programs[GE_PROG_ATLAS].id, "u_tex");
-
-    // Video
     shader_src_t video_vs_gl = SHADER(shadder_gl_video_vert);
     shader_src_t video_fs_gl = SHADER(shadder_gl_video_frag);
     shader_src_t video_vs_es = SHADER(shadder_es_video_vert);
     shader_src_t video_fs_es = SHADER(shadder_es_video_frag);
     GEProgram *vp = &s->programs[GE_PROG_VIDEO];
     vp->id = create_prog(pick(gles, &video_vs_gl, &video_vs_es), pick(gles, &video_fs_gl, &video_fs_es), GE_PROG_VIDEO);
-    
-    vp->loc_proj = glGetUniformLocation(vp->id, "u_projection");
-    vp->loc_tex = glGetUniformLocation(vp->id, "tex_rgba");
-    vp->loc_tex_y = glGetUniformLocation(vp->id, "tex_y");
-    vp->loc_tex_u = glGetUniformLocation(vp->id, "tex_u");
-    vp->loc_tex_v = glGetUniformLocation(vp->id, "tex_v");
-    vp->loc_format = glGetUniformLocation(vp->id, "format");
+    vp->loc_proj       = glGetUniformLocation(vp->id, "u_projection");
+    vp->loc_tex        = glGetUniformLocation(vp->id, "tex_rgba");
+    vp->loc_tex_y      = glGetUniformLocation(vp->id, "tex_y");
+    vp->loc_tex_u      = glGetUniformLocation(vp->id, "tex_u");
+    vp->loc_tex_v      = glGetUniformLocation(vp->id, "tex_v");
+    vp->loc_format     = glGetUniformLocation(vp->id, "format");
     vp->loc_brightness = glGetUniformLocation(vp->id, "u_brightness");
-    vp->loc_contrast = glGetUniformLocation(vp->id, "u_contrast");
+    vp->loc_contrast   = glGetUniformLocation(vp->id, "u_contrast");
     vp->loc_saturation = glGetUniformLocation(vp->id, "u_saturation");
     vp->loc_film_grain = glGetUniformLocation(vp->id, "u_film_grain");
-    vp->loc_time = glGetUniformLocation(vp->id, "u_time");
-    vp->loc_scratch = glGetUniformLocation(vp->id, "u_scratch");
-    vp->loc_jitter = glGetUniformLocation(vp->id, "u_jitter");
-    // Post
+    vp->loc_time       = glGetUniformLocation(vp->id, "u_time");
+    vp->loc_scratch    = glGetUniformLocation(vp->id, "u_scratch");
+    vp->loc_jitter     = glGetUniformLocation(vp->id, "u_jitter");
+
     shader_src_t post_vs_gl = SHADER(shadder_gl_post_vert);
     shader_src_t post_fs_gl = SHADER(shadder_gl_post_frag);
     shader_src_t post_vs_es = SHADER(shadder_es_post_vert);
     shader_src_t post_fs_es = SHADER(shadder_es_post_frag);
-    s->post_program.id = create_prog(pick(gles, &post_vs_gl, &post_vs_es), pick(gles, &post_fs_gl, &post_fs_es), 99);
+    s->post_program.id      = create_prog(pick(gles, &post_vs_gl, &post_vs_es), pick(gles, &post_fs_gl, &post_fs_es), 99);
     s->post_program.loc_proj = glGetUniformLocation(s->post_program.id, "u_projection");
-    s->post_program.loc_tex = glGetUniformLocation(s->post_program.id, "u_texture");
-    s->post_program.loc_crt = glGetUniformLocation(s->post_program.id, "u_crt");
+    s->post_program.loc_tex  = glGetUniformLocation(s->post_program.id, "u_texture");
+    s->post_program.loc_crt  = glGetUniformLocation(s->post_program.id, "u_crt");
     s->post_program.loc_time = glGetUniformLocation(s->post_program.id, "u_time");
 }
 

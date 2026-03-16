@@ -53,6 +53,8 @@ int platform_init(uint16_t width, uint16_t height) {
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    glfwWindowHint(GLFW_DEPTH_BITS,   0);
+    glfwWindowHint(GLFW_STENCIL_BITS, 0);
 
     state->window = glfwCreateWindow(
         state->window_width,
@@ -99,7 +101,7 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     ge_pipeline_init(width, height);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    mat4_ortho(s->projection, 0, width, height, 0, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
+    mat4_ortho(s->projection, 0, width, height, 0, -1.0f, 1.0f);
     s->last_frame_time = platform_get_time();
 }
 

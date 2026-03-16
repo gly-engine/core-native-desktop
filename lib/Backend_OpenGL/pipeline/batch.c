@@ -4,64 +4,26 @@ void ge_batch_add_vertex_tex(int16_t x, int16_t y,
     float u, float v,
     uint32_t color,
     bool opaque,
-    int page_index) {
-    
-    GLBackendState *s = geogl_get_state();
-    GEBatch *b = opaque ? &s->opaque_batches[GE_PROG_ATLAS] : &s->transparent_batches[GE_PROG_ATLAS];
-    
-    if (b->count >= GE_MAX_VERTICES || (b->count > 0 && b->page_index != page_index)) {
-        ge_pipeline_flush_primitives();
-        b = opaque ? &s->opaque_batches[GE_PROG_ATLAS] : &s->transparent_batches[GE_PROG_ATLAS];
-    }
-    
-    b->page_index = page_index;
-
-    GEAtlasVertex *vertex = &((GEAtlasVertex*)b->buffer)[b->count++];
-    
-    vertex->x = (int16_t)x;
-    vertex->y = (int16_t)y;
-    vertex->z = (int16_t)s->current_z;
-    vertex->w = 1;
-    vertex->u = (uint16_t)(u * 65535.0f);
-    vertex->v = (uint16_t)(v * 65535.0f);
-
-    uint8_t *c = (uint8_t*)&color;
-    vertex->r = c[0];
-    vertex->g = c[1];
-    vertex->b = c[2];
-    vertex->a = c[3];
-}
-
-void ge_batch_add_vertex_shape(
-    int16_t x, int16_t y,
-    int16_t lx, int16_t ly,
-    int16_t radius,
-    uint32_t color,
-    int8_t mode,
-    bool aa)
+    int page_index)
 {
-    (void) aa;
+    (void)opaque;
     GLBackendState *s = geogl_get_state();
-    uint8_t alpha = (color >> 24) & 0xFF;
-    bool opaque = (alpha >= 254);
-    
-    GEBatch *b = opaque ? &s->opaque_batches[GE_PROG_SIMPLE] : &s->transparent_batches[GE_PROG_SIMPLE];
 
-    if (b->count >= GE_MAX_VERTICES) {
+    if (s->active_prog != GE_PROG_TEXTURE || s->active_page != page_index || s->batch.count >= GE_MAX_VERTICES) {
         ge_pipeline_flush_primitives();
-        b = opaque ? &s->opaque_batches[GE_PROG_SIMPLE] : &s->transparent_batches[GE_PROG_SIMPLE];
     }
 
-    GESimpleShapeVertex *vertex = &((GESimpleShapeVertex*)b->buffer)[b->count++];
-    vertex->x = (int16_t)x;
-    vertex->y = (int16_t)y;
-    vertex->z = (int16_t)s->current_z;
-    vertex->w = 1;
+    s->active_prog      = GE_PROG_TEXTURE;
+    s->active_page      = page_index;
+    s->batch.page_index = page_index;
+
+    GETexVertex *vert = &s->batch.tex[s->batch.count++];
+    vert->x = x;
+    vert->y = y;
     uint8_t *c = (uint8_t*)&color;
-    vertex->r = c[0];
-    vertex->g = c[1];
-    vertex->b = c[2];
-    vertex->a = c[3];
+    vert->r = c[0]; vert->g = c[1]; vert->b = c[2]; vert->a = c[3];
+    vert->u = (uint16_t)(u * 65535.0f + 0.5f);
+    vert->v = (uint16_t)(v * 65535.0f + 0.5f);
 }
 
 void ge_batch_add_vertex_complex(
@@ -70,34 +32,26 @@ void ge_batch_add_vertex_complex(
     float hw, float hh,
     float radius,
     uint32_t color,
-    float mode)
+    bool opaque)
 {
+    (void)opaque;
     GLBackendState *s = geogl_get_state();
-    uint8_t alpha = (color >> 24) & 0xFF;
-    bool opaque = (alpha >= 254);
-    
-    GEBatch *b = opaque ? &s->opaque_batches[GE_PROG_COMPLEX] : &s->transparent_batches[GE_PROG_COMPLEX];
 
-    if (b->count >= GE_MAX_VERTICES) {
+    if (s->active_prog != GE_PROG_COMPLEX || s->batch.count >= GE_MAX_VERTICES) {
         ge_pipeline_flush_primitives();
-        b = opaque ? &s->opaque_batches[GE_PROG_COMPLEX] : &s->transparent_batches[GE_PROG_COMPLEX];
     }
 
-    GEDShapeComplexVertex *vertex = &((GEDShapeComplexVertex*)b->buffer)[b->count++];
-    vertex->x = (int16_t)x;
-    vertex->y = (int16_t)y;
-    vertex->z = (int16_t)s->current_z;
-    vertex->w = 1;
-    vertex->px = (int16_t)px;
-    vertex->py = (int16_t)py;
-    vertex->hw = (int16_t)hw;
-    vertex->hh = (int16_t)hh;
-    vertex->radius = (int16_t)radius;
-    vertex->pad = 0;
-    uint8_t *c = (uint8_t*)&color;
-    vertex->r = c[0];
-    vertex->g = c[1];
-    vertex->b = c[2];
-    vertex->a = c[3];
-}
+    s->active_prog = GE_PROG_COMPLEX;
 
+    GEComplexVertex *vert = &s->batch.complex[s->batch.count++];
+    vert->x      = (int16_t)x;
+    vert->y      = (int16_t)y;
+    vert->px     = (int16_t)px;
+    vert->py     = (int16_t)py;
+    vert->hw     = (int16_t)hw;
+    vert->hh     = (int16_t)hh;
+    vert->radius = (int16_t)radius;
+    vert->_pad   = 0;
+    uint8_t *c = (uint8_t*)&color;
+    vert->r = c[0]; vert->g = c[1]; vert->b = c[2]; vert->a = c[3];
+}

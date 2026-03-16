@@ -62,14 +62,12 @@ void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
     static const uint32_t color = 0xFFFFFFFF;
     int16_t ix = x, iy = y, iw = (int16_t)t.width, ih = (int16_t)t.height;
     
-    ge_batch_add_vertex_tex(ix, iy, t.u, t.v, color, t.is_opaque, t.page_index);
-    ge_batch_add_vertex_tex(ix, iy + ih, t.u, t.v2, color, t.is_opaque, t.page_index);
+    ge_batch_add_vertex_tex(ix,      iy,      t.u,  t.v,  color, t.is_opaque, t.page_index);
+    ge_batch_add_vertex_tex(ix,      iy + ih, t.u,  t.v2, color, t.is_opaque, t.page_index);
     ge_batch_add_vertex_tex(ix + iw, iy + ih, t.u2, t.v2, color, t.is_opaque, t.page_index);
-    ge_batch_add_vertex_tex(ix, iy, t.u, t.v, color, t.is_opaque, t.page_index);
+    ge_batch_add_vertex_tex(ix,      iy,      t.u,  t.v,  color, t.is_opaque, t.page_index);
     ge_batch_add_vertex_tex(ix + iw, iy + ih, t.u2, t.v2, color, t.is_opaque, t.page_index);
-    ge_batch_add_vertex_tex(ix + iw, iy, t.u2, t.v, color, t.is_opaque, t.page_index);
-
-    s->current_z++;
+    ge_batch_add_vertex_tex(ix + iw, iy,      t.u2, t.v,  color, t.is_opaque, t.page_index);
 }
 
 void native_image_mensure(int32_t image_id, int16_t *w, int16_t *h) {
