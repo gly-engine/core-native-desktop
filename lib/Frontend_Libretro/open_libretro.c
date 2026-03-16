@@ -10,6 +10,7 @@
 #include "gebuffer.h"
 #include "gedll.h"
 #include "gehook.h"
+#include "buffer.h"
 
 static int pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
 static bool core_initialized = false;
@@ -65,24 +66,26 @@ static void RETRO_CALLCONV core_log(enum retro_log_level level, const char *fmt,
 }
 
 static void RETRO_CALLCONV core_video_refresh(const void *data, unsigned width, unsigned height, size_t pitch) {
+    // data == NULL: core requests frame dupe (GET_CAN_DUPE=true) — keep last frame
     if (!data) return;
 
     int ge_fmt = (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) ? GECND_PIX_FMT_RGBA8888 : GECND_PIX_FMT_RGB565;
     gecnd_buffer_resize((int)width, (int)height, ge_fmt);
-    
+
     MediaFrame *f = gecnd_buffer_get_back();
     if (!f) return;
-    int bpp = (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) ? 4 : 2;
 
-    if (pitch == (size_t)f->linesize[0]) {
-        memcpy(f->data[0], data, height * pitch);
+    if (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) {
+        // BGRX -> RGBA conversion (SIMD: NEON / SSSE3 / scalar)
+        libretro_copy_xrgb8888(f->data[0], f->linesize[0],
+                               (const uint8_t *)data, (int)pitch,
+                               (int)width, (int)height);
     } else {
-        for (unsigned y = 0; y < height; y++) {
-            memcpy(f->data[0] + y * f->linesize[0], 
-                   (const uint8_t*)data + y * pitch, width * (unsigned)bpp);
-        }
+        libretro_copy_rgb565(f->data[0], f->linesize[0],
+                             (const uint8_t *)data, (int)pitch,
+                             (int)width, (int)height);
     }
-    
+
     atomic_store(&f->ready, true);
     gecnd_buffer_swap();
 }

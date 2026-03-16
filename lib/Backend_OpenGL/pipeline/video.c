@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stddef.h>
 #include <string.h>
 #include "geopengl.h"
 #include "gebuffer.h"
@@ -10,8 +11,8 @@ static void update_video_textures(GLBackendState *s, MediaFrame *f) {
     if (need_realloc) {
         if (s->video_tex[0]) glDeleteTextures(3, s->video_tex);
         glGenTextures(3, s->video_tex);
-        
-        s->video_width = f->width;
+
+        s->video_width  = f->width;
         s->video_height = f->height;
         s->video_format = f->format;
 
@@ -23,8 +24,7 @@ static void update_video_textures(GLBackendState *s, MediaFrame *f) {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         }
 
-        // alocate once, then just stream updates with texsubimage
-        // never alocate things over and over again!
+        // Allocate once, stream updates via texsubimage
         if (f->format == GECND_PIX_FMT_YUV420P) {
             glBindTexture(GL_TEXTURE_2D, s->video_tex[0]);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, f->width, f->height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, NULL);
@@ -34,13 +34,13 @@ static void update_video_textures(GLBackendState *s, MediaFrame *f) {
             glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, f->width / 2, f->height / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, NULL);
         } else {
             glBindTexture(GL_TEXTURE_2D, s->video_tex[0]);
-            GLenum fmt = (f->format == GECND_PIX_FMT_RGB565) ? GL_RGB : GL_RGBA;
+            GLenum fmt  = (f->format == GECND_PIX_FMT_RGB565) ? GL_RGB  : GL_RGBA;
             GLenum type = (f->format == GECND_PIX_FMT_RGB565) ? GL_UNSIGNED_SHORT_5_6_5 : GL_UNSIGNED_BYTE;
             glTexImage2D(GL_TEXTURE_2D, 0, fmt, f->width, f->height, 0, fmt, type, NULL);
         }
     }
 
-    // alignment 1 hopefully avoids weird row jumps on odd widths/strides
+    // alignment 1: tightly-packed data from set_buffer.c, handles odd widths
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
     if (f->format == GECND_PIX_FMT_YUV420P) {
@@ -52,7 +52,7 @@ static void update_video_textures(GLBackendState *s, MediaFrame *f) {
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width / 2, f->height / 2, GL_LUMINANCE, GL_UNSIGNED_BYTE, f->data[2]);
     } else {
         glBindTexture(GL_TEXTURE_2D, s->video_tex[0]);
-        GLenum fmt = (f->format == GECND_PIX_FMT_RGB565) ? GL_RGB : GL_RGBA;
+        GLenum fmt  = (f->format == GECND_PIX_FMT_RGB565) ? GL_RGB  : GL_RGBA;
         GLenum type = (f->format == GECND_PIX_FMT_RGB565) ? GL_UNSIGNED_SHORT_5_6_5 : GL_UNSIGNED_BYTE;
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width, f->height, fmt, type, f->data[0]);
     }
@@ -61,7 +61,6 @@ static void update_video_textures(GLBackendState *s, MediaFrame *f) {
 }
 
 void native_draw_background_video(void) {
-    return; /** @todo: enable */
     GLBackendState *s = geogl_get_state();
     MediaFrame *f = gecnd_get_background_frame();
     if (!f) return;
@@ -73,52 +72,92 @@ void native_draw_background_video(void) {
     if (!s->video_tex[0]) return;
 
     gecnd_filter_t *filter = gecnd_filter_get_config();
-    GEProgram *p = &s->programs[GE_PROG_VIDEO];
-
-    glUseProgram(p->id);
-    
-    // Use true identity matrix for NDC vertices (-1..1)
-    static const float identity[16] = {
-        1,0,0,0,
-        0,1,0,0,
-        0,0,1,0,
-        0,0,0,1
-    };
-    glUniformMatrix4fv(p->loc_proj, 1, GL_FALSE, identity);
-
-    // Textures
-    if (f->format == GECND_PIX_FMT_YUV420P) {
-        glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, s->video_tex[0]); glUniform1i(p->loc_tex_y, 0);
-        glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, s->video_tex[1]); glUniform1i(p->loc_tex_u, 1);
-        glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, s->video_tex[2]); glUniform1i(p->loc_tex_v, 2);
-        glUniform1i(p->loc_format, 1);
-    } else {
-        glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, s->video_tex[0]); glUniform1i(p->loc_tex, 0);
-        glUniform1i(p->loc_format, 0);
-    }
-
-    // Filters
-    glUniform1f(p->loc_brightness, filter->brightness);
-    glUniform1f(p->loc_contrast, filter->contrast);
-    glUniform1f(p->loc_saturation, filter->saturation);
-    glUniform1f(p->loc_film_grain, filter->film_grain);
-    glUniform1f(p->loc_time, (float)platform_get_time());
-    glUniform1f(p->loc_scratch, filter->scratch_amount);
-    glUniform1f(p->loc_jitter, filter->jitter_amount);
-
-    // Use pre-calculated corner_vertices (6 vertices for GL_TRIANGLES)
-    glBindBuffer(GL_ARRAY_BUFFER, 0); 
-    glEnableVertexAttribArray(0); // a_pos
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), filter->corner_vertices);
-    glEnableVertexAttribArray(2); // a_texCoord
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), &filter->corner_vertices[2]);
 
     glDisable(GL_BLEND);
     glDisable(GL_DEPTH_TEST);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    if (f->format == GECND_PIX_FMT_YUV420P) {
+        // YUV420P: dedicated video program with NDC fullscreen quad + color filters
+        static const float fullscreen_ndc[24] = {
+            -1.0f,  1.0f,  0.0f, 0.0f,  // TL
+             1.0f,  1.0f,  1.0f, 0.0f,  // TR
+             1.0f, -1.0f,  1.0f, 1.0f,  // BR
+            -1.0f,  1.0f,  0.0f, 0.0f,  // TL
+             1.0f, -1.0f,  1.0f, 1.0f,  // BR
+            -1.0f, -1.0f,  0.0f, 1.0f,  // BL
+        };
+        static const float identity[16] = {
+            1,0,0,0,
+            0,1,0,0,
+            0,0,1,0,
+            0,0,0,1
+        };
+        const float *verts = gencd_filter_is_zero_video_pos() ? fullscreen_ndc : filter->video_vertices;
+
+        GEProgram *p = &s->programs[GE_PROG_VIDEO];
+        glUseProgram(p->id);
+        glUniformMatrix4fv(p->loc_proj, 1, GL_FALSE, identity);
+
+        glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, s->video_tex[0]); glUniform1i(p->loc_tex_y, 0);
+        glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, s->video_tex[1]); glUniform1i(p->loc_tex_u, 1);
+        glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, s->video_tex[2]); glUniform1i(p->loc_tex_v, 2);
+        glUniform1f(p->loc_brightness,  filter->brightness);
+        glUniform1f(p->loc_contrast,    filter->contrast);
+        glUniform1f(p->loc_saturation,  filter->saturation);
+        glUniform1f(p->loc_film_grain,  filter->film_grain);
+        glUniform1f(p->loc_time,        (float)platform_get_time());
+        glUniform1f(p->loc_scratch,     filter->scratch_amount);
+        glUniform1f(p->loc_jitter,      filter->jitter_amount);
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), verts);
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), verts + 2);
+        glDisableVertexAttribArray(1);
+
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        glDisableVertexAttribArray(0);
+        glDisableVertexAttribArray(2);
+
+    } else {
+        // RGBA / RGB565: reuse atlas program (tex * white = tex), pixel-space fullscreen quad
+        int16_t W = (int16_t)s->window_width;
+        int16_t H = (int16_t)s->window_height;
+        GEAtlasVertex quad[6] = {
+            {0, 0, 0, 1, 255,255,255,255, 0,     0    },  // TL
+            {W, 0, 0, 1, 255,255,255,255, 65535, 0    },  // TR
+            {W, H, 0, 1, 255,255,255,255, 65535, 65535},  // BR
+            {0, 0, 0, 1, 255,255,255,255, 0,     0    },  // TL
+            {W, H, 0, 1, 255,255,255,255, 65535, 65535},  // BR
+            {0, H, 0, 1, 255,255,255,255, 0,     65535},  // BL
+        };
+
+        GEProgram *p = &s->programs[GE_PROG_ATLAS];
+        glUseProgram(p->id);
+        glUniformMatrix4fv(p->loc_proj, 1, GL_FALSE, s->projection);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, s->video_tex[0]);
+        glUniform1i(p->loc_tex, 0);
+
+        size_t stride = sizeof(GEAtlasVertex);
+        glBindBuffer(GL_ARRAY_BUFFER, s->vbo_atlas);
+        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)sizeof(quad), quad, GL_STREAM_DRAW);
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_SHORT,          GL_FALSE, stride, (void*)offsetof(GEAtlasVertex, x));
+        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE,  GL_TRUE,  stride, (void*)offsetof(GEAtlasVertex, r));
+        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_UNSIGNED_SHORT, GL_TRUE,  stride, (void*)offsetof(GEAtlasVertex, u));
+        glDisableVertexAttribArray(3);
+        glDisableVertexAttribArray(4);
+
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        glDisableVertexAttribArray(0);
+        glDisableVertexAttribArray(1);
+        glDisableVertexAttribArray(2);
+    }
+
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
-
-    glDisableVertexAttribArray(0);
-    glDisableVertexAttribArray(2);
 }

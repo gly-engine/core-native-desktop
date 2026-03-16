@@ -89,11 +89,11 @@ typedef struct __attribute__((packed))
 #define GE_MAX_CHUNK 1020
 
 typedef enum {
-    GE_PROG_SIMPLE,
-    GE_PROG_COMPLEX,
-    GE_PROG_ATLAS,
-    GE_PROG_VIDEO,
-    GE_PROG_COUNT
+    GE_PROG_SIMPLE    = 0,
+    GE_PROG_COMPLEX   = 1,
+    GE_PROG_ATLAS     = 2,
+    GE_PROG_VIDEO     = 3,  // YUV420P: 3 textures + color filters
+    GE_PROG_COUNT     = 4,  // total size of programs[] and batch arrays
 } GEProgramType;
 
 typedef struct {

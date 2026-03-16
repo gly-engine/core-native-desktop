@@ -22,7 +22,8 @@ typedef struct {
     atomic_bool ready;
 } MediaFrame;
 
-// Shared background media frame with double buffering (Managed by Frontend_Core/set_buffer.c)
+// Shared background media frame with triple buffering (Managed by Frontend_Core/set_buffer.c)
+// front=consumer reads, back=producer writes, mid=exchange slot (freshest completed frame)
 MediaFrame* gecnd_buffer_get_front(void);
 MediaFrame* gecnd_buffer_get_back(void);
 void gecnd_buffer_swap(void);
