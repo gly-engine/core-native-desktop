@@ -39,6 +39,7 @@ void native_image_load(const char *path, int32_t image_id, bool *success) {
     }
 
     if (!reuse) ge_atlas_alloc(ihdr.width, ihdr.height, &page_idx, &ox, &oy);
+    ge_pipeline_flush_primitives();
     glBindTexture(GL_TEXTURE_2D, s->atlas_pages.a[page_idx].tex_id);
     glTexSubImage2D(GL_TEXTURE_2D, 0, ox, oy, ihdr.width, ihdr.height, GL_RGBA, GL_UNSIGNED_BYTE, img);
     s->atlas_dirty = true;
@@ -61,13 +62,17 @@ void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
     if (!t.width) return;
     static const uint32_t color = 0xFFFFFFFF;
     int16_t ix = x, iy = y, iw = (int16_t)t.width, ih = (int16_t)t.height;
-    
-    ge_batch_add_vertex_tex(ix, iy, t.u, t.v, color, t.is_opaque, t.page_index);
-    ge_batch_add_vertex_tex(ix, iy + ih, t.u, t.v2, color, t.is_opaque, t.page_index);
-    ge_batch_add_vertex_tex(ix + iw, iy + ih, t.u2, t.v2, color, t.is_opaque, t.page_index);
-    ge_batch_add_vertex_tex(ix, iy, t.u, t.v, color, t.is_opaque, t.page_index);
-    ge_batch_add_vertex_tex(ix + iw, iy + ih, t.u2, t.v2, color, t.is_opaque, t.page_index);
-    ge_batch_add_vertex_tex(ix + iw, iy, t.u2, t.v, color, t.is_opaque, t.page_index);
+
+    float half = 0.5f / (float)GE_ATLAS_SIZE;
+    float u1 = t.u + half, v1 = t.v + half;
+    float u2 = t.u2 - half, v2 = t.v2 - half;
+
+    ge_batch_add_vertex_tex(ix, iy, u1, v1, color, t.is_opaque, t.page_index);
+    ge_batch_add_vertex_tex(ix, iy + ih, u1, v2, color, t.is_opaque, t.page_index);
+    ge_batch_add_vertex_tex(ix + iw, iy + ih, u2, v2, color, t.is_opaque, t.page_index);
+    ge_batch_add_vertex_tex(ix, iy, u1, v1, color, t.is_opaque, t.page_index);
+    ge_batch_add_vertex_tex(ix + iw, iy + ih, u2, v2, color, t.is_opaque, t.page_index);
+    ge_batch_add_vertex_tex(ix + iw, iy, u2, v1, color, t.is_opaque, t.page_index);
 
     s->current_z++;
 }
