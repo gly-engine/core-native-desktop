@@ -7,11 +7,6 @@
 #include "gehook.h"
 #include "geopengl.h"
 
-void ge_batch_get_color_u8(uint8_t *c) {
-    GLBackendState *s = geogl_get_state();
-    memcpy(c, s->current_color.rgba, 4);
-}
-
 void native_draw_start(void) {
     ge_pipeline_start();
     native_draw_background_video();

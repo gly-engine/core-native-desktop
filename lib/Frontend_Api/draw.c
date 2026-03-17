@@ -5,6 +5,8 @@
 #include "gehook.h"
 
 static int lua_native_draw_start(lua_State *L) {
+    /** @todo use this? */
+    (void) L;
     return 0;
 }
 
@@ -17,13 +19,15 @@ static int lua_native_draw_flush(lua_State *L) {
 }
 
 static int lua_native_draw_clear(lua_State *L) {
-    native_draw_clear(luaL_checkinteger(L, 1));
+    uint32_t color = (uint32_t)lua_tonumber(L, 1);
+    native_draw_clear(color);
     lua_settop(L, 0);
     return 0;
 }
 
 static int lua_native_draw_color(lua_State *L) {
-    native_draw_color(luaL_checkinteger(L, 1));
+    uint32_t color = (uint32_t)lua_tonumber(L, 1);
+    native_draw_color(color);
     lua_settop(L, 0);
     return 0;
 }
