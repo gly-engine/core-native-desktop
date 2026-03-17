@@ -82,6 +82,7 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     GLBackendState *s = geogl_get_state();
     if (platform_init(width, height) != 0) exit(1);
     if (!gladLoadGLES2((GLADloadfunc)glad_gles2_loader)) exit(1);
+    s->is_gles = true;
     kv_init(s->textures);
     init_all_shaders(true);
     ge_pipeline_init(width, height);

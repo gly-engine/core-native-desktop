@@ -1,5 +1,5 @@
 #version 100
-precision lowp float;
+precision mediump float;
 
 varying mediump vec2 v_texCoord;
 uniform sampler2D tex_y;
@@ -25,9 +25,10 @@ void main() {
     uv.x += (rand(vec2(jTime, 0.0)) - 0.5) * 0.003 * u_jitter;
 
     // YUV -> RGB (BT.601 full range)
-    float y = texture2D(tex_y, uv).r;
-    float u = texture2D(tex_u, uv).r - 0.5;
-    float v = texture2D(tex_v, uv).r - 0.5;
+    // Planes uploaded as GL_ALPHA on GLES, so read .a channel
+    float y = texture2D(tex_y, uv).a;
+    float u = texture2D(tex_u, uv).a - 0.5;
+    float v = texture2D(tex_v, uv).a - 0.5;
     vec3 color;
     color.r = y + 1.402   * v;
     color.g = y - 0.34414 * u - 0.71414 * v;

@@ -25,13 +25,15 @@ static void update_video_textures(GLBackendState *s, MediaFrame *f) {
         }
 
         // Allocate once, stream updates via texsubimage
+        // GL_ALPHA: 1 byte/pixel, universally supported on both GL and GLES 2.0.
+        // Shader reads .a channel for Y/U/V planes.
         if (f->format == GECND_PIX_FMT_YUV420P) {
             glBindTexture(GL_TEXTURE_2D, s->video_tex[0]);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, f->width, f->height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, NULL);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, f->width, f->height, 0, GL_ALPHA, GL_UNSIGNED_BYTE, NULL);
             glBindTexture(GL_TEXTURE_2D, s->video_tex[1]);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, f->width / 2, f->height / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, NULL);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, f->width / 2, f->height / 2, 0, GL_ALPHA, GL_UNSIGNED_BYTE, NULL);
             glBindTexture(GL_TEXTURE_2D, s->video_tex[2]);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, f->width / 2, f->height / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, NULL);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, f->width / 2, f->height / 2, 0, GL_ALPHA, GL_UNSIGNED_BYTE, NULL);
         } else {
             glBindTexture(GL_TEXTURE_2D, s->video_tex[0]);
             GLenum fmt  = (f->format == GECND_PIX_FMT_RGB565) ? GL_RGB  : GL_RGBA;
@@ -45,11 +47,11 @@ static void update_video_textures(GLBackendState *s, MediaFrame *f) {
 
     if (f->format == GECND_PIX_FMT_YUV420P) {
         glBindTexture(GL_TEXTURE_2D, s->video_tex[0]);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width, f->height, GL_LUMINANCE, GL_UNSIGNED_BYTE, f->data[0]);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width, f->height, GL_ALPHA, GL_UNSIGNED_BYTE, f->data[0]);
         glBindTexture(GL_TEXTURE_2D, s->video_tex[1]);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width / 2, f->height / 2, GL_LUMINANCE, GL_UNSIGNED_BYTE, f->data[1]);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width / 2, f->height / 2, GL_ALPHA, GL_UNSIGNED_BYTE, f->data[1]);
         glBindTexture(GL_TEXTURE_2D, s->video_tex[2]);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width / 2, f->height / 2, GL_LUMINANCE, GL_UNSIGNED_BYTE, f->data[2]);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f->width / 2, f->height / 2, GL_ALPHA, GL_UNSIGNED_BYTE, f->data[2]);
     } else {
         glBindTexture(GL_TEXTURE_2D, s->video_tex[0]);
         GLenum fmt  = (f->format == GECND_PIX_FMT_RGB565) ? GL_RGB  : GL_RGBA;

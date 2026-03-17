@@ -44,15 +44,12 @@ static void frame_copy(AVFrame *src, MediaFrame *dst) {
 
 static void threadworker(void *arg) {
     VideoStream *s = arg;
-
     AV.avformat_network_init();
 
     AVDictionary* opts = NULL;
     AV.av_dict_set(&opts, "timeout", "5000000", 0);
-    AV.av_dict_set(&opts, "probesize", "50000000", 0);
-    AV.av_dict_set(&opts, "analyzeduration", "10000000", 0);
     AV.av_dict_set(&opts, "tls_verify", "0", 0);
-    
+
     if (AV.avformat_open_input(&s->fmt, s->url, NULL, &opts) < 0) {
         fprintf(stderr, "[ffmpeg] Error opening file: %s\n", s->url);
         atomic_store(&s->running, 0);
@@ -61,10 +58,15 @@ static void threadworker(void *arg) {
     }
     AV.av_dict_free(&opts);
 
-    if (AV.avformat_find_stream_info(s->fmt, NULL) < 0) {
-        fprintf(stderr, "[ffmpeg] Error finding stream info\n");
-        goto cleanup_pkt_frame;
-    }
+    // Limit probe to avoid triggering decode during avformat_find_stream_info.
+    // On constrained ARM devices, probing H264/MPEG-2 via decode is very slow
+    // and often fails (OOM, partial I-frame, etc.). Container headers already
+    // carry width/height/codec for MP4/TS — a tiny probe is enough.
+    s->fmt->probesize = 32768;        // 32 KB: enough to read MP4/TS headers
+    s->fmt->max_analyze_duration = 0; // disable decode-based analysis entirely
+
+    // best-effort: don't abort on partial codec parameters (pix_fmt may be NONE)
+    AV.avformat_find_stream_info(s->fmt, NULL);
 
     s->video_index = AV.av_find_best_stream(s->fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
     if (s->video_index < 0) {
@@ -82,6 +84,17 @@ static void threadworker(void *arg) {
     s->vcodec = AV.avcodec_alloc_context3(vdec);
     if (!s->vcodec) goto cleanup_format;
     AV.avcodec_parameters_to_context(s->vcodec, s->video->codecpar);
+
+    // pix_fmt may be NONE when probe couldn't decode (common on constrained ARM
+    // with H264/MPEG-2). Default to yuv420p — the decoder overwrites it on the
+    // first decoded frame anyway, but needs a valid value to initialize.
+    if (s->vcodec->pix_fmt == AV_PIX_FMT_NONE) {
+        s->vcodec->pix_fmt = AV_PIX_FMT_YUV420P;
+    }
+    // Single-threaded decode: avoids large per-thread reference frame buffers
+    // that can exhaust memory on 512 MB / 1 GB ARM boards at 1080p.
+    s->vcodec->thread_count = 1;
+
     if (AV.avcodec_open2(s->vcodec, vdec, NULL) < 0) {
         fprintf(stderr, "[ffmpeg] Error opening codec\n");
         goto cleanup_codec;
@@ -92,15 +105,23 @@ static void threadworker(void *arg) {
     bool initialized = false;
     s->clock_start = now_sec();
 
+    // avformat_find_stream_info advances the read position; seek back to the
+    // beginning so the decoder always starts from a keyframe (important for
+    // MPEG-2/MPEG-TS where probing may fail to find codec parameters)
+    AV.av_seek_frame(s->fmt, s->video_index, 0, AVSEEK_FLAG_BACKWARD);
+    AV.avcodec_flush_buffers(s->vcodec);
+
     while (atomic_load(&s->running)) {
         if (AV.av_read_frame(s->fmt, pkt) < 0) {
             AV.av_seek_frame(s->fmt, s->video_index, 0, AVSEEK_FLAG_BACKWARD);
+            AV.avcodec_flush_buffers(s->vcodec);
             s->clock_start = now_sec();
             continue;
         }
 
         if (pkt->stream_index == s->video_index) {
-            if (AV.avcodec_send_packet(s->vcodec, pkt) == 0) {
+            int send_ret = AV.avcodec_send_packet(s->vcodec, pkt);
+            if (send_ret == 0) {
                 while (AV.avcodec_receive_frame(s->vcodec, vfrm) == 0) {
                     if (!initialized) {
                         gecnd_buffer_resize(vfrm->width, vfrm->height, translate_format(vfrm->format));

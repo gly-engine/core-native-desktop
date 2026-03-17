@@ -21,9 +21,9 @@ void main() {
     float jTime = floor(u_time * 15.0);
     uv.x += (rand(vec2(jTime, 0.0)) - 0.5) * 0.003 * u_jitter;
 
-    float y = texture2D(tex_y, uv).r;
-    float u = texture2D(tex_u, uv).r - 0.5;
-    float v = texture2D(tex_v, uv).r - 0.5;
+    float y = texture2D(tex_y, uv).a;
+    float u = texture2D(tex_u, uv).a - 0.5;
+    float v = texture2D(tex_v, uv).a - 0.5;
     vec3 color;
     color.r = y + 1.402   * v;
     color.g = y - 0.34414 * u - 0.71414 * v;

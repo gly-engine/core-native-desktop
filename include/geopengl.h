@@ -163,6 +163,8 @@ typedef struct {
     int video_width;
     int video_height;
     int video_format;
+
+    bool is_gles; // true when running on OpenGL ES (e.g. Mali 400)
 } GLBackendState;
 
 GLBackendState* geogl_get_state(void);

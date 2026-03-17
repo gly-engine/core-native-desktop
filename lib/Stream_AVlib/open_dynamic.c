@@ -61,7 +61,7 @@ static FFMpegVersionSet version_sets[] = {
     // Unversioned fallback
     {"libavcodec.so", "libavformat.so", "libavutil.so"},
 #endif
-    {NULL, NULL, NULL, NULL}
+    {NULL, NULL, NULL}
 };
 
 bool av_load_ffmpeg(void) {
