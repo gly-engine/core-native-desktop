@@ -221,8 +221,13 @@ void ge_pipeline_terminate(void) {
     if (s->video_tex[0]) glDeleteTextures(3, s->video_tex);
     glDeleteBuffers(1, &s->vbo_post);
 
-    if (s->fbo_id) glDeleteFramebuffers(1, &s->fbo_id);
-    if (s->fbo_tex) glDeleteTextures(1, &s->fbo_tex);
+    if (s->fbo_id)  glDeleteFramebuffers(1, &s->fbo_id);
+    if (s->fbo_tex) glDeleteTextures(1,    &s->fbo_tex);
+
+    // HW render FBO (cores like PCSX ReARMed)
+    if (s->hw_fbo_id)       glDeleteFramebuffers(1,  &s->hw_fbo_id);
+    if (s->hw_fbo_tex)      glDeleteTextures(1,       &s->hw_fbo_tex);
+    if (s->hw_fbo_depth_rb) glDeleteRenderbuffers(1,  &s->hw_fbo_depth_rb);
     
     for (int i = 0; i < (int)kv_size(s->atlas_pages); i++) {
         glDeleteTextures(1, &s->atlas_pages.a[i].tex_id);

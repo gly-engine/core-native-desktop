@@ -165,6 +165,15 @@ typedef struct {
     int video_format;
 
     bool is_gles; // true when running on OpenGL ES (e.g. Mali 400)
+
+    // HW Render (cores like PCSX ReARMed that render via OpenGL/GLES)
+    GLuint hw_fbo_id;
+    GLuint hw_fbo_tex;
+    GLuint hw_fbo_depth_rb;
+    int hw_fbo_width;
+    int hw_fbo_height;
+    bool hw_render_active;       // true after first RETRO_HW_FRAME_BUFFER_VALID
+    bool hw_bottom_left_origin;  // core uses GL bottom-left UV convention
 } GLBackendState;
 
 GLBackendState* geogl_get_state(void);

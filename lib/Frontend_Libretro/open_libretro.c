@@ -11,6 +11,7 @@
 #include "gedll.h"
 #include "gehook.h"
 #include "buffer.h"
+#include "hw_render.h"
 
 static int pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
 static bool core_initialized = false;
@@ -68,6 +69,9 @@ static void RETRO_CALLCONV core_log(enum retro_log_level level, const char *fmt,
 static void RETRO_CALLCONV core_video_refresh(const void *data, unsigned width, unsigned height, size_t pitch) {
     // data == NULL: core requests frame dupe (GET_CAN_DUPE=true) — keep last frame
     if (!data) return;
+
+    // HW render: core drew directly into the FBO, nothing to copy
+    if (libretro_hw_video_refresh(data, width, height, pitch)) return;
 
     int ge_fmt = (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) ? GECND_PIX_FMT_RGBA8888 : GECND_PIX_FMT_RGB565;
     gecnd_buffer_resize((int)width, (int)height, ge_fmt);
@@ -137,6 +141,10 @@ static bool core_environment(unsigned cmd, void *data) {
             return true;
         case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
             return true;
+        case RETRO_ENVIRONMENT_SET_HW_RENDER:
+        case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER:
+        case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE:
+            return libretro_hw_handle_env(cmd, data);
         case RETRO_ENVIRONMENT_SET_GEOMETRY:
             if (data) {
                 struct retro_game_geometry *geom = (struct retro_game_geometry*)data;
@@ -287,10 +295,17 @@ bool native_libretro_game(const char *path) {
     if (ok) {
         struct retro_system_av_info av_info = {0};
         if (p_retro_get_system_av_info) p_retro_get_system_av_info(&av_info);
-        
-        int ge_fmt = (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) ? GECND_PIX_FMT_RGBA8888 : GECND_PIX_FMT_RGB565;
-        if (av_info.geometry.base_width > 0 && av_info.geometry.base_height > 0) {
-            gecnd_buffer_resize((int)av_info.geometry.base_width, (int)av_info.geometry.base_height, ge_fmt);
+
+        if (libretro_hw_is_active()) {
+            // Use max_width/max_height so we don't have to resize the FBO mid-game
+            int fw = (av_info.geometry.max_width  > 0) ? (int)av_info.geometry.max_width  : (int)av_info.geometry.base_width;
+            int fh = (av_info.geometry.max_height > 0) ? (int)av_info.geometry.max_height : (int)av_info.geometry.base_height;
+            libretro_hw_context_reset(fw, fh);
+        } else {
+            int ge_fmt = (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) ? GECND_PIX_FMT_RGBA8888 : GECND_PIX_FMT_RGB565;
+            if (av_info.geometry.base_width > 0 && av_info.geometry.base_height > 0) {
+                gecnd_buffer_resize((int)av_info.geometry.base_width, (int)av_info.geometry.base_height, ge_fmt);
+            }
         }
 
         core_initialized = true;
@@ -306,6 +321,7 @@ void libretro_deinit_core(void) {
     if (core_initialized) {
         if (p_retro_unload_game) p_retro_unload_game();
     }
+    libretro_hw_cleanup();
     if (core_init_done) {
         if (p_retro_deinit) p_retro_deinit();
     }
@@ -320,7 +336,11 @@ MediaFrame* libretro_get_frame(void) {
 }
 
 void libretro_run_frame(void) {
-    if (core_initialized && p_retro_run) p_retro_run();
+    if (!core_initialized || !p_retro_run) return;
+    p_retro_run();
+    // HW cores change FBO/viewport; restore default framebuffer so the display
+    // backend starts clean.  ge_hw_restore_context is a weak no-op without GL.
+    if (libretro_hw_is_active()) ge_hw_restore_context();
 }
 
 bool libretro_is_running(void) {

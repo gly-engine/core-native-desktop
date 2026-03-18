@@ -64,6 +64,57 @@ static void update_video_textures(GLBackendState *s, MediaFrame *f) {
 
 void native_draw_background_video(void) {
     GLBackendState *s = geogl_get_state();
+
+    // HW render path: core already drew into hw_fbo_tex on GPU
+    if (s->hw_render_active && s->hw_fbo_tex) {
+        glDisable(GL_BLEND);
+        glDisable(GL_DEPTH_TEST);
+
+        int16_t W = (int16_t)s->window_width;
+        int16_t H = (int16_t)s->window_height;
+
+        // OpenGL FBOs are bottom-left origin; flip V when core set bottom_left_origin=true
+        uint16_t v0 = s->hw_bottom_left_origin ? 65535 : 0;
+        uint16_t v1 = s->hw_bottom_left_origin ? 0     : 65535;
+
+        GEAtlasVertex quad[6] = {
+            {0, 0, 0, 1, 255,255,255,255, 0,     v0},
+            {W, 0, 0, 1, 255,255,255,255, 65535, v0},
+            {W, H, 0, 1, 255,255,255,255, 65535, v1},
+            {0, 0, 0, 1, 255,255,255,255, 0,     v0},
+            {W, H, 0, 1, 255,255,255,255, 65535, v1},
+            {0, H, 0, 1, 255,255,255,255, 0,     v1},
+        };
+
+        GEProgram *p = &s->programs[GE_PROG_ATLAS];
+        glUseProgram(p->id);
+        glUniformMatrix4fv(p->loc_proj, 1, GL_FALSE, s->projection);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, s->hw_fbo_tex);
+        glUniform1i(p->loc_tex, 0);
+
+        size_t stride = sizeof(GEAtlasVertex);
+        glBindBuffer(GL_ARRAY_BUFFER, s->vbo_atlas);
+        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)sizeof(quad), quad, GL_STREAM_DRAW);
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_SHORT,          GL_FALSE, stride, (void*)offsetof(GEAtlasVertex, x));
+        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE,  GL_TRUE,  stride, (void*)offsetof(GEAtlasVertex, r));
+        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_UNSIGNED_SHORT, GL_TRUE,  stride, (void*)offsetof(GEAtlasVertex, u));
+        glDisableVertexAttribArray(3);
+        glDisableVertexAttribArray(4);
+
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        glDisableVertexAttribArray(0);
+        glDisableVertexAttribArray(1);
+        glDisableVertexAttribArray(2);
+
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        return;
+    }
+
+    // Software render path
     MediaFrame *f = gecnd_get_background_frame();
     if (!f) return;
 

@@ -68,6 +68,10 @@ void platform_terminate(void) {
     egl_display = EGL_NO_DISPLAY; egl_context = EGL_NO_CONTEXT; egl_surface = EGL_NO_SURFACE;
 }
 
+void* platform_get_proc_address(const char *name) {
+    return (void*)eglGetProcAddress(name);
+}
+
 void platform_swap_buffers(void) {
     if (egl_display != EGL_NO_DISPLAY) eglSwapBuffers(egl_display, egl_surface);
 }
