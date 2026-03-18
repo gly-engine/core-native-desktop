@@ -10,9 +10,13 @@
 // Returns true if the command was handled.
 bool libretro_hw_handle_env(unsigned cmd, void *data);
 
-// Call after retro_load_game() succeeds and the GL context is ready.
-// w/h: max framebuffer size the core will render at.
+// Call after retro_load_game() succeeds. Saves the FBO dimensions but does NOT
+// touch GL yet — the GL context may not be up at this point.
 void libretro_hw_context_reset(int w, int h);
+
+// Called by the GL backend after the context + GLAD are fully initialized.
+// Completes the deferred FBO creation and calls the core's context_reset callback.
+void libretro_hw_gl_ready(void);
 
 // Call before retro_deinit() / close.
 void libretro_hw_context_destroy(void);

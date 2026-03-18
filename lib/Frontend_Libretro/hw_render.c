@@ -18,7 +18,8 @@ __attribute__((weak)) void ge_hw_restore_context(void)                        {}
 // Internal state
 // ---------------------------------------------------------------------------
 static struct retro_hw_render_callback s_cb = {0};
-static bool s_active = false;
+static bool s_active   = false;
+static int  s_pending_w = 0, s_pending_h = 0; // deferred until GL is ready
 
 // ---------------------------------------------------------------------------
 // Callbacks given to the core
@@ -85,12 +86,23 @@ bool libretro_hw_handle_env(unsigned cmd, void *data) {
 
 void libretro_hw_context_reset(int w, int h) {
     if (!s_active) return;
-    ge_hw_fbo_ensure(w, h);
-    ge_hw_set_active(false, s_cb.bottom_left_origin); // cleared until first frame
+    // Don't touch GL here: this is called from retro_load_game which may run
+    // before the GL context / GLAD pointers are initialized (gecnd_set_args path).
+    // Store dimensions and let libretro_hw_gl_ready() finish when GL is up.
+    s_pending_w = w;
+    s_pending_h = h;
+    fprintf(stderr, "Libretro HW: context_reset pendente (%dx%d), aguardando GL\n", w, h);
+}
+
+void libretro_hw_gl_ready(void) {
+    if (!s_active || s_pending_w == 0) return;
+    ge_hw_fbo_ensure(s_pending_w, s_pending_h);
+    ge_hw_set_active(false, s_cb.bottom_left_origin); // cleared until first HW frame
     if (s_cb.context_reset) {
-        fprintf(stderr, "Libretro HW: chamando context_reset (%dx%d)\n", w, h);
+        fprintf(stderr, "Libretro HW: context_reset (%dx%d)\n", s_pending_w, s_pending_h);
         s_cb.context_reset();
     }
+    s_pending_w = s_pending_h = 0;
 }
 
 void libretro_hw_context_destroy(void) {
@@ -118,5 +130,6 @@ void libretro_hw_cleanup(void) {
     ge_hw_fbo_destroy();
     ge_hw_set_active(false, false);
     memset(&s_cb, 0, sizeof(s_cb));
-    s_active = false;
+    s_active    = false;
+    s_pending_w = s_pending_h = 0;
 }

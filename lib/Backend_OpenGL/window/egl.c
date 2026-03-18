@@ -10,6 +10,8 @@
 #include "gebuffer.h"
 #include "gehook.h"
 #include "geopengl.h"
+/** @todo move — forward decl para evitar include cruzado Backend↔Frontend */
+void libretro_hw_gl_ready(void);
 
 static GLBackendState g_gl_state;
 static EGLDisplay egl_display = EGL_NO_DISPLAY;
@@ -94,6 +96,8 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     mat4_ortho(s->projection, 0, width, height, 0, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
     s->last_frame_time = platform_get_time();
+    // Complete deferred HW render init for cores loaded before GL was ready.
+    libretro_hw_gl_ready();
 }
 
 void gly_hook_display_dt(int16_t *delta_time) {

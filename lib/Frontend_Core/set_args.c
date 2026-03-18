@@ -76,18 +76,8 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
             native_media_play(0);
         }
         if (c == 308) {
-            char *sep = strstr(opt.arg, "://");
-            if (sep) {
-                *sep = '\0';
-                char *core = opt.arg;
-                char *rom = sep + 3;
-                if (native_libretro_load(core)) {
-                    native_libretro_game(rom);
-                } else {
-                    gly->error_string = "failed to load libretro core!";
-                }
-            } else {
-                gly->error_string = "invalid libretro argument format! use core_path://rom_path";
+            if (!native_libretro_url(opt.arg)) {
+                gly->error_string = "failed to load libretro! format: core://rom[?key=val&...]";
             }
         }
         if (c == 309) {

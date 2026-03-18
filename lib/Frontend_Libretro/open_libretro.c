@@ -12,6 +12,7 @@
 #include "gehook.h"
 #include "buffer.h"
 #include "hw_render.h"
+#include "uri_query.h"
 
 static int pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
 static bool core_initialized = false;
@@ -123,6 +124,12 @@ static bool core_environment(unsigned cmd, void *data) {
             }
             return true;
         case RETRO_ENVIRONMENT_GET_VARIABLE:
+            if (data) {
+                struct retro_variable *var = (struct retro_variable*)data;
+                var->value = uri_query_get(var->key);
+                core_log(RETRO_LOG_INFO, "GET_VARIABLE: %s = %s\n", var->key, var->value ? var->value : "(not set)");
+                return var->value != NULL;
+            }
             return false;
         case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
             if (data) *(bool*)data = false;
@@ -172,7 +179,27 @@ static bool core_environment(unsigned cmd, void *data) {
 #define LOAD_SYM_OPTIONAL(name) \
     *(void**)(&p_##name) = get_symbol(core_handle, #name);
 
-bool native_libretro_load(const char *path) {
+bool native_libretro_url(const char *url) {
+    char buf[2048];
+    strncpy(buf, url, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+
+    char *sep = strstr(buf, "://");
+    if (!sep) return false;
+    *sep = '\0';
+    char *core = buf;
+    char *rom  = sep + 3;
+
+    char *query = strchr(rom, '?');
+    if (query) *query++ = '\0';
+
+    uri_query_parse(query); // resets previous vars and loads new ones
+
+    if (!native_libretro_load(core)) return false;
+    return native_libretro_game(rom);
+}
+
+static bool native_libretro_load(const char *path) {
     if (core_handle) close_library(core_handle);
     core_handle = NULL;
     reset_pointers();
@@ -230,7 +257,7 @@ bool native_libretro_load(const char *path) {
     return true;
 }
 
-bool native_libretro_game(const char *path) {
+static bool native_libretro_game(const char *path) {
     if (!core_handle) return false;
 
     char full_path[1024];
@@ -315,6 +342,10 @@ bool native_libretro_game(const char *path) {
 }
 
 void libretro_init_core(void) {
+}
+
+void native_libretro_exit(void) {
+    libretro_deinit_core();
 }
 
 void libretro_deinit_core(void) {
