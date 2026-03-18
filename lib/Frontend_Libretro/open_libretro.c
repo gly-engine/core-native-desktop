@@ -14,11 +14,15 @@
 #include "hw_render.h"
 #include "uri_query.h"
 
+const char *scanner_resolve_core(const char *name);
+const char *scanner_resolve_rom(const char *name);
+
 static int pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
 static bool core_initialized = false;
 static bool core_init_done = false;
 static LIB_HANDLE core_handle = NULL;
 static char system_dir[1024] = ".";
+static char s_error[256]     = "";
 
 // Libretro API function pointers
 static void (*p_retro_set_environment)(retro_environment_t) = NULL;
@@ -179,13 +183,24 @@ static bool core_environment(unsigned cmd, void *data) {
 #define LOAD_SYM_OPTIONAL(name) \
     *(void**)(&p_##name) = get_symbol(core_handle, #name);
 
+static bool native_libretro_load(const char *path);
+static bool native_libretro_game(const char *path);
+static void libretro_deinit_core(void);
+
+const char *native_libretro_error(void) {
+    return s_error;
+}
+
 bool native_libretro_url(const char *url) {
     char buf[2048];
     strncpy(buf, url, sizeof(buf) - 1);
     buf[sizeof(buf) - 1] = '\0';
 
     char *sep = strstr(buf, "://");
-    if (!sep) return false;
+    if (!sep) {
+        snprintf(s_error, sizeof(s_error), "invalid url, expected: core://rom[?key=val&...]");
+        return false;
+    }
     *sep = '\0';
     char *core = buf;
     char *rom  = sep + 3;
@@ -193,10 +208,29 @@ bool native_libretro_url(const char *url) {
     char *query = strchr(rom, '?');
     if (query) *query++ = '\0';
 
-    uri_query_parse(query); // resets previous vars and loads new ones
+    uri_query_parse(query);
 
-    if (!native_libretro_load(core)) return false;
-    return native_libretro_game(rom);
+    const char *resolved_core = scanner_resolve_core(core);
+    if (!resolved_core) {
+        snprintf(s_error, sizeof(s_error), "core not found: %s", core);
+        return false;
+    }
+    if (!native_libretro_load(resolved_core)) {
+        snprintf(s_error, sizeof(s_error), "failed to open core: %s", resolved_core);
+        return false;
+    }
+
+    const char *resolved_rom = scanner_resolve_rom(rom);
+    if (!resolved_rom) {
+        snprintf(s_error, sizeof(s_error), "rom not found: %s", rom);
+        return false;
+    }
+    if (!native_libretro_game(resolved_rom)) {
+        snprintf(s_error, sizeof(s_error), "failed to load rom: %s", resolved_rom);
+        return false;
+    }
+
+    return true;
 }
 
 static bool native_libretro_load(const char *path) {
@@ -204,36 +238,13 @@ static bool native_libretro_load(const char *path) {
     core_handle = NULL;
     reset_pointers();
     
-    char full_path[1024];
     char exe_dir[512];
     gecnd_utils_get_exe_cwd(exe_dir, sizeof(exe_dir));
-    
-    if (exe_dir[0] == '/') {
-        strncpy(system_dir, exe_dir, sizeof(system_dir));
-    } else {
-        getcwd(system_dir, sizeof(system_dir));
-    }
+    strncpy(system_dir, exe_dir[0] ? exe_dir : ".", sizeof(system_dir));
 
-    const char* variations[] = {
-        path,
-        "%s/%s",
-        "%s/%s_libretro.so",
-        "%s/lib%s_libretro.so",
-        "%s_libretro.so"
-    };
-
-    for (size_t i = 0; i < sizeof(variations)/sizeof(variations[0]); i++) {
-        if (i == 0 || i == 4) snprintf(full_path, sizeof(full_path), variations[i], path);
-        else snprintf(full_path, sizeof(full_path), variations[i], exe_dir, path);
-
-        core_handle = load_library(full_path);
-        if (core_handle) {
-            printf("Libretro: loaded core from %s\n", full_path);
-            break;
-        }
-    }
-
+    core_handle = load_library(path);
     if (!core_handle) return false;
+    printf("Libretro: loaded core from %s\n", path);
 
     LOAD_SYM_MANDATORY(retro_set_environment);
     LOAD_SYM_MANDATORY(retro_set_video_refresh);

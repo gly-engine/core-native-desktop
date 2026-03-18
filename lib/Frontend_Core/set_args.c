@@ -77,7 +77,7 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
         }
         if (c == 308) {
             if (!native_libretro_url(opt.arg)) {
-                gly->error_string = "failed to load libretro! format: core://rom[?key=val&...]";
+                gly->error_string = native_libretro_error();
             }
         }
         if (c == 309) {

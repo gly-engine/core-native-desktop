@@ -5,8 +5,9 @@
 
 static int lua_native_libretro_url(lua_State *L) {
     const char *url = luaL_checkstring(L, 1);
-    bool ok = native_libretro_url(url);
-    lua_pushboolean(L, ok);
+    if (!native_libretro_url(url)) {
+        lua_pushstring(L, native_libretro_error());
+    }
     return 1;
 }
 
