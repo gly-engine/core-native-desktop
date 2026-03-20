@@ -36,10 +36,20 @@ static const struct {
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     (void)window; (void)scancode; (void)mods;
+    if (action == GLFW_REPEAT) return;
     for (size_t i = 0; i < sizeof(keymap)/sizeof(keymap[0]); i++) {
         if (keymap[i].key == key) {
-            gecnd_set_btn_state(gecnd_get_root(), keymap[i].name, action == GLFW_PRESS);
+            gecnd_set_btn_state(gecnd_get_root(), keymap[i].name, action != GLFW_RELEASE);
             return;
+        }
+    }
+}
+
+static void focus_callback(GLFWwindow* window, int focused) {
+    (void)window;
+    if (!focused) {
+        for (size_t i = 0; i < sizeof(keymap)/sizeof(keymap[0]); i++) {
+            gecnd_set_btn_state(gecnd_get_root(), keymap[i].name, false);
         }
     }
 }
@@ -69,6 +79,7 @@ int platform_init(uint16_t width, uint16_t height) {
 
     glfwMakeContextCurrent(state->window);
     glfwSetKeyCallback(state->window, key_callback);
+    glfwSetWindowFocusCallback(state->window, focus_callback);
 
     return 0;
 }
