@@ -49,4 +49,8 @@ uint16_t gecnd_metrics_get_fps_worst(void);
 uint16_t gecnd_metrics_get_fps_percent(void);
 uint16_t gecnd_metrics_get_fps_drops(void);
 
+int32_t     gecnd_profile_get_temp(void);
+const char *gecnd_profile_get_local_ip(void);
+void        gecnd_profile_ip_refresh(void);
+
 #endif

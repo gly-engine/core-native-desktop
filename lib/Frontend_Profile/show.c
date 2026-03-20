@@ -10,9 +10,10 @@
 #define L_FLAVOR "PUC"
 #endif
 
-#define FMT_FPS  "FPS: %d avg | %d cur | %d low (1%%) | %d drops"
-#define FMT_LUA  "Lua %s (%s %db) | %s cur | %s avg | %s peak"
-#define FMT_PERF "Perf: I/O %dms | Loop %dms | Draw %dms | Post %dms | Wait %dms"
+#define FMT_FPS  "FPS: %3d avg | %3d cur | %3d low (1%%) | %3d drops"
+#define FMT_LUA  "Lua %s (%s %db) | %9s cur | %9s avg | %9s peak"
+#define FMT_PERF "Perf: I/O %4dms | Loop %4dms | Draw %4dms | Post %4dms | Wait %4dms"
+#define FMT_SYS  "Sys: IP %15s | Temp: %3d\xc2\xb0""C"
 
 static void format_memory(uint64_t bytes, char *out, size_t size)
 {
@@ -40,7 +41,7 @@ void gecnd_metrics_render(gecnd_t *gly)
     const int16_t box_w = 380;
     const int16_t line_h = 16;
     const int16_t padding = 8;
-    const int16_t box_h = (3 * line_h) + padding;
+    const int16_t box_h = (4 * line_h) + padding;
     
     char buf[256];
     char s1[32], s2[32], s3[32];
@@ -79,6 +80,11 @@ void gecnd_metrics_render(gecnd_t *gly)
              gecnd_metrics_get_draw_time(), gecnd_metrics_get_post_time(),
              gecnd_metrics_get_wait_time());
     native_text_print(tx, ty, buf);
+    ty += line_h;
+
+    snprintf(buf, sizeof(buf), FMT_SYS,
+             gecnd_profile_get_local_ip(), gecnd_profile_get_temp());
+    native_text_print(tx, ty, buf);
 }
 
 void gecnd_metrics_print(void)
@@ -116,4 +122,6 @@ void gecnd_metrics_print(void)
            gecnd_metrics_get_input_worst(), gecnd_metrics_get_loop_time(),
            gecnd_metrics_get_draw_time(), gecnd_metrics_get_post_time(),
            gecnd_metrics_get_wait_time());
+    printf("  " FMT_SYS "\n",
+           gecnd_profile_get_local_ip(), gecnd_profile_get_temp());
 }
