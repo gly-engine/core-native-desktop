@@ -36,8 +36,6 @@ void native_draw_clear(uint32_t color) {
 void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r) {
     GLBackendState *s = geogl_get_state();
     uint32_t color = s->current_color.u32;
-    uint8_t alpha = (color >> 24) & 0xFF;
-    bool opaque = (alpha >= 254);
 
     if (r < 0) r = 0;
     if (r * 2 > w) r = w / 2;
@@ -45,6 +43,7 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
 
     if (mode == 0) {
         if (r == 0) {
+            /* square fill */
             ge_batch_add_vertex_shape(x, y, 0, 0, 0, color, 0, false);
             ge_batch_add_vertex_shape(x, y + h, 0, 0, 0, color, 0, false);
             ge_batch_add_vertex_shape(x + w, y + h, 0, 0, 0, color, 0, false);
@@ -54,68 +53,74 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
         } else {
             float u0 = s->corner_uv[0], v0 = s->corner_uv[1];
             float u1 = s->corner_uv[2], v1 = s->corner_uv[3];
-            float wu = s->white_uv[0], wv = s->white_uv[1];
+            int cp = s->corner_page_index;
 
+            /* square fill - center vertical strip (shape, no tex sample needed) */
             if (h > 2 * r) {
-                ge_batch_add_vertex_tex(x, y + r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x, y + h - r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w, y + h - r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x, y + r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w, y + h - r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w, y + r, wu, wv, color, opaque, 0);
+                ge_batch_add_vertex_shape(x,     y + r,     0, 0, 0, color, 0, false);
+                ge_batch_add_vertex_shape(x,     y + h - r, 0, 0, 0, color, 0, false);
+                ge_batch_add_vertex_shape(x + w, y + h - r, 0, 0, 0, color, 0, false);
+                ge_batch_add_vertex_shape(x,     y + r,     0, 0, 0, color, 0, false);
+                ge_batch_add_vertex_shape(x + w, y + h - r, 0, 0, 0, color, 0, false);
+                ge_batch_add_vertex_shape(x + w, y + r,     0, 0, 0, color, 0, false);
             }
             if (w > 2 * r) {
-                ge_batch_add_vertex_tex(x + r, y, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + r, y + r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w - r, y + r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + r, y, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w - r, y + r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w - r, y, wu, wv, color, opaque, 0);
+                /* edge top */
+                ge_batch_add_vertex_shape(x + r,     y,     0, 0, 0, color, 0, false);
+                ge_batch_add_vertex_shape(x + r,     y + r, 0, 0, 0, color, 0, false);
+                ge_batch_add_vertex_shape(x + w - r, y + r, 0, 0, 0, color, 0, false);
+                ge_batch_add_vertex_shape(x + r,     y,     0, 0, 0, color, 0, false);
+                ge_batch_add_vertex_shape(x + w - r, y + r, 0, 0, 0, color, 0, false);
+                ge_batch_add_vertex_shape(x + w - r, y,     0, 0, 0, color, 0, false);
 
-                ge_batch_add_vertex_tex(x + r, y + h - r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + r, y + h, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w - r, y + h, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + r, y + h - r, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w - r, y + h, wu, wv, color, opaque, 0);
-                ge_batch_add_vertex_tex(x + w - r, y + h - r, wu, wv, color, opaque, 0);
+                /* edge bottom */
+                ge_batch_add_vertex_shape(x + r,     y + h - r, 0, 0, 0, color, 0, false);
+                ge_batch_add_vertex_shape(x + r,     y + h,     0, 0, 0, color, 0, false);
+                ge_batch_add_vertex_shape(x + w - r, y + h,     0, 0, 0, color, 0, false);
+                ge_batch_add_vertex_shape(x + r,     y + h - r, 0, 0, 0, color, 0, false);
+                ge_batch_add_vertex_shape(x + w - r, y + h,     0, 0, 0, color, 0, false);
+                ge_batch_add_vertex_shape(x + w - r, y + h - r, 0, 0, 0, color, 0, false);
             }
 
-            // Corners always use transparent batch (opaque=false) to ensure blending works for the glyph shape
-            // TL
-            ge_batch_add_vertex_tex(x, y, u0, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x, y + r, u0, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + r, y + r, u1, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x, y, u0, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + r, y + r, u1, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + r, y, u1, v0, color, false, 0);
+            /* rounded corners - bump z to avoid z-fighting with fill (PROG_SIMPLE vs PROG_ATLAS transparent pass) */
+            s->current_z++;
 
-            // TR
-            ge_batch_add_vertex_tex(x + w - r, y, u1, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + w - r, y + r, u1, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + w, y + r, u0, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + w - r, y, u1, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + w, y + r, u0, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + w, y, u0, v0, color, false, 0);
+            /* corner TL */
+            ge_batch_add_vertex_tex(x,     y,     u0, v0, color, false, cp);
+            ge_batch_add_vertex_tex(x,     y + r, u0, v1, color, false, cp);
+            ge_batch_add_vertex_tex(x + r, y + r, u1, v1, color, false, cp);
+            ge_batch_add_vertex_tex(x,     y,     u0, v0, color, false, cp);
+            ge_batch_add_vertex_tex(x + r, y + r, u1, v1, color, false, cp);
+            ge_batch_add_vertex_tex(x + r, y,     u1, v0, color, false, cp);
 
-            // BL
-            ge_batch_add_vertex_tex(x, y + h - r, u0, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x, y + h, u0, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + r, y + h, u1, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x, y + h - r, u0, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + r, y + h, u1, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + r, y + h - r, u1, v1, color, false, 0);
+            /* corner TR */
+            ge_batch_add_vertex_tex(x + w - r, y,     u1, v0, color, false, cp);
+            ge_batch_add_vertex_tex(x + w - r, y + r, u1, v1, color, false, cp);
+            ge_batch_add_vertex_tex(x + w,     y + r, u0, v1, color, false, cp);
+            ge_batch_add_vertex_tex(x + w - r, y,     u1, v0, color, false, cp);
+            ge_batch_add_vertex_tex(x + w,     y + r, u0, v1, color, false, cp);
+            ge_batch_add_vertex_tex(x + w,     y,     u0, v0, color, false, cp);
 
-            // BR
-            ge_batch_add_vertex_tex(x + w - r, y + h - r, u1, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + w - r, y + h, u1, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + w, y + h, u0, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + w - r, y + h - r, u1, v1, color, false, 0);
-            ge_batch_add_vertex_tex(x + w, y + h, u0, v0, color, false, 0);
-            ge_batch_add_vertex_tex(x + w, y + h - r, u0, v1, color, false, 0);
+            /* corner BL */
+            ge_batch_add_vertex_tex(x,     y + h - r, u0, v1, color, false, cp);
+            ge_batch_add_vertex_tex(x,     y + h,     u0, v0, color, false, cp);
+            ge_batch_add_vertex_tex(x + r, y + h,     u1, v0, color, false, cp);
+            ge_batch_add_vertex_tex(x,     y + h - r, u0, v1, color, false, cp);
+            ge_batch_add_vertex_tex(x + r, y + h,     u1, v0, color, false, cp);
+            ge_batch_add_vertex_tex(x + r, y + h - r, u1, v1, color, false, cp);
+
+            /* corner BR */
+            ge_batch_add_vertex_tex(x + w - r, y + h - r, u1, v1, color, false, cp);
+            ge_batch_add_vertex_tex(x + w - r, y + h,     u1, v0, color, false, cp);
+            ge_batch_add_vertex_tex(x + w,     y + h,     u0, v0, color, false, cp);
+            ge_batch_add_vertex_tex(x + w - r, y + h - r, u1, v1, color, false, cp);
+            ge_batch_add_vertex_tex(x + w,     y + h,     u0, v0, color, false, cp);
+            ge_batch_add_vertex_tex(x + w,     y + h - r, u0, v1, color, false, cp);
         }
     } else {
         if (r == 0) {
             int16_t lw = 1;
+            /* edge top */
             ge_batch_add_vertex_shape(x, y, 0, 0, 0, color, 0, false);
             ge_batch_add_vertex_shape(x, y + lw, 0, 0, 0, color, 0, false);
             ge_batch_add_vertex_shape(x + w, y + lw, 0, 0, 0, color, 0, false);
@@ -123,6 +128,7 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
             ge_batch_add_vertex_shape(x + w, y + lw, 0, 0, 0, color, 0, false);
             ge_batch_add_vertex_shape(x + w, y, 0, 0, 0, color, 0, false);
 
+            /* edge bottom */
             ge_batch_add_vertex_shape(x, y + h - lw, 0, 0, 0, color, 0, false);
             ge_batch_add_vertex_shape(x, y + h, 0, 0, 0, color, 0, false);
             ge_batch_add_vertex_shape(x + w, y + h, 0, 0, 0, color, 0, false);
@@ -130,6 +136,7 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
             ge_batch_add_vertex_shape(x + w, y + h, 0, 0, 0, color, 0, false);
             ge_batch_add_vertex_shape(x + w, y + h - lw, 0, 0, 0, color, 0, false);
 
+            /* edge left */
             ge_batch_add_vertex_shape(x, y + lw, 0, 0, 0, color, 0, false);
             ge_batch_add_vertex_shape(x, y + h - lw, 0, 0, 0, color, 0, false);
             ge_batch_add_vertex_shape(x + lw, y + h - lw, 0, 0, 0, color, 0, false);
@@ -137,6 +144,7 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
             ge_batch_add_vertex_shape(x + lw, y + h - lw, 0, 0, 0, color, 0, false);
             ge_batch_add_vertex_shape(x + lw, y + lw, 0, 0, 0, color, 0, false);
 
+            /* edge right */
             ge_batch_add_vertex_shape(x + w - lw, y + lw, 0, 0, 0, color, 0, false);
             ge_batch_add_vertex_shape(x + w - lw, y + h - lw, 0, 0, 0, color, 0, false);
             ge_batch_add_vertex_shape(x + w, y + h - lw, 0, 0, 0, color, 0, false);
@@ -144,6 +152,7 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
             ge_batch_add_vertex_shape(x + w, y + h - lw, 0, 0, 0, color, 0, false);
             ge_batch_add_vertex_shape(x + w, y + lw, 0, 0, 0, color, 0, false);
         } else {
+            /* rounded outline - full quad fed to SDF shader to draw 4 edges as circle arcs */
             float fw = (float)w, fh = (float)h, fr = (float)r;
             float hw = fw * 0.5f, hh = fh * 0.5f;
             float pad = 2.0f;
