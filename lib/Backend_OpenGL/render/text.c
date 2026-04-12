@@ -6,6 +6,10 @@
 #include "gefilter.h"
 #include "geopengl.h"
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 #define FONTSTASH_IMPLEMENTATION
 #include "fontstash.h"
 

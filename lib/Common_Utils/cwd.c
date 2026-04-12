@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 #include <windows.h>
 #elif defined(__linux__)
 #include <limits.h>
@@ -16,7 +16,7 @@ size_t gecnd_utils_get_exe_cwd(char *buffer, size_t max_size) {
     if (!buffer || max_size == 0)
         return (size_t)-1;
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     DWORD len = GetModuleFileNameA(NULL, buffer, (DWORD)max_size);
     if (len == 0 || len >= max_size)
         return (size_t)-1;
@@ -60,3 +60,20 @@ size_t gecnd_utils_get_cwd(char *buffer, size_t max_size) {
 
     return (size_t)strlen(buffer);
 }
+
+/**
+ * @todo temporary stub for microslop ruindows :/
+ */
+#if defined(_WIN32)
+#include <stdint.h>
+void native_media_source(uint8_t, const char*){}
+void native_media_position(uint8_t, int16_t, int16_t, int16_t, int16_t){}
+void native_media_play(uint8_t){}
+void native_media_pause(uint8_t){}
+void native_media_stop(uint8_t){}
+void native_image_unload_all(bool *) {}
+void gly_hook_keyboard_has_media(bool *) {}
+void gly_hook_luaopen_http(void*) {}
+void gly_hook_luaopen_base64(void*) {}
+void native_text_font_previous() {}
+#endif

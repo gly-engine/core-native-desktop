@@ -54,10 +54,16 @@ static void focus_callback(GLFWwindow* window, int focused) {
     }
 }
 
+void glfw_error_callback(int error, const char* description) {
+    fprintf(stderr, "GLFW Error %d: %s\n", error, description);
+}
+
 int platform_init(uint16_t width, uint16_t height) {
     GLBackendState *state = geogl_get_state();
     state->window_width = width;
     state->window_height = height;
+
+    glfwSetErrorCallback(glfw_error_callback);
 
     if (!glfwInit()) {
         die("GLFW init failed");
