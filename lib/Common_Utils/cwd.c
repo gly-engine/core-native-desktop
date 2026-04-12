@@ -74,6 +74,5 @@ void native_media_stop(uint8_t){}
 void native_image_unload_all(bool *) {}
 void gly_hook_keyboard_has_media(bool *) {}
 void gly_hook_luaopen_http(void*) {}
-void gly_hook_luaopen_base64(void*) {}
 void native_text_font_previous() {}
 #endif

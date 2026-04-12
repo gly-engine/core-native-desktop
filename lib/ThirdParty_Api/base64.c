@@ -3,9 +3,8 @@
 
 #include <lua.h>
 #include <lauxlib.h>
-#include <b64/cencode.h>
-#include <b64/cdecode.h>
 
+#include <libbase64.h>
 #include "gehook.h"
 
 static int lua_base64_encode(lua_State *L) {
@@ -16,11 +15,8 @@ static int lua_base64_encode(lua_State *L) {
     char *output = (char *) malloc(output_len);
     if (!output) return luaL_error(L, "out of memory");
 
-    base64_encodestate state;
-    base64_init_encodestate(&state);
-
-    int len = base64_encode_block(input, input_len, output, &state);
-    len += base64_encode_blockend(output + len, &state);
+    size_t len = 0;
+    base64_encode(input, input_len, output, &len, 0);
 
     lua_pushlstring(L, output, len);
     free(output);
@@ -35,10 +31,13 @@ static int lua_base64_decode(lua_State *L) {
     char *output = (char *) malloc(output_len);
     if (!output) return luaL_error(L, "out of memory");
 
-    base64_decodestate state;
-    base64_init_decodestate(&state);
+    size_t len = 0;
+    int ret = base64_decode(input, input_len, output, &len, 0);
 
-    int len = base64_decode_block(input, input_len, output, &state);
+    if (ret <= 0) {
+        free(output);
+        return luaL_error(L, "invalid base64 input");
+    }
 
     lua_pushlstring(L, output, len);
     free(output);

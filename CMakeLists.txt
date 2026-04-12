@@ -97,9 +97,9 @@ set(LUACJSON_DOWNLOAD "https://github.com/openresty/lua-cjson/archive/refs/tags/
 option(GECND_USE_JSON "fetch lua cjson" ON)
 
 # Lua Base 64
-set(BASE64_VERSION "2.0.0.1")
-set(BASE64_DIR "${CMAKE_SOURCE_DIR}/vendor/libb64")
-set(BASE64_DOWNLOAD "https://github.com/libb64/libb64/archive/refs/tags/v${BASE64_VERSION}.tar.gz")
+set(BASE64_VERSION "0.5.2")
+set(BASE64_DIR "${CMAKE_SOURCE_DIR}/vendor/base64")
+set(BASE64_REPO "https://github.com/aklomp/base64")
 option(GECND_USE_BASE64 "fetch base64" ON)
 
 # SQLite3
@@ -370,15 +370,11 @@ if(GECND_USE_JSON)
 endif()
 
 if(GECND_USE_BASE64)
-    if(NOT EXISTS ${BASE64_DIR})
-        FetchContent_Populate(dep_libb64 URL ${BASE64_DOWNLOAD} SOURCE_DIR ${BASE64_DIR})
-    endif()
-    add_library(base64-static STATIC "${BASE64_DIR}/src/cencode.c" "${BASE64_DIR}/src/cdecode.c")
+    FetchContent_Declare(base64 GIT_REPOSITORY ${BASE64_REPO} GIT_TAG v${BASE64_VERSION} SOURCE_DIR ${BASE64_DIR_DIR})
+    FetchContent_MakeAvailable(base64)    
+    target_link_libraries(${PROJECT_NAME} PRIVATE base64)
+    target_link_libraries(base64 PRIVATE gecnd_cc_flags)
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Api/base64.c")
-    target_link_libraries(${PROJECT_NAME} PRIVATE base64-static)
-    target_link_libraries("base64-static" PRIVATE gecnd_cc_flags)
-    target_include_directories("base64-static" SYSTEM PRIVATE "${BASE64_DIR}/include")
-    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE "${BASE64_DIR}/include")
 endif()
 
 if(GECND_USE_SQLITE3)
