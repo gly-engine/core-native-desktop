@@ -7,6 +7,9 @@
 #include "gehook.h"
 #include "gecnd.h"
 #include "gemetrics.h"
+#include "gamely_webserver.h"
+
+void gamely_service_rc_register();
 
 typedef struct {
     FILE *fp;
@@ -81,6 +84,8 @@ static void callback_init(gecnd_t *gly) {
             if (gencd_filter_is_zero_video_pos()) {
                 gecnd_filter_reset_video_pos();
             }
+            gamely_daemon_webserver_start(gly->loop, gly->port);
+            gamely_service_rc_register();
         }
 
         if (gly->loop) {
@@ -146,7 +151,7 @@ void gecnd_dispatch_key_event(gecnd_t *gly, const char* key_name, bool pressed) 
     gecnd_key_set_state(key, pressed);
 
     if (gly->internal & GECND_INTERNAL_BROWSER) {
-        open_cef_key_handler(key, pressed);
+        /// @todo this open_cef_key_handler(key, pressed);
     }
 
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_keyboard);

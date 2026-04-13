@@ -64,6 +64,7 @@ typedef struct {
     int16_t window_width;
     int16_t window_height;
     int16_t delta_time;
+    uint16_t port;
     float scale_factor;
     int ref_native_callback_init;
     int ref_native_callback_loop;

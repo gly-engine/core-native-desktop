@@ -18,6 +18,7 @@ static ko_longopt_t longopts[] = {
     { "play", ko_required_argument, 307 },
     { "libretro", ko_required_argument, 308 },
     { "disable-radius", ko_no_argument, 309, },
+    { "port", ko_required_argument, 310, },
     { "filter-aa", ko_required_argument, 401 },
     { "filter-color", ko_required_argument, 402 },
     { "filter-grain", ko_required_argument, 403 },
@@ -83,11 +84,8 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
         if (c == 309) {
             gly->disable_radius = true;
         }
-        if (c == 401) {
-            float a, b, c;
-            if (sscanf(opt.arg, "%f,%f,%f", &a, &b, &c) == 3) {
-                gecnd_filter_set_aa(a, b, c);
-            }
+        if (c == 310 && (sscanf(opt.arg, "%hu", &gly->port) != 1)) {
+            gly->error_string = "invalid port!";
         }
         if (c == 402) {
             float b = 1.0f, cv = 1.0f, s = 1.0f;
@@ -124,6 +122,9 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
         }
         if (c == 409) {
             gly->browser_bin = opt.arg;
+        }
+        if (c == 310) {
+
         }
         if (c == 410) {
             native_browser_url(opt.arg);

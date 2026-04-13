@@ -5,8 +5,6 @@
 
 #include "gecnd.h"
 
-void main_rc(uv_loop_t* loop);
-
 int main(int argc, char* argv[]) {
     static uv_loop_t loop;
     lua_State *L = luaL_newstate();
@@ -17,9 +15,6 @@ int main(int argc, char* argv[]) {
     uv_loop_init(&loop);
     gecnd_set_loop(gly, (void*) &loop);
     gecnd_set_args(gly, argc, argv);
-
-    /** @todo move */
-    //main_rc(&loop);
 
     do {
         uv_run(&loop, UV_RUN_NOWAIT);

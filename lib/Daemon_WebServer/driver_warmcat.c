@@ -352,7 +352,6 @@ static int callback_ws(struct lws *wsi,
  * ---------------------------------------------------------------------- */
 void gamely_daemon_webserver_route_http(const char *path, gly_http_cb_t cb)
 {
-    assert(!g.started && "registre rotas antes de start()");
     route_t *r = insert_route(path, ROUTE_HTTP);
     if (!r) return;
     r->http_cb = cb;
@@ -361,7 +360,6 @@ void gamely_daemon_webserver_route_http(const char *path, gly_http_cb_t cb)
 
 void gamely_daemon_webserver_route_ws(const char *path, gly_ws_cb_t cb)
 {
-    assert(!g.started && "registre rotas antes de start()");
     route_t *r = insert_route(path, ROUTE_WS);
     if (!r) return;
     r->ws_cb = cb;
@@ -370,7 +368,6 @@ void gamely_daemon_webserver_route_ws(const char *path, gly_ws_cb_t cb)
 
 void gamely_daemon_webserver_proxy_http(const char *from, const char *to)
 {
-    assert(!g.started && "registre rotas antes de start()");
     route_t *r = insert_route(from, ROUTE_HTTP);
     if (!r) return;
     strncpy(r->proxy_to, to, sizeof(r->proxy_to) - 1);
@@ -379,7 +376,6 @@ void gamely_daemon_webserver_proxy_http(const char *from, const char *to)
 
 void gamely_daemon_webserver_proxy_ws(const char *from, const char *to)
 {
-    assert(!g.started && "registre rotas antes de start()");
     route_t *r = insert_route(from, ROUTE_WS);
     if (!r) return;
     strncpy(r->proxy_to, to, sizeof(r->proxy_to) - 1);
@@ -388,8 +384,8 @@ void gamely_daemon_webserver_proxy_ws(const char *from, const char *to)
 
 void gamely_daemon_webserver_start(void *loop, int port)
 {
-    assert(!g.started);
-    assert(loop);
+    if(!loop || !port || g.started) return;
+    lws_set_log_level(LLL_ERR | LLL_WARN, NULL);
 
     g.conn_map = kh_init(conn_map);
     if (!g.conn_map) {

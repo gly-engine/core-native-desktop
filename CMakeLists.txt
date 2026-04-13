@@ -29,6 +29,7 @@ file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include/gecnd)
 file(GLOB_RECURSE SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/lib/Frontend_*/*.c"
     "${CMAKE_CURRENT_LIST_DIR}/lib/Common_*/*.c"
+    "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_*/service_*.c"
 )
 if(GECND_AS_LIBRARY)
     add_library(${PROJECT_NAME} STATIC "${SOURCES}")
@@ -584,15 +585,6 @@ if(GECND_USE_CURL)
     endif()
 endif()
 
-if(GECND_USE_RC)
-    FetchContent_Populate(php_static URL ${PHP_DOWNLOAD} SOURCE_DIR ${PHP_DIR})
-    add_library(php_static STATIC ${PHP_DIR}/picohttpparser.c)
-    target_link_libraries(php_static PRIVATE gecnd_cc_flags)
-    target_link_libraries(${PROJECT_NAME} PRIVATE php_static)
-    target_include_directories(${PROJECT_NAME} PRIVATE ${PHP_DIR})
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Input_Rc/web_uv.c")
-endif()
-
 if(GECND_MOCK_HTTP)
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Api/http_mock.c")
 endif()
@@ -604,41 +596,78 @@ if(GECND_USE_PROFILER)
     target_link_libraries(${PROJECT_NAME} PRIVATE profiler)
 endif()
 
-if(false)
 FetchContent_Populate(libwebsockets
     GIT_REPOSITORY https://github.com/warmcat/libwebsockets.git
     GIT_TAG main
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/vendor/warmcat/libwebsockets
 )
-
 ExternalProject_Add(libwebsockets_proj
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/vendor/warmcat/libwebsockets
     BINARY_DIR ${CMAKE_BINARY_DIR}/libwebsockets_build
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/libwebsockets_install
         -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
-        -DLWS_WITH_SSL=OFF
-        -DLWS_WITH_LIBUV=ON
         -DLWS_WITH_STATIC=ON
         -DLWS_WITH_SHARED=OFF
+        -DLWS_ROLE_H1=ON
+        -DLWS_ROLE_WS=ON
+        -DLWS_ROLE_H2=ON
+        -DLWS_ROLE_MQTT=OFF
+        -DLWS_ROLE_RAW_FILE=OFF
+        -DLWS_ROLE_RAW_PROXY=OFF
+        -DLWS_WITH_SSL=OFF
+        -DLWS_WITH_MBEDTLS=OFF
         -DLWS_WITH_MINIMAL_EXAMPLES=OFF
         -DLWS_WITHOUT_TESTAPPS=ON
         -DLWS_WITHOUT_TEST_SERVER=ON
         -DLWS_WITHOUT_TEST_SERVER_EXTPOLL=ON
         -DLWS_WITHOUT_TEST_PING=ON
         -DLWS_WITHOUT_TEST_CLIENT=ON
+        -DLWS_WITH_PLUGINS=OFF
+        -DLWS_WITH_PLUGINS_BUILTIN=OFF
+        -DLWS_WITH_CGI=OFF
+        -DLWS_WITH_HTTP_PROXY=OFF
+        -DLWS_WITH_HTTP_BASIC_AUTH=OFF
+        -DLWS_WITH_HTTP_UNCOMMON_HEADERS=OFF
+        -DLWS_WITH_ZIP_FOPS=OFF
+        -DLWS_WITH_JPEG=OFF
+        -DLWS_WITH_PNG=OFF
+        -DLWS_WITH_DLO=OFF
+        -DLWS_WITH_LHP=OFF
+        -DLWS_WITH_SECURE_STREAMS=OFF
+        -DLWS_WITH_SECURE_STREAMS_PROXY_API=OFF
+        -DLWS_WITH_SECURE_STREAMS_STATIC_POLICY_ONLY=OFF
+        -DLWS_WITH_STRUCT_JSON=OFF
+        -DLWS_WITH_STRUCT_SQLITE3=OFF
+        -DLWS_WITH_CBOR=OFF
+        -DLWS_WITH_CBOR_FLOAT=OFF
+        -DLWS_WITH_DISKCACHE=OFF
+        -DLWS_WITH_THREADPOOL=OFF
+        -DLWS_WITH_LIBUV=ON
+        -DLWS_WITH_LIBEVENT=OFF
+        -DLWS_WITH_LIBEV=OFF
+        -DLWS_WITH_GLIB=OFF
+        -DLWS_WITH_ZLIB=ON
+        -DLWS_WITHOUT_EXTENSIONS=ON
+        -DZLIB_ROOT=${ZLIB_DIR}
+        -DZLIB_LIBRARY=${ZLIB_LIBRARY}
+        -DZLIB_INCLUDE_DIR=${ZLIB_INCLUDE_DIR}
+        -DZLIB_FOUND=TRUE
+        -DLIBUV_INCLUDE_DIRS=${LIBUV_DIR}/include
     UPDATE_COMMAND ""
     INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install
 )
 
-# Cria um target IMPORTED apontando para a lib compilada
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/libwebsockets_install/include)
 add_library(libwebsockets STATIC IMPORTED)
 set_target_properties(libwebsockets PROPERTIES
-    IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/libwebsockets_install/lib/libwebsockets_static.a
+    IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/libwebsockets_install/lib/libwebsockets.a
     INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_BINARY_DIR}/libwebsockets_install/include
 )
+add_dependencies(libwebsockets libwebsockets_proj)
+add_dependencies(${PROJECT_NAME} libwebsockets)
 target_link_libraries(${PROJECT_NAME} PRIVATE libwebsockets)
-endif()
+target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_WebServer/driver_warmcat.c")
 
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set_target_properties(${PROJECT_NAME} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
