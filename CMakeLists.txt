@@ -8,6 +8,7 @@ if(NOT DEFINED GECND_PROJECT_NAME)
 endif()
 project("${GECND_PROJECT_NAME}" LANGUAGES C)
 include(FetchContent)
+include(ExternalProject)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
@@ -601,6 +602,42 @@ if(GECND_USE_PROFILER)
     FetchContent_Declare(profiler GIT_REPOSITORY ${GPERFTOOLS_REPO} GIT_TAG ${GPERFTOOLS_VERSION} SOURCE_DIR ${GPERFTOOLS_DIR})
     FetchContent_MakeAvailable(profiler)
     target_link_libraries(${PROJECT_NAME} PRIVATE profiler)
+endif()
+
+if(false)
+FetchContent_Populate(libwebsockets
+    GIT_REPOSITORY https://github.com/warmcat/libwebsockets.git
+    GIT_TAG main
+    SOURCE_DIR ${CMAKE_SOURCE_DIR}/vendor/warmcat/libwebsockets
+)
+
+ExternalProject_Add(libwebsockets_proj
+    SOURCE_DIR ${CMAKE_SOURCE_DIR}/vendor/warmcat/libwebsockets
+    BINARY_DIR ${CMAKE_BINARY_DIR}/libwebsockets_build
+    CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/libwebsockets_install
+        -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+        -DLWS_WITH_SSL=OFF
+        -DLWS_WITH_LIBUV=ON
+        -DLWS_WITH_STATIC=ON
+        -DLWS_WITH_SHARED=OFF
+        -DLWS_WITH_MINIMAL_EXAMPLES=OFF
+        -DLWS_WITHOUT_TESTAPPS=ON
+        -DLWS_WITHOUT_TEST_SERVER=ON
+        -DLWS_WITHOUT_TEST_SERVER_EXTPOLL=ON
+        -DLWS_WITHOUT_TEST_PING=ON
+        -DLWS_WITHOUT_TEST_CLIENT=ON
+    UPDATE_COMMAND ""
+    INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install
+)
+
+# Cria um target IMPORTED apontando para a lib compilada
+add_library(libwebsockets STATIC IMPORTED)
+set_target_properties(libwebsockets PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/libwebsockets_install/lib/libwebsockets_static.a
+    INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_BINARY_DIR}/libwebsockets_install/include
+)
+target_link_libraries(${PROJECT_NAME} PRIVATE libwebsockets)
 endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
