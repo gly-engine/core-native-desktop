@@ -231,31 +231,6 @@ set(FONTS_DIR "${CMAKE_SOURCE_DIR}/vendor/fonts")
 set(FONTS_HEADER "${CMAKE_BINARY_DIR}/include/gecnd/notosans.h")
 set(FONTS_DOWNLOAD "https://github.com/gly-engine/archive/archive/refs/heads/fonts.zip")
 
-# Curl
-set(CURL_VERSION "8_9_1")
-set(CURL_DIR "${CMAKE_SOURCE_DIR}/vendor/curl")
-set(HTTP_ONLY ON CACHE BOOL "" FORCE)
-set(PICKY_COMPILER OFF CACHE BOOL "" FORCE)
-set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
-set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
-set(BUILD_STATIC_CURL OFF CACHE BOOL "" FORCE)
-set(ENABLE_ARES OFF CACHE BOOL "" FORCE)
-set(CURL_BROTLI OFF CACHE BOOL "" FORCE)
-set(CURL_ZSTD OFF CACHE BOOL "" FORCE)
-set(USE_NGHTTP2 OFF CACHE BOOL "" FORCE)
-set(CURL_ENABLE_EXPORT_TARGET OFF CACHE BOOL "" FORCE)
-set(CURL_DISABLE_COOKIES ON CACHE BOOL "" FORCE)
-set(CURL_DISABLE_TESTS ON CACHE BOOL "" FORCE)
-set(CURL_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
-set(BUILD_LIBCURL_DOCS OFF CACHE BOOL "" FORCE)
-set(BUILD_MISC_DOCS OFF CACHE BOOL "" FORCE)
-set(ENABLE_CURL_MANUAL OFF CACHE BOOL "" FORCE)
-set(CURL_USE_OPENSSL OFF CACHE BOOL "" FORCE)
-set(CURL_USE_BEARSSL OFF CACHE BOOL "" FORCE)
-set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
-set(CURL_USE_LIBSSH2 OFF CACHE BOOL "" FORCE)
-option(GECND_USE_CURL "use curl" ON)
-
 # Google GPERF/PPERF
 set(GPERFTOOLS_VERSION "gperftools-2.18")
 set(GPERFTOOLS_REPO "https://github.com/gperftools/gperftools.git")
@@ -269,10 +244,12 @@ set(gperftools_enable_libunwind ON CACHE BOOL "" FORCE)
 set(gperftools_enable_stacktrace_via_backtrace ON CACHE BOOL "" FORCE)
 set(gperftools_enable_frame_pointers ON CACHE BOOL "" FORCE)
 
-# Pico HTTP Parser
-set(PHP_DOWNLOAD "https://github.com/h2o/picohttpparser/archive/f8326098f63eefabfa2b6ec595d90e9ed5ed958a.tar.gz")
-set(PHP_DIR "${CMAKE_SOURCE_DIR}/vendor/web/php")
-option(GECND_USE_RC "use remote control in web server" ON)
+# Warmcat 
+set(WARMCAT_VERSION "4.5.8")
+set(WARMCAT_DOWNLOAD "https://github.com/warmcat/libwebsockets/archive/refs/tags/v${WARMCAT_VERSION}.tar.gz")
+set(WARMCAT_DIR "${CMAKE_SOURCE_DIR}/vendor/warmcat")
+set(WARMCAT_BIN "${CMAKE_BINARY_DIR}/warmcat")
+option(GECND_USE_WARMCAT "use warmcat to http/webosocket client/server" ON)
 
 if(GECND_USE_LUA51)
     FetchContent_Populate(lua51-static URL "${LUA51_DOWNLOAD}" SOURCE_DIR ${LUA51_DIR})
@@ -546,7 +523,7 @@ if (GECND_USE_LIBUV)
     target_compile_options(uv_a PRIVATE ${gecnd_cc_options})
 endif()
 
-if((GECND_USE_OPENGL OR GECND_USE_CURL) AND GECND_USE_ZLIB)
+if((GECND_USE_OPENGL OR GECND_USE_WARMCAT) AND GECND_USE_ZLIB)
     FetchContent_Declare(zlib GIT_REPOSITORY ${ZLIB_REPO} GIT_TAG ${ZLIB_VERSION} SOURCE_DIR ${ZLIB_DIR})
     FetchContent_MakeAvailable(zlib)
     target_link_libraries(${PROJECT_NAME} PRIVATE zlib)
@@ -567,22 +544,76 @@ if(GECND_USE_OPENGL AND NOT EXISTS "${FONTSTASH_DIR}")
     FetchContent_Populate(fontstash URL "${FONTSTASH_DOWNLOAD}" SOURCE_DIR ${FONTSTASH_DIR})
 endif()
 
-if(GECND_USE_CURL)
-    FetchContent_Declare(
-        libcurl_static
-        GIT_REPOSITORY https://github.com/curl/curl
-        GIT_TAG curl-8_9_1
-        SOURCE_DIR ${CURL_DIR}
-    )
-    FetchContent_MakeAvailable(libcurl_static)
-    target_link_libraries(${PROJECT_NAME} PRIVATE libcurl_static)
-    target_compile_options(libcurl_static PRIVATE ${gecnd_cc_options})
-    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${CURL_DIR}/include)
-    if(GECND_USE_LIBUV)
-        target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Api/http_curl_uv.c")
-    else()
-        target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Api/http_curl.c")
+if(GECND_USE_WARMCAT)
+    if(NOT EXISTS ${WARMCAT_DIR})
+        FetchContent_Populate(libwebsockets_dep URL "${WARMCAT_DOWNLOAD}" SOURCE_DIR "${WARMCAT_DIR}")            
     endif()
+    file(MAKE_DIRECTORY ${WARMCAT_BIN}/include)
+    ExternalProject_Add(libwebsockets_proj
+        SOURCE_DIR ${WARMCAT_DIR}
+        CMAKE_ARGS
+            -DCMAKE_INSTALL_PREFIX=${WARMCAT_BIN}
+            -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+            -DLWS_WITH_STATIC=ON
+            -DLWS_WITH_SHARED=OFF
+            -DLWS_ROLE_H1=ON
+            -DLWS_ROLE_WS=ON
+            -DLWS_ROLE_H2=ON
+            -DLWS_ROLE_MQTT=OFF
+            -DLWS_ROLE_RAW_FILE=OFF
+            -DLWS_ROLE_RAW_PROXY=OFF
+            -DLWS_WITH_SSL=OFF
+            -DLWS_WITH_MBEDTLS=OFF
+            -DLWS_WITH_MINIMAL_EXAMPLES=OFF
+            -DLWS_WITHOUT_TESTAPPS=ON
+            -DLWS_WITHOUT_TEST_SERVER=ON
+            -DLWS_WITHOUT_TEST_SERVER_EXTPOLL=ON
+            -DLWS_WITHOUT_TEST_PING=ON
+            -DLWS_WITHOUT_TEST_CLIENT=ON
+            -DLWS_WITH_PLUGINS=OFF
+            -DLWS_WITH_PLUGINS_BUILTIN=OFF
+            -DLWS_WITH_CGI=OFF
+            -DLWS_WITH_HTTP_PROXY=OFF
+            -DLWS_WITH_HTTP_BASIC_AUTH=OFF
+            -DLWS_WITH_HTTP_UNCOMMON_HEADERS=OFF
+            -DLWS_WITH_ZIP_FOPS=OFF
+            -DLWS_WITH_JPEG=OFF
+            -DLWS_WITH_PNG=OFF
+            -DLWS_WITH_DLO=OFF
+            -DLWS_WITH_LHP=OFF
+            -DLWS_WITH_SECURE_STREAMS=OFF
+            -DLWS_WITH_SECURE_STREAMS_PROXY_API=OFF
+            -DLWS_WITH_SECURE_STREAMS_STATIC_POLICY_ONLY=OFF
+            -DLWS_WITH_STRUCT_JSON=OFF
+            -DLWS_WITH_STRUCT_SQLITE3=OFF
+            -DLWS_WITH_CBOR=OFF
+            -DLWS_WITH_CBOR_FLOAT=OFF
+            -DLWS_WITH_DISKCACHE=OFF
+            -DLWS_WITH_THREADPOOL=OFF
+            -DLWS_WITH_LIBUV=ON
+            -DLWS_WITH_LIBEVENT=OFF
+            -DLWS_WITH_LIBEV=OFF
+            -DLWS_WITH_GLIB=OFF
+            -DLWS_WITH_ZLIB=ON
+            -DLWS_WITHOUT_EXTENSIONS=ON
+            -DZLIB_ROOT=${ZLIB_DIR}
+            -DZLIB_LIBRARY=${ZLIB_LIBRARY}
+            -DZLIB_INCLUDE_DIR=${ZLIB_INCLUDE_DIR}
+            -DZLIB_FOUND=TRUE
+            -DLIBUV_INCLUDE_DIRS=${LIBUV_DIR}/include
+        UPDATE_COMMAND ""
+        INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install
+    )
+    add_library(libwebsockets STATIC IMPORTED)
+    set_target_properties(libwebsockets PROPERTIES
+        IMPORTED_LOCATION ${WARMCAT_BIN}/lib/libwebsockets.a
+        INTERFACE_INCLUDE_DIRECTORIES ${WARMCAT_BIN}/include
+    )
+    add_dependencies(libwebsockets libwebsockets_proj)
+    add_dependencies(${PROJECT_NAME} libwebsockets)
+    target_link_libraries(${PROJECT_NAME} PRIVATE libwebsockets)
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_WebServer/driver_warmcat.c")
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_WebClient/driver_warmcat.c")
 endif()
 
 if(GECND_MOCK_HTTP)
@@ -595,79 +626,6 @@ if(GECND_USE_PROFILER)
     FetchContent_MakeAvailable(profiler)
     target_link_libraries(${PROJECT_NAME} PRIVATE profiler)
 endif()
-
-FetchContent_Populate(libwebsockets
-    GIT_REPOSITORY https://github.com/warmcat/libwebsockets.git
-    GIT_TAG main
-    SOURCE_DIR ${CMAKE_SOURCE_DIR}/vendor/warmcat/libwebsockets
-)
-ExternalProject_Add(libwebsockets_proj
-    SOURCE_DIR ${CMAKE_SOURCE_DIR}/vendor/warmcat/libwebsockets
-    BINARY_DIR ${CMAKE_BINARY_DIR}/libwebsockets_build
-    CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/libwebsockets_install
-        -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
-        -DLWS_WITH_STATIC=ON
-        -DLWS_WITH_SHARED=OFF
-        -DLWS_ROLE_H1=ON
-        -DLWS_ROLE_WS=ON
-        -DLWS_ROLE_H2=ON
-        -DLWS_ROLE_MQTT=OFF
-        -DLWS_ROLE_RAW_FILE=OFF
-        -DLWS_ROLE_RAW_PROXY=OFF
-        -DLWS_WITH_SSL=OFF
-        -DLWS_WITH_MBEDTLS=OFF
-        -DLWS_WITH_MINIMAL_EXAMPLES=OFF
-        -DLWS_WITHOUT_TESTAPPS=ON
-        -DLWS_WITHOUT_TEST_SERVER=ON
-        -DLWS_WITHOUT_TEST_SERVER_EXTPOLL=ON
-        -DLWS_WITHOUT_TEST_PING=ON
-        -DLWS_WITHOUT_TEST_CLIENT=ON
-        -DLWS_WITH_PLUGINS=OFF
-        -DLWS_WITH_PLUGINS_BUILTIN=OFF
-        -DLWS_WITH_CGI=OFF
-        -DLWS_WITH_HTTP_PROXY=OFF
-        -DLWS_WITH_HTTP_BASIC_AUTH=OFF
-        -DLWS_WITH_HTTP_UNCOMMON_HEADERS=OFF
-        -DLWS_WITH_ZIP_FOPS=OFF
-        -DLWS_WITH_JPEG=OFF
-        -DLWS_WITH_PNG=OFF
-        -DLWS_WITH_DLO=OFF
-        -DLWS_WITH_LHP=OFF
-        -DLWS_WITH_SECURE_STREAMS=OFF
-        -DLWS_WITH_SECURE_STREAMS_PROXY_API=OFF
-        -DLWS_WITH_SECURE_STREAMS_STATIC_POLICY_ONLY=OFF
-        -DLWS_WITH_STRUCT_JSON=OFF
-        -DLWS_WITH_STRUCT_SQLITE3=OFF
-        -DLWS_WITH_CBOR=OFF
-        -DLWS_WITH_CBOR_FLOAT=OFF
-        -DLWS_WITH_DISKCACHE=OFF
-        -DLWS_WITH_THREADPOOL=OFF
-        -DLWS_WITH_LIBUV=ON
-        -DLWS_WITH_LIBEVENT=OFF
-        -DLWS_WITH_LIBEV=OFF
-        -DLWS_WITH_GLIB=OFF
-        -DLWS_WITH_ZLIB=ON
-        -DLWS_WITHOUT_EXTENSIONS=ON
-        -DZLIB_ROOT=${ZLIB_DIR}
-        -DZLIB_LIBRARY=${ZLIB_LIBRARY}
-        -DZLIB_INCLUDE_DIR=${ZLIB_INCLUDE_DIR}
-        -DZLIB_FOUND=TRUE
-        -DLIBUV_INCLUDE_DIRS=${LIBUV_DIR}/include
-    UPDATE_COMMAND ""
-    INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install
-)
-
-file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/libwebsockets_install/include)
-add_library(libwebsockets STATIC IMPORTED)
-set_target_properties(libwebsockets PROPERTIES
-    IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/libwebsockets_install/lib/libwebsockets.a
-    INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_BINARY_DIR}/libwebsockets_install/include
-)
-add_dependencies(libwebsockets libwebsockets_proj)
-add_dependencies(${PROJECT_NAME} libwebsockets)
-target_link_libraries(${PROJECT_NAME} PRIVATE libwebsockets)
-target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_WebServer/driver_warmcat.c")
 
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set_target_properties(${PROJECT_NAME} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
