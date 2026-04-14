@@ -28,3 +28,4 @@ Thumbs.db
 # GECND Files
 *.db
 *.out
+*.toml
