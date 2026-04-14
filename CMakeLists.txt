@@ -92,6 +92,11 @@ set(STB_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/stb")
 set(STB_DOWNLOAD "https://github.com/nothings/stb/archive/f1c79c02822848a9bed4315b12c8c8f3761e1296.tar.gz")
 target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${STB_DIR})
 
+# Toml
+set(TOMLC17_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/toml")
+set(TOMLC17_DOWNLOAD "https://github.com/cktan/tomlc17/archive/refs/tags/R260323.tar.gz")
+target_include_directories(${PROJECT_NAME} INTERFACE "${TOMLC17_DIR}/src")
+
 # Lua CJson
 set(LUACJSON_VERSION "2.1.0.9")
 set(LUACJSON_DIR "${CMAKE_SOURCE_DIR}/vendor/lua/cjson")
@@ -324,6 +329,12 @@ endif()
 if(NOT EXISTS "${STB_DIR}")
     FetchContent_Populate(stb URL "${STB_DOWNLOAD}" SOURCE_DIR ${STB_DIR})
 endif()
+
+if(NOT EXISTS "${TOMLC17_DIR}")
+    FetchContent_Populate(tomlc17 URL "${TOMLC17_DOWNLOAD}" SOURCE_DIR ${TOMLC17_DIR})
+endif()
+add_library(tomlc17 STATIC "${TOMLC17_DIR}/src/tomlc17.c")
+target_link_libraries(${PROJECT_NAME} PRIVATE tomlc17)
 
 if(NOT EXISTS "${FONTS_HEADER}")
     FetchContent_Populate(fonts URL "${FONTS_DOWNLOAD}" SOURCE_DIR ${FONTS_DIR})
