@@ -8,6 +8,7 @@
 
 #include "gecnd.h"
 #include "gebuffer.h"
+#include "gamely_media.h"
 #include "gehook.h"
 #include "geopengl.h"
 /** @todo move — forward decl para evitar include cruzado Backend↔Frontend */
@@ -114,7 +115,7 @@ void gly_hook_should_close(bool *should_close) {
 void gly_hook_display_close(void) {
     terminate_all_shaders();
     ge_pipeline_terminate();
-    gecnd_buffer_free();
+    gamely_daemon_media_shutdown();
     native_text_terminate();
     platform_terminate();
 }

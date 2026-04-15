@@ -1,0 +1,151 @@
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#define GECND_STREAM_AVLIB_INTERNAL
+#define GECND_FFMPEG_LOAD_INTERNAL
+#include "gemedia.h"
+#include "gamely_media.h"
+
+static inline double now_sec(void) {
+    return AV.av_gettime_relative() / 1e6;
+}
+
+static int translate_format(int av_format) {
+    if (av_format == AV_PIX_FMT_YUV420P) return GECND_PIX_FMT_YUV420P;
+    if (av_format == AV_PIX_FMT_RGB565LE || av_format == AV_PIX_FMT_RGB565BE) return GECND_PIX_FMT_RGB565;
+    return GECND_PIX_FMT_RGBA8888;
+}
+
+static void threadworker(void *arg) {
+    VideoStream *s = arg;
+    AV.avformat_network_init();
+
+    AVDictionary *opts = NULL;
+    AV.av_dict_set(&opts, "timeout", "5000000", 0);
+    AV.av_dict_set(&opts, "tls_verify", "0", 0);
+
+    if (AV.avformat_open_input(&s->fmt, s->url, NULL, &opts) < 0) {
+        fprintf(stderr, "[media] error opening: %s\n", s->url);
+        atomic_store(&s->running, 0);
+        AV.av_dict_free(&opts);
+        return;
+    }
+    AV.av_dict_free(&opts);
+
+    s->fmt->probesize = 32768;
+    s->fmt->max_analyze_duration = 0;
+    AV.avformat_find_stream_info(s->fmt, NULL);
+
+    s->video_index = AV.av_find_best_stream(s->fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
+    if (s->video_index < 0) {
+        fprintf(stderr, "[media] no video stream\n");
+        goto cleanup_pkt_frame;
+    }
+
+    s->video = s->fmt->streams[s->video_index];
+    const AVCodec *vdec = AV.avcodec_find_decoder(s->video->codecpar->codec_id);
+    if (!vdec) {
+        fprintf(stderr, "[media] no decoder for codec %d\n", s->video->codecpar->codec_id);
+        goto cleanup_pkt_frame;
+    }
+
+    s->vcodec = AV.avcodec_alloc_context3(vdec);
+    if (!s->vcodec) goto cleanup_format;
+    AV.avcodec_parameters_to_context(s->vcodec, s->video->codecpar);
+
+    if (s->vcodec->pix_fmt == AV_PIX_FMT_NONE)
+        s->vcodec->pix_fmt = AV_PIX_FMT_YUV420P;
+    s->vcodec->thread_count = 1;
+
+    if (AV.avcodec_open2(s->vcodec, vdec, NULL) < 0) {
+        fprintf(stderr, "[media] error opening codec\n");
+        goto cleanup_codec;
+    }
+
+    AVPacket *pkt  = AV.av_packet_alloc();
+    AVFrame  *vfrm = AV.av_frame_alloc();
+    bool initialized = false;
+    s->clock_start = now_sec();
+
+    AV.av_seek_frame(s->fmt, s->video_index, 0, AVSEEK_FLAG_BACKWARD);
+    AV.avcodec_flush_buffers(s->vcodec);
+
+    while (atomic_load(&s->running)) {
+        if (AV.av_read_frame(s->fmt, pkt) < 0) {
+            AV.av_seek_frame(s->fmt, s->video_index, 0, AVSEEK_FLAG_BACKWARD);
+            AV.avcodec_flush_buffers(s->vcodec);
+            s->clock_start = now_sec();
+            continue;
+        }
+
+        if (pkt->stream_index == s->video_index) {
+            if (AV.avcodec_send_packet(s->vcodec, pkt) == 0) {
+                while (AV.avcodec_receive_frame(s->vcodec, vfrm) == 0) {
+                    if (!initialized) {
+                        initialized = true;
+                        int64_t pts_first = vfrm->pts;
+                        if (pts_first == AV_NOPTS_VALUE) pts_first = vfrm->best_effort_timestamp;
+                        if (pts_first != AV_NOPTS_VALUE)
+                            s->clock_start = now_sec() - (pts_first * gly_av_q2d(s->video->time_base));
+                    }
+
+                    int64_t pts_val = vfrm->pts;
+                    if (pts_val == AV_NOPTS_VALUE) pts_val = vfrm->best_effort_timestamp;
+                    double pts = (pts_val != AV_NOPTS_VALUE) ? pts_val * gly_av_q2d(s->video->time_base) : 0.0;
+
+                    double delay = (s->clock_start + pts) - now_sec();
+                    if (delay > 0.001) usleep((useconds_t)(delay * 1e6));
+
+                    int fmt = translate_format(vfrm->format);
+                    if (fmt == GECND_PIX_FMT_YUV420P) {
+                        gamely_daemon_media_background_push_yuv420(
+                            vfrm->data[0], vfrm->data[1], vfrm->data[2],
+                            vfrm->width, vfrm->height,
+                            vfrm->linesize[0], vfrm->linesize[1]);
+                    } else if (fmt == GECND_PIX_FMT_RGB565) {
+                        gamely_daemon_media_background_push_rgb565(
+                            vfrm->data[0], vfrm->width, vfrm->height, vfrm->linesize[0]);
+                    } else {
+                        gamely_daemon_media_background_push_xrgb8888(
+                            vfrm->data[0], vfrm->width, vfrm->height, vfrm->linesize[0]);
+                    }
+
+                    AV.av_frame_unref(vfrm);
+                }
+            }
+        }
+        AV.av_packet_unref(pkt);
+    }
+
+cleanup_pkt_frame:
+    if (vfrm) AV.av_frame_free(&vfrm);
+    if (pkt)  AV.av_packet_free(&pkt);
+cleanup_codec:
+    if (s->vcodec) AV.avcodec_free_context(&s->vcodec);
+cleanup_format:
+    if (s->fmt) AV.avformat_close_input(&s->fmt);
+    AV.avformat_network_deinit();
+}
+
+VideoStream *stream_create(const char *url) {
+    if (!av_load_ffmpeg()) return NULL;
+    VideoStream *s = calloc(1, sizeof(VideoStream));
+    if (!s) return NULL;
+    s->url = strdup(url);
+    atomic_store(&s->running, 1);
+    atomic_store(&s->paused, 0);
+    if (uv_thread_create(&s->thread, threadworker, s) != 0) {
+        free(s->url); free(s); return NULL;
+    }
+    return s;
+}
+
+void stream_destroy(VideoStream *s) {
+    if (!s) return;
+    atomic_store(&s->running, 0);
+    uv_thread_join(&s->thread);
+    free(s->url); free(s);
+}
