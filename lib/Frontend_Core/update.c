@@ -11,6 +11,7 @@
 #include "gamely_input.h"
 
 void gamely_service_rc_register();
+void gamaly_service_stream_register();
 
 typedef struct {
     FILE *fp;
@@ -84,6 +85,7 @@ static void callback_init(gecnd_t *gly) {
             if (gencd_filter_is_zero_video_pos()) gecnd_filter_reset_video_pos();
             gamely_daemon_webserver_start(gly->loop, gly->port);
             gamely_service_rc_register();
+            gamaly_service_stream_register();
             gamely_daemon_input_open(gly->input ? gly->input : "void://0");
             gamely_daemon_input_subscribe(on_input_key, gly);
         }

@@ -100,10 +100,23 @@ void gamely_daemon_media_position(uint8_t channel,
                                    int16_t w, int16_t h);
 
 /* -----------------------------------------------------------------------
- * Transmissão — chamado pelo backend OpenGL a cada frame
+ * Transmissão — H264/MPEG-TS → clientes HTTP /stream
  * --------------------------------------------------------------------- */
-bool gamely_daemon_media_has_stream (void);
-void gamely_daemon_media_push_frame (const uint8_t *rgba, int width, int height);
+
+/* Chamado no encoder thread a cada pacote MPEG-TS pronto */
+typedef void (*gamely_transmit_cb_t)(const uint8_t *buf, int size, int64_t pts);
+
+/* Registra callback e marca encoder como online (init real é lazy no 1º push) */
+void gamely_daemon_media_transmit_callback (gamely_transmit_cb_t cb);
+
+/* Para o encoder e limpa o callback */
+void gamely_daemon_media_transmit_shutdown (void);
+
+/* True enquanto encoder está online — usado pelo OpenGL para fazer glReadPixels */
+bool gamely_daemon_media_transmit_is_online(void);
+
+/* Envia frame RGBA ao encoder; só age se is_online(); init lazy se dims mudaram */
+void gamely_daemon_media_transmit_push     (const uint8_t *rgba, int width, int height);
 
 /* -----------------------------------------------------------------------
  * Ciclo de vida
@@ -208,6 +221,10 @@ MediaFrame *f = gamely_daemon_media_background_get_frame();
 typedef void (*gly_stream_cb_t)(uint32_t conn_id, bool connected);
 void gamely_daemon_webserver_route_stream(const char *path, gly_stream_cb_t cb);
 void gamely_daemon_webserver_route_proxy (const char *from, const char *to);
+
+/* Thread-safe: acorda o event-loop para drenar chunks pendentes de streams.
+ * Chamado do encoder thread depois de escrever no ring buffer de cada sessão. */
+void gamely_daemon_webserver_notify(void);
 ```
 
 **Remover:**
@@ -219,11 +236,14 @@ void gamely_daemon_webserver_proxy_ws (const char *from, const char *to);
 
 **Semântica de `gamely_http_respond` em rotas stream:**
 
-| Chamada                           | Efeito                                                              |
-|-----------------------------------|---------------------------------------------------------------------|
-| Primeira (qualquer `status`)      | Envia `200 OK`, `Transfer-Encoding: chunked`, `Content-Type: <type>` |
-| Subsequentes com `body_len > 0`   | Envia body como chunk                                               |
-| `body == NULL` ou `body_len == 0` | Envia chunk final `0\r\n\r\n` e fecha a conexão                    |
+| Chamada                           | Efeito                                                                         |
+|-----------------------------------|--------------------------------------------------------------------------------|
+| Primeira (qualquer `status`)      | Envia `200 OK`, `Transfer-Encoding: chunked`, `Content-Type: <type>`           |
+| Subsequentes com `body_len > 0`   | Lock → escreve no ring buffer da sessão → unlock → `gamely_daemon_webserver_notify()` |
+| `body == NULL` ou `body_len == 0` | Envia chunk final `0\r\n\r\n` e fecha a conexão                                |
+
+> `gamely_http_respond` é thread-safe para conn_ids de rotas stream: o write ao ring
+> buffer é protegido por `uv_mutex_t` e a notificação usa `uv_async_send`.
 
 ### `lib/Daemon_WebServer/driver_warmcat.c`
 
@@ -231,18 +251,20 @@ Adicionar `ROUTE_STREAM` ao enum `route_type_t`.
 
 ```c
 typedef struct {
-    gly_conn_id_t   conn_id;
-    bool            headers_sent;
-    unsigned char   chunks[STREAM_CHUNK_SLOTS][STREAM_CHUNK_MAX];
-    size_t          chunk_lens[STREAM_CHUNK_SLOTS];
-    int             head, tail;
-    pthread_mutex_t lock;
+    gly_conn_id_t  conn_id;
+    bool           headers_sent;
+    unsigned char  ring[STREAM_RING_SIZE];
+    unsigned int   write_pos, read_pos;
+    uv_mutex_t     lock;
 } stream_session_t;
 ```
 
-- `gamely_http_respond` em conn_id stream: lock → ring buffer → unlock → `lws_callback_on_writable`
-- `LWS_CALLBACK_HTTP_WRITEABLE`: drena com `lws_write(LWS_WRITE_HTTP)`
-- `LWS_CALLBACK_CLOSED_HTTP`: invoca `stream_cb(conn_id, false)`
+- `gamely_http_respond` em conn_id stream (pode vir de qualquer thread):
+  `lock` → escreve no ring (descarta dados antigos se cheio) → `unlock` → `gamely_daemon_webserver_notify()`
+- `gamely_daemon_webserver_notify()`: chama `uv_async_send(&g_async)` (thread-safe)
+- `g_async` callback (event-loop): `lws_callback_on_writable_all_protocol(ctx, http_protocol)`
+- `LWS_CALLBACK_HTTP_WRITEABLE`: se `headers_sent=false` envia headers chunked; depois drena ring com `lws_write(LWS_WRITE_HTTP)`; re-agenda se ainda há dados
+- `LWS_CALLBACK_CLOSED_HTTP`: `uv_mutex_destroy` + invoca `stream_cb(conn_id, false)`
 
 ### `lib/Backend_OpenGL/pipeline/core.c`
 
@@ -250,13 +272,13 @@ typedef struct {
 /* ge_pipeline_init */
 g_readpixels_buf = malloc(max_w * max_h * 4);
 
-/* ge_pipeline_end, após flush_primitives */
-if (gamely_daemon_media_has_stream()) {
+/* ge_pipeline_flush(), após flush_primitives */
+if (gamely_daemon_media_transmit_is_online()) {
     GLBackendState *s = geogl_get_state();
     glReadPixels(0, 0, s->window_width, s->window_height,
                  GL_RGBA, GL_UNSIGNED_BYTE, g_readpixels_buf);
-    gamely_daemon_media_push_frame(g_readpixels_buf,
-                                   s->window_width, s->window_height);
+    gamely_daemon_media_transmit_push(g_readpixels_buf,
+                                      s->window_width, s->window_height);
 }
 
 /* ge_pipeline_terminate */
@@ -335,31 +357,161 @@ loop:
 
 ## `service_transmit.c`
 
+Responsabilidades: ciclo de vida do encoder, API pública de transmissão.
+A gestão de clientes HTTP e PTS fica em `service_stream.c` (Daemon_WebServer).
+
 ```c
-static void on_ts_ready(const uint8_t *ts, size_t len) {
-    /* chamado no encoder thread */
-    pthread_mutex_lock(&g_lock);
-    for (int i = 0; i < g_client_count; i++)
-        gamely_http_respond(g_clients[i], 200, "video/mp2t",
-                            (const char *)ts, len);
-    pthread_mutex_unlock(&g_lock);
+static gamely_transmit_cb_t g_cb     = NULL;
+static atomic_bool           g_online = false;
+static int                   g_enc_w  = 0, g_enc_h = 0;
+
+/* Chamado pelo encoder thread (driver_av_encode) a cada pacote MPEG-TS.
+ * pts = g_pts do encoder (monotonicamente crescente, unidade: frames @ fps) */
+static void on_ts_ready(const uint8_t *buf, int size) {
+    if (g_cb) g_cb(buf, size, g_pts_last);   /* passa PTS para service_stream */
 }
 
-static void setup(void) {  /* gamely_daemon_media_init() */
-    encode_init(on_ts_ready);
-    gamely_daemon_webserver_route_stream("/stream", on_stream_client);
+/* ── API pública ──────────────────────────────────────────────────────── */
+
+/* Registra callback e marca encoder como online.
+ * O encoder real é inicializado de forma lazy no primeiro transmit_push(). */
+void gamely_daemon_media_transmit_callback(gamely_transmit_cb_t cb) {
+    g_cb = cb;
+    atomic_store(&g_online, true);
 }
+
+/* Para encoder e limpa callback. */
+void gamely_daemon_media_transmit_shutdown(void) {
+    atomic_store(&g_online, false);
+    encode_shutdown();
+    g_enc_w = g_enc_h = 0;
+    g_cb = NULL;
+}
+
+bool gamely_daemon_media_transmit_is_online(void) {
+    return atomic_load(&g_online);
+}
+
+/* Chamado pelo backend OpenGL após glReadPixels.
+ * Se dimensões mudaram, reinicia o encoder com as novas dimensões. */
+void gamely_daemon_media_transmit_push(const uint8_t *rgba, int w, int h) {
+    if (!atomic_load(&g_online)) return;
+    if (w != g_enc_w || h != g_enc_h) {
+        encode_shutdown();
+        g_enc_w = w; g_enc_h = h;
+        encode_init(w, h, 30, on_ts_ready);
+    }
+    encode_push(rgba, w, h);
+}
+```
+
+> **Nota sobre PTS**: `g_pts_last` é a variável `g_pts` de `driver_av_encode.c`,
+> exposta como `int64_t encode_pts(void)` ou passada junto com o buffer via
+> extensão da assinatura de `encode_ts_cb`: `void (*)(const uint8_t*, int, int64_t)`.
+
+---
+
+## `service_stream.c` — `lib/Daemon_WebServer/`
+
+Responsabilidades: rota HTTP `/stream`, ciclo de vida por cliente, deduplicação por PTS.
+
+```
+#define MAX_STREAM_CLIENTS 8
+
+typedef struct {
+    gly_conn_id_t conn_id;
+    int64_t       last_pts;   /* -1 = nunca recebeu */
+    bool          active;
+} StreamSlot;
+```
+
+### Ciclo de vida do encoder via contagem de clientes
+
+```c
+static StreamSlot g_slots[MAX_STREAM_CLIENTS];
+static int        g_count = 0;            /* clientes ativos */
+static uv_mutex_t g_lock;
+
+/* Último pacote TS recebido — enviado imediatamente a novos clientes */
+static uint8_t  *g_last_buf  = NULL;
+static int       g_last_size = 0;
+static int64_t   g_last_pts  = -1;
 
 static void on_stream_client(gly_conn_id_t id, bool connected) {
-    pthread_mutex_lock(&g_lock);
-    if (connected) g_clients[g_client_count++] = id;
-    else           /* remove id */
-    pthread_mutex_unlock(&g_lock);
-}
+    uv_mutex_lock(&g_lock);
+    if (connected) {
+        /* adiciona slot */
+        for (int i = 0; i < MAX_STREAM_CLIENTS; i++) {
+            if (g_slots[i].active) continue;
+            g_slots[i] = (StreamSlot){ .conn_id=id, .last_pts=-1, .active=true };
+            g_count++;
+            break;
+        }
+        if (g_count == 1)
+            gamely_daemon_media_transmit_callback(on_ts_packet);   /* start encoder */
 
-bool gamely_daemon_media_has_stream(void)                      { return encode_active(); }
-void gamely_daemon_media_push_frame(const uint8_t *r, int w, int h) { encode_push(r, w, h); }
+        /* envia último frame cacheado ao novo cliente */
+        if (g_last_buf && g_last_size > 0)
+            gamely_http_respond(id, 200, "video/mp2t",
+                                (const char *)g_last_buf, (size_t)g_last_size);
+    } else {
+        /* remove slot */
+        for (int i = 0; i < MAX_STREAM_CLIENTS; i++) {
+            if (!g_slots[i].active || g_slots[i].conn_id != id) continue;
+            g_slots[i].active = false;
+            g_count--;
+            break;
+        }
+        if (g_count == 0)
+            gamely_daemon_media_transmit_shutdown();               /* stop encoder */
+    }
+    uv_mutex_unlock(&g_lock);
+}
 ```
+
+### Callback do encoder — deduplicação por PTS
+
+```c
+/* Chamado no encoder thread para cada pacote MPEG-TS */
+static void on_ts_packet(const uint8_t *buf, int size, int64_t pts) {
+    uv_mutex_lock(&g_lock);
+
+    /* Atualiza cache do último frame */
+    if (size > g_last_size) {
+        free(g_last_buf);
+        g_last_buf = malloc((size_t)size);
+    }
+    memcpy(g_last_buf, buf, (size_t)size);
+    g_last_size = size;
+    g_last_pts  = pts;
+
+    /* Envia a cada cliente que ainda não recebeu este PTS */
+    for (int i = 0; i < MAX_STREAM_CLIENTS; i++) {
+        if (!g_slots[i].active)           continue;
+        if (g_slots[i].last_pts == pts)   continue;   /* já enviado */
+        gamely_http_respond(g_slots[i].conn_id, 200, "video/mp2t",
+                            (const char *)buf, (size_t)size);
+        g_slots[i].last_pts = pts;
+    }
+
+    uv_mutex_unlock(&g_lock);
+}
+```
+
+> `gamely_http_respond` para conn_ids de rota stream é thread-safe:
+> escreve no ring da sessão LWS com `uv_mutex_t` e usa `uv_async_send` para
+> notificar o event-loop (ver `driver_warmcat.c`).
+
+### Registro
+
+```c
+void gamely_service_stream_register(void) {
+    uv_mutex_init(&g_lock);
+    gamely_daemon_webserver_route_stream("/stream", on_stream_client);
+}
+```
+
+Chamado em `update.c` junto com `gamely_service_rc_register()`.
 
 ---
 
@@ -373,32 +525,39 @@ Usa `gamely_daemon_media_background_push_yuv420()` via `driver_av_decode`.
 
 ## Diagramas de fluxo
 
-### Transmissão (OpenGL → stream)
+### Transmissão (OpenGL → /stream)
 
 ```
-ge_pipeline_end()  [render thread]
-    └── has_stream()?
-            └── glReadPixels
-            └── push_frame(rgba, w, h) — atomic slot + cond_signal, retorna
-                        │
-               [encoder thread acorda]
+ge_pipeline_flush()()  [render thread]
+    └── transmit_is_online()?
+            └── glReadPixels → transmit_push(rgba, w, h)
+                        │  [retorna imediatamente]
+               [encoder thread acorda via uv_cond]
                         │
                RGBA → YUV420P (inline)
                         │
                H264 (ultrafast/zerolatency) → MPEG-TS (avio_dyn_buf)
                         │
-               on_ts_ready(ts, len)
+               on_ts_ready(buf, size)  →  service_transmit
+                        │
+               on_ts_packet(buf, size, pts)  →  service_stream
                         │
           ┌─────────────┴─────────────┐
-     conn_id_1                   conn_id_N
-  gamely_http_respond         gamely_http_respond
-       (chunk TS)                  (chunk TS)
+      slot[0]                     slot[N]
+   last_pts != pts?            last_pts != pts?
+  gamely_http_respond         gamely_http_respond   [thread-safe]
           │                            │
-  lws ring buffer             lws ring buffer
+  uv_mutex + ring              uv_mutex + ring      [stream_session_t]
           │                            │
+   uv_async_send               uv_async_send        [notify event-loop]
+          │                            │
+   [event-loop]                [event-loop]
    lws_write HTTP              lws_write HTTP
           │                            │
     ffplay/cliente              ffplay/cliente
+
+Início: 1º cliente → on_stream_client(id,true) → transmit_callback(on_ts_packet)
+Fim:    0 clientes → on_stream_client(id,false) → transmit_shutdown()
 ```
 
 ### Playback de vídeo (background buffer)
@@ -424,8 +583,8 @@ libretro core thread
     └── background_get_frame()
     └── OpenGL renderiza frame do core
                 │
-    ge_pipeline_end()
-    └── has_stream()? → glReadPixels → push_frame(...)
+    ge_pipeline_flush()()
+    └── transmit_is_online()? → glReadPixels → transmit_push(...)
     └── [encoder captura o que o OpenGL renderizou]
 ```
 
@@ -442,17 +601,19 @@ libretro core thread
 - [ ] Todos os usos de `gecnd_get_background_frame()` → `background_get_frame()`
 
 ### WebServer
-- [ ] `include/gamely_webserver.h` — `route_stream`, `route_proxy`, remover `proxy_http/ws`
-- [ ] `lib/Daemon_WebServer/driver_warmcat.c` — `ROUTE_STREAM`, `stream_session_t`
+- [ ] `include/gamely_webserver.h` — `route_stream`, `route_proxy`, `notify`, remover `proxy_http/ws`
+- [ ] `lib/Daemon_WebServer/driver_warmcat.c` — `ROUTE_STREAM`, `stream_session_t` (ring + `uv_mutex_t`), `uv_async_t` notify
+- [ ] `lib/Daemon_WebServer/service_stream.c` — rota `/stream`, gestão de clientes, cache último frame, deduplicação PTS
+- [ ] `lib/Frontend_Core/update.c` — `gamely_service_stream_register()`
 
 ### Backend OpenGL
-- [ ] `lib/Backend_OpenGL/pipeline/core.c` — `has_stream` + `glReadPixels` + `push_frame`; `background_get_frame()`
+- [ ] `lib/Backend_OpenGL/pipeline/core.c` — `transmit_is_online` + `glReadPixels` + `transmit_push`; `background_get_frame()`
 
 ### Daemon_Media
 - [ ] `include/gamely_media.h`
 - [ ] `include/gemedia.h` — símbolos de encode no `av_api`
 - [ ] `lib/Daemon_Media/service_playback.c`
-- [ ] `lib/Daemon_Media/service_transmit.c`
+- [ ] `lib/Daemon_Media/service_transmit.c` — `transmit_callback/shutdown/is_online/push`; `encode_ts_cb` com PTS
 - [ ] `lib/Daemon_Media/driver_av_decode.c`
 - [ ] `lib/Daemon_Media/driver_av_dyn.c`
 - [ ] `lib/Daemon_Media/driver_av_static.c`

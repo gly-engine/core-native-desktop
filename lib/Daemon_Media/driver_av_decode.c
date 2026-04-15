@@ -21,6 +21,8 @@ static int translate_format(int av_format) {
 
 static void threadworker(void *arg) {
     VideoStream *s = arg;
+    AVPacket *pkt  = NULL;
+    AVFrame  *vfrm = NULL;
     AV.avformat_network_init();
 
     AVDictionary *opts = NULL;
@@ -35,9 +37,11 @@ static void threadworker(void *arg) {
     }
     AV.av_dict_free(&opts);
 
-    s->fmt->probesize = 32768;
     s->fmt->max_analyze_duration = 0;
-    AV.avformat_find_stream_info(s->fmt, NULL);
+    if (AV.avformat_find_stream_info(s->fmt, NULL) < 0) {
+        fprintf(stderr, "[media] failed to find stream info: %s\n", s->url);
+        goto cleanup_format;
+    }
 
     s->video_index = AV.av_find_best_stream(s->fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
     if (s->video_index < 0) {
@@ -65,8 +69,8 @@ static void threadworker(void *arg) {
         goto cleanup_codec;
     }
 
-    AVPacket *pkt  = AV.av_packet_alloc();
-    AVFrame  *vfrm = AV.av_frame_alloc();
+    pkt  = AV.av_packet_alloc();
+    vfrm = AV.av_frame_alloc();
     bool initialized = false;
     s->clock_start = now_sec();
 

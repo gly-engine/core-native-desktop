@@ -145,6 +145,9 @@ bool av_load_ffmpeg(void) {
             LOAD_SYM(libavutil, av_dict_free);
             LOAD_SYM(libavutil, av_image_get_buffer_size);
             LOAD_SYM(libavutil, av_image_fill_arrays);
+            LOAD_SYM(libavutil, av_opt_set);
+            LOAD_SYM(libavutil, av_opt_set_int);
+            LOAD_SYM(libavutil, av_opt_set_q);
 
             // Optional symbols
             LOAD_SYM_OPT(libavutil, av_hwframe_transfer_data);

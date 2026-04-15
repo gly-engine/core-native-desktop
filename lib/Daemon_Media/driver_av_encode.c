@@ -2,12 +2,12 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdatomic.h>
-#include <pthread.h>
 
 #define GECND_FFMPEG_LOAD_INTERNAL
+#define GECND_STREAM_AVLIB_INTERNAL
 #include "gemedia.h"
 
-typedef void (*encode_ts_cb)(const uint8_t *, int);
+typedef void (*encode_ts_cb)(const uint8_t *, int, int64_t pts);
 
 static AVCodecContext  *g_ctx       = NULL;
 static AVFormatContext *g_fmt       = NULL;
@@ -19,19 +19,20 @@ static uint8_t         *g_slot      = NULL;
 static int              g_slot_w    = 0;
 static int              g_slot_h    = 0;
 
-static pthread_t        g_thread;
-static pthread_mutex_t  g_mutex     = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t   g_cond      = PTHREAD_COND_INITIALIZER;
+static uv_thread_t      g_thread;
+static uv_mutex_t       g_mutex;
+static uv_cond_t        g_cond;
 static atomic_int       g_running   = 0;
 static atomic_int       g_slot_seq  = 0;
 static int              g_last_seq  = -1;
 static int64_t          g_pts       = 0;
 
 static encode_ts_cb     g_on_ts     = NULL;
+static int64_t          g_cur_pts   = 0;
 
 static int ts_write_cb(void *opaque, uint8_t *buf, int size) {
     (void)opaque;
-    if (g_on_ts) g_on_ts((const uint8_t *)buf, size);
+    if (g_on_ts) g_on_ts((const uint8_t *)buf, size, g_cur_pts);
     return size;
 }
 
@@ -66,23 +67,24 @@ static void rgba_to_yuv420(const uint8_t *rgba, int w, int h) {
 static void drain_encoder(void) {
     int ret;
     while ((ret = AV.avcodec_receive_packet(g_ctx, g_pkt)) >= 0) {
+        g_cur_pts = g_pkt->pts;
         g_pkt->stream_index = g_stream->index;
         AV.av_interleaved_write_frame(g_fmt, g_pkt);
         AV.av_packet_unref(g_pkt);
     }
 }
 
-static void *encode_thread(void *arg) {
+static void encode_thread(void *arg) {
     (void)arg;
     uint8_t *local = NULL;
 
     while (1) {
-        pthread_mutex_lock(&g_mutex);
+        uv_mutex_lock(&g_mutex);
         while (atomic_load(&g_running) && atomic_load(&g_slot_seq) == g_last_seq)
-            pthread_cond_wait(&g_cond, &g_mutex);
+            uv_cond_wait(&g_cond, &g_mutex);
 
         if (!atomic_load(&g_running)) {
-            pthread_mutex_unlock(&g_mutex);
+            uv_mutex_unlock(&g_mutex);
             break;
         }
 
@@ -92,7 +94,7 @@ static void *encode_thread(void *arg) {
         if (!local) local = malloc((size_t)(w * h * 4));
         memcpy(local, g_slot, (size_t)(w * h * 4));
         g_last_seq = seq;
-        pthread_mutex_unlock(&g_mutex);
+        uv_mutex_unlock(&g_mutex);
 
         rgba_to_yuv420(local, w, h);
         g_frame->pts = g_pts++;
@@ -105,7 +107,6 @@ static void *encode_thread(void *arg) {
     AV.av_write_trailer(g_fmt);
 
     free(local);
-    return NULL;
 }
 
 bool encode_init(int w, int h, int fps, encode_ts_cb on_ts) {
@@ -119,13 +120,13 @@ bool encode_init(int w, int h, int fps, encode_ts_cb on_ts) {
     if (!codec) return false;
 
     g_ctx = AV.avcodec_alloc_context3(codec);
-    g_ctx->width       = w;
-    g_ctx->height      = h;
-    g_ctx->pix_fmt     = AV_PIX_FMT_YUV420P;
-    g_ctx->time_base   = (AVRational){1, fps};
-    g_ctx->framerate   = (AVRational){fps, 1};
-    g_ctx->gop_size    = fps;
-    g_ctx->max_b_frames = 0;
+    AV.av_opt_set_int(g_ctx, "width", w, 0);
+    AV.av_opt_set_int(g_ctx, "height", h, 0);
+    AV.av_opt_set_int(g_ctx, "pix_fmt", AV_PIX_FMT_YUV420P, 0);
+    AV.av_opt_set_q(g_ctx, "time_base", (AVRational){1, fps}, 0);
+    AV.av_opt_set_q(g_ctx, "framerate", (AVRational){fps, 1}, 0);
+    AV.av_opt_set_int(g_ctx, "gop", fps, 0);
+    AV.av_opt_set_int(g_ctx, "bf", 0, 0);
 
     AVDictionary *opts = NULL;
     AV.av_dict_set(&opts, "preset", "ultrafast", 0);
@@ -168,27 +169,31 @@ bool encode_init(int w, int h, int fps, encode_ts_cb on_ts) {
 
     atomic_store(&g_slot_seq, 0);
     atomic_store(&g_running, 1);
-    pthread_create(&g_thread, NULL, encode_thread, NULL);
+    uv_mutex_init(&g_mutex);
+    uv_cond_init(&g_cond);
+    uv_thread_create(&g_thread, encode_thread, NULL);
     return true;
 }
 
 void encode_push(const uint8_t *rgba, int w, int h) {
     if (!g_ctx || !g_slot || w != g_slot_w || h != g_slot_h) return;
-    pthread_mutex_lock(&g_mutex);
+    uv_mutex_lock(&g_mutex);
     memcpy(g_slot, rgba, (size_t)(w * h * 4));
     atomic_fetch_add(&g_slot_seq, 1);
-    pthread_cond_signal(&g_cond);
-    pthread_mutex_unlock(&g_mutex);
+    uv_cond_signal(&g_cond);
+    uv_mutex_unlock(&g_mutex);
 }
 
 void encode_shutdown(void) {
     if (!atomic_load(&g_running)) return;
 
-    pthread_mutex_lock(&g_mutex);
+    uv_mutex_lock(&g_mutex);
     atomic_store(&g_running, 0);
-    pthread_cond_signal(&g_cond);
-    pthread_mutex_unlock(&g_mutex);
-    pthread_join(g_thread, NULL);
+    uv_cond_signal(&g_cond);
+    uv_mutex_unlock(&g_mutex);
+    uv_thread_join(&g_thread);
+    uv_mutex_destroy(&g_mutex);
+    uv_cond_destroy(&g_cond);
 
     if (g_frame) {
         free(g_frame->data[0]);

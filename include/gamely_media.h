@@ -38,15 +38,14 @@ void gamely_daemon_media_playback_position(uint8_t channel,
                                             int16_t w, int16_t h);
 
 /* -----------------------------------------------------------------------
- * Transmissão — OpenGL → H264/MPEG-TS → clientes HTTP
+ * Transmissão — H264/MPEG-TS → clientes HTTP /stream
  * --------------------------------------------------------------------- */
-bool gamely_daemon_media_transmit_active(void);
-void gamely_daemon_media_transmit_push  (const uint8_t *rgba, int width, int height);
+typedef void (*gamely_transmit_cb_t)(const uint8_t *buf, int size, int64_t pts);
 
-int  gamely_daemon_media_transmit_client_add   (void);
-void gamely_daemon_media_transmit_client_remove(int id);
-int  gamely_daemon_media_transmit_client_read  (int id, uint8_t *buf, int max);
-void gamely_daemon_media_transmit_set_notify   (void (*fn)(void));
+void gamely_daemon_media_transmit_callback (gamely_transmit_cb_t cb);
+void gamely_daemon_media_transmit_shutdown (void);
+bool gamely_daemon_media_transmit_is_online(void);
+void gamely_daemon_media_transmit_push     (const uint8_t *rgba, int width, int height);
 
 /* -----------------------------------------------------------------------
  * Ciclo de vida

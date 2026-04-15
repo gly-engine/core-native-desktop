@@ -110,6 +110,10 @@ typedef struct {
     void (*av_dict_free)(AVDictionary **m);
     int (*av_image_get_buffer_size)(enum AVPixelFormat pix_fmt, int width, int height, int align);
     int (*av_image_fill_arrays)(uint8_t *dst_data[4], int dst_linesize[4], const uint8_t *src, enum AVPixelFormat pix_fmt, int width, int height, int align);
+
+    int (*av_opt_set)(void *obj, const char *name, const char *val, int search_flags);
+    int (*av_opt_set_int)(void *obj, const char *name, int64_t val, int search_flags);
+    int (*av_opt_set_q)(void *obj, const char *name, AVRational val, int search_flags);
 } av_api;
 
 extern av_api AV;

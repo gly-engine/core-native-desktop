@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef uint32_t gly_conn_id_t;
 
@@ -23,12 +24,16 @@ typedef struct {
 typedef void (*gly_http_cb_t)(const gly_http_req_t *req);
 typedef void (*gly_ws_cb_t)(const gly_ws_req_t *req);
 
-void gamely_daemon_webserver_route_http(const char *path, gly_http_cb_t cb);
-void gamely_daemon_webserver_route_ws(const char *path, gly_ws_cb_t cb);
-void gamely_daemon_webserver_proxy_http(const char *from, const char *to);
-void gamely_daemon_webserver_proxy_ws(const char *from, const char *to);
-void gamely_daemon_webserver_start(void *loop, int port);
-void gamely_daemon_webserver_stop(void);
+/* callback(conn_id, true) = novo cliente; callback(conn_id, false) = desconectado */
+typedef void (*gly_stream_cb_t)(gly_conn_id_t conn_id, bool connected);
+
+void gamely_daemon_webserver_route_http  (const char *path, gly_http_cb_t cb);
+void gamely_daemon_webserver_route_ws   (const char *path, gly_ws_cb_t cb);
+void gamaly_daemon_webserver_route_stream(const char *path, gly_stream_cb_t cb);
+void gamely_daemon_webserver_proxy_http  (const char *from, const char *to);
+void gamely_daemon_webserver_proxy_ws   (const char *from, const char *to);
+void gamely_daemon_webserver_start       (void *loop, int port);
+void gamely_daemon_webserver_stop        (void);
 
 void gamely_ws_send(const char    *path,
                     gly_conn_id_t  conn_id,
