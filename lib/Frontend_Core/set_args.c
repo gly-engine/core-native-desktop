@@ -7,6 +7,8 @@
 #include "gehook.h"
 #include "gemetrics.h"
 
+void gamely_set_toml(gecnd_t *gly, const char *path);
+
 static ko_longopt_t longopts[] = {
     { "window", ko_required_argument, 300},
     { "screen", ko_required_argument, 301},
@@ -29,12 +31,10 @@ static ko_longopt_t longopts[] = {
     { "offset", ko_required_argument, 408 },
     { "browser-bin", ko_required_argument, 409 },
     { "browser-url", ko_required_argument, 410 },
-    { "ir-list", ko_no_argument, 501, },
-    { "ir-aui", ko_required_argument, 502, },
+    { "toml",  ko_required_argument, 501, },
+    { "input", ko_required_argument, 502, },
     { NULL, 0, 0 }
 };
-
-bool gecnd_input_open_aui();
 
 static void check_range(gecnd_t *gly, float val, float min, float max, const char *name) {
     if (val < min || val > max) {
@@ -130,23 +130,10 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
             native_browser_url(opt.arg);
         }
         if (c == 501) {
-            const char *str;
-            uint32_t i = 0;
-            while((str = gecnd_nec_get_class(i++)) != NULL) {
-                printf("%s\n", str);
-                /* todo safe exit! */
-                gly->error_string = "bye!\n";
-            }   
+            gamely_set_toml(gly, opt.arg);
         }
         if (c == 502) {
-            if(!gecnd_nec_set_class(opt.arg)) {
-                gly->error_string = "not found nec class!\n";
-                break;
-            }
-            if (gecnd_input_open_aui() != 0) {
-                gly->error_string = "failed to open aui!\n";
-                break;
-            }
+            gly->input = opt.arg;
         }
     }
 }

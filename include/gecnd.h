@@ -21,33 +21,7 @@
 
 // alias:
 #define gecnd_add_flags(gly)  gecnd_set_flags(gly, gecnd_get_flags(gly) | FLAG_A)
-#define gecnd_del_flags(gly)  gecnd_set_flags(gly, gecnd_get_flags(gly) & ~FLAG_A); 
-
-typedef enum {
-    GECND_KEY_NULL,
-    GECND_KEY_A,
-    GECND_KEY_B,
-    GECND_KEY_C,
-    GECND_KEY_D,
-    GECND_KEY_E,
-    GECND_KEY_F,
-    GECND_KEY_UP,
-    GECND_KEY_LEFT,
-    GECND_KEY_DOWN,
-    GECND_KEY_RIGHT,
-    GECND_KEY_MENU,
-    GECND_KEY_VOL_UP,
-    GECND_KEY_VOL_DOWN,
-    GECND_KEY_VOL_MUTE,
-    GECND_KEY_CH_UP,
-    GECND_KEY_CH_DOWN,
-    GECND_KEY_SYS_POWER,
-    GECND_KEY_SYS_CONFIG,
-    GECND_KEY_SYS_INPUTS,
-    GECND_KEY_HOME_AI,
-    GECND_KEY_HOME_FAV,
-    GECND_KEY_COUNT
-} gecnd_key_t;
+#define gecnd_del_flags(gly)  gecnd_set_flags(gly, gecnd_get_flags(gly) & ~FLAG_A);
 
 typedef struct lua_State lua_State;
 
@@ -75,6 +49,7 @@ typedef struct {
     char *lua_game_code;
     char *lua_engine_code;
     char *browser_bin;
+    const char *input;       // URI do input ativo; default "void://0"
     const char* error_string;
 } gecnd_t;
 
@@ -97,9 +72,8 @@ uint32_t gecnd_get_sleep(gecnd_t *gly);
 bool gecnd_has_errors(gecnd_t *gly);
 const char* gecnd_get_errors(gecnd_t *gly);
 // tick
-bool gecnd_update(gecnd_t * gly);
-void gecnd_set_btn_state(gecnd_t *gly, const char* key, bool state);
-void gecnd_dispatch_key_event(gecnd_t *gly, const char* key, bool pressed);
+bool gecnd_update(gecnd_t *gly);
+void gecnd_dispatch_key_event(gecnd_t *gly, const char *name, bool pressed, int port);
 // utils
 uint32_t gecnd_get_delta_ms(void);
 uint64_t gecnd_get_cur_time(void);
@@ -122,13 +96,5 @@ void gecnd_filter_reset_corners();
 void gecnd_filter_reset_video_pos();
 bool gencd_filter_is_zero_corners();
 bool gencd_filter_is_zero_video_pos();
-// inputs
-void gecnd_input_poll_events(gecnd_t *gly);
-gecnd_key_t gecnd_key_from_name(const char* name);
-void gecnd_key_set_state(gecnd_key_t key, bool pressed);
-bool gecnd_key_get_state(gecnd_key_t key);
-const char *gecnd_nec_get_class(uint32_t i);
-const char* gecnd_nec_get_key(uint32_t i);
-bool gecnd_nec_set_class(const char *name);
 
 #endif

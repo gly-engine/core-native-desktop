@@ -95,7 +95,7 @@ target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${STB_DIR})
 # Toml
 set(TOMLC17_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/toml")
 set(TOMLC17_DOWNLOAD "https://github.com/cktan/tomlc17/archive/refs/tags/R260323.tar.gz")
-target_include_directories(${PROJECT_NAME} INTERFACE "${TOMLC17_DIR}/src")
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE "${TOMLC17_DIR}/src")
 
 # Lua CJson
 set(LUACJSON_VERSION "2.1.0.9")
@@ -626,6 +626,16 @@ if(GECND_USE_WARMCAT)
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_WebServer/driver_warmcat.c")
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_WebClient/driver_warmcat.c")
 endif()
+
+# todo: lirc only linux
+# todo: move aui to private repo
+target_sources(${PROJECT_NAME} PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_void.c"
+    "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_aui.c"
+    "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_lirc.c"
+    "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_serial.c"
+    "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_read.c"
+)
 
 if(GECND_MOCK_HTTP)
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Api/http_mock.c")

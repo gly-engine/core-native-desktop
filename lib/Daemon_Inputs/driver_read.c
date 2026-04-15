@@ -1,0 +1,16 @@
+#include "gamely_input.h"
+#include <stdio.h>
+
+/* @todo implement generic device file reading and call gamely_daemon_input_push() */
+
+static bool read_open(int port, const char *device)
+{
+    (void)port;
+    if (!device) { fprintf(stderr, "[core:input:read] device required\n"); return false; }
+    fprintf(stderr, "[core:input:read] not yet implemented (device=%s)\n", device);
+    return false;
+}
+
+static void read_close(int port) { (void)port; }
+
+const gamely_input_driver_t gamely_driver_read = { read_open, read_close };

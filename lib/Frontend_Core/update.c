@@ -8,6 +8,7 @@
 #include "gecnd.h"
 #include "gemetrics.h"
 #include "gamely_webserver.h"
+#include "gamely_input.h"
 
 void gamely_service_rc_register();
 
@@ -19,8 +20,8 @@ typedef struct {
 extern int gecnd_signal;
 
 static const char *reader(lua_State *L, void *ud, size_t *size) {
-    (void) L;
-    gecnd_buffer_t *data = (gecnd_buffer_t*)ud;
+    (void)L;
+    gecnd_buffer_t *data = (gecnd_buffer_t *)ud;
     size_t n = fread(data->buf, 1, sizeof(data->buf), data->fp);
     *size = n;
     return n ? data->buf : NULL;
@@ -29,7 +30,7 @@ static const char *reader(lua_State *L, void *ud, size_t *size) {
 /**
  * @todo rewrite this bullshit code!
  */
-static const char* open_script(gecnd_t *gly, const char *lua_code, const char *lua_name, int lua_ret)
+static const char *open_script(gecnd_t *gly, const char *lua_code, const char *lua_name, int lua_ret)
 {
     gecnd_buffer_t data;
     char path[512];
@@ -42,7 +43,6 @@ static const char* open_script(gecnd_t *gly, const char *lua_code, const char *l
     }
 
     data.fp = fopen(lua_code, "rb");
-
     if (!data.fp) {
         snprintf(path, sizeof(path), "file not found: %s.lua", lua_name);
         return strdup(path);
@@ -57,14 +57,17 @@ static const char* open_script(gecnd_t *gly, const char *lua_code, const char *l
         fclose(data.fp);
         return luaL_checkstring(gly->L, -1);
     }
-
     fclose(data.fp);
 
-    if (lua_pcall(gly->L, 0, lua_ret, 0)) {
+    if (lua_pcall(gly->L, 0, lua_ret, 0))
         return luaL_checkstring(gly->L, -1);
-    }
 
     return NULL;
+}
+
+static void on_input_key(const char *name, bool pressed, int port, void *usr)
+{
+    gecnd_dispatch_key_event((gecnd_t *)usr, name, pressed, port);
 }
 
 static void callback_init(gecnd_t *gly) {
@@ -76,29 +79,23 @@ static void callback_init(gecnd_t *gly) {
             gly->window_height = gly->height;
         }
 
-        if(gecnd_is_root(gly)) {
-            if (gencd_filter_is_zero_corners()) {
-                gecnd_filter_reset_corners();
-            }
-
-            if (gencd_filter_is_zero_video_pos()) {
-                gecnd_filter_reset_video_pos();
-            }
+        if (gecnd_is_root(gly)) {
+            if (gencd_filter_is_zero_corners())  gecnd_filter_reset_corners();
+            if (gencd_filter_is_zero_video_pos()) gecnd_filter_reset_video_pos();
             gamely_daemon_webserver_start(gly->loop, gly->port);
             gamely_service_rc_register();
+            gamely_daemon_input_open(gly->input ? gly->input : "void://0");
+            gamely_daemon_input_subscribe(on_input_key, gly);
         }
 
-        if (gly->loop) {
+        if (gly->loop)
             gly_hook_display_fps(0);
-        } else {
+        else
             gly_hook_display_fps(gly->target_fps);
-        }
-        
+
         gly->error_string = open_script(gly, gly->lua_engine_code, "main", 0);
-        if (gly->error_string) {
-            break;
-        }
-    
+        if (gly->error_string) break;
+
         lua_getglobal(gly->L, "native_callback_init");
         if (lua_type(gly->L, -1) != LUA_TFUNCTION) {
             gly->error_string = "missing: native_callback_init";
@@ -109,11 +106,9 @@ static void callback_init(gecnd_t *gly) {
         lua_pushnumber(gly->L, gly->height);
 
         gly->error_string = open_script(gly, gly->lua_game_code, "game", 1);
-        if (gly->error_string) {
-            break;
-        }
+        if (gly->error_string) break;
 
-        if(lua_pcall(gly->L, 3, 0, 0)) {
+        if (lua_pcall(gly->L, 3, 0, 0)) {
             gly->error_string = luaL_checkstring(gly->L, -1);
             break;
         }
@@ -138,49 +133,39 @@ static void callback_init(gecnd_t *gly) {
             break;
         }
         gly->ref_native_callback_keyboard = luaL_ref(gly->L, LUA_REGISTRYINDEX);
+
+        /* fire initial unpressed state for all mapped keys */
+        if (gecnd_is_root(gly))
+            gamely_daemon_input_init_keys(on_input_key, gly);
     }
-    while(0);
+    while (0);
 }
 
-void open_cef_key_handler(gecnd_key_t key, bool pressed);
-
-void gecnd_dispatch_key_event(gecnd_t *gly, const char* key_name, bool pressed) {
-    if (!gly || !key_name) return;
-
-    gecnd_key_t key = gecnd_key_from_name(key_name);
-    gecnd_key_set_state(key, pressed);
-
-    if (gly->internal & GECND_INTERNAL_BROWSER) {
-        /// @todo this open_cef_key_handler(key, pressed);
-    }
+void gecnd_dispatch_key_event(gecnd_t *gly, const char *name, bool pressed, int port)
+{
+    if (!gly || !name || port != 0) return;
 
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_keyboard);
-    lua_pushstring(gly->L, key_name);
+    lua_pushstring(gly->L, name);
     lua_pushboolean(gly->L, pressed);
-    if (lua_pcall(gly->L, 2, 0, 0)) {
+    if (lua_pcall(gly->L, 2, 0, 0))
         gly->error_string = luaL_checkstring(gly->L, -1);
-    }
 }
 
 static void callback_keyboard(gecnd_t *gly) {
     uint8_t index = 0;
-
     do {
-        char* key = NULL;
+        char *key    = NULL;
         bool pressed = false;
         gly_hook_input_keyboard(index, &key, &pressed);
-
         if (!key && !pressed) break;
         index++;
-
         if (key) {
-            gecnd_dispatch_key_event(gly, key, pressed);
-            if(gly->error_string) {
-                break;
-            }
-        }        
+            gecnd_dispatch_key_event(gly, key, pressed, 0);
+            if (gly->error_string) break;
+        }
     }
-    while(index < 100);
+    while (index < 100);
 }
 
 static void callback_loop(gecnd_t *gly) {
@@ -189,12 +174,10 @@ static void callback_loop(gecnd_t *gly) {
     if (gly->flags & GECND_FLAG_TIMER_PREFER_BACKEND) {
         int16_t new_dt = -1;
         gly_hook_display_dt(&new_dt);
-        if (gly->flags & GECND_FLAG_TIMER_BACKEND && new_dt != -1) {
+        if (gly->flags & GECND_FLAG_TIMER_BACKEND && new_dt != -1)
             delta_time = new_dt;
-        }
-        else if (gly->flags & GECND_FLAG_TIMER_INTERNAL) {
+        else if (gly->flags & GECND_FLAG_TIMER_INTERNAL)
             delta_time = gecnd_get_sleep(gly);
-        }
         else {
             gly->error_string = "backend not has provider delta time";
             return;
@@ -203,43 +186,39 @@ static void callback_loop(gecnd_t *gly) {
 
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_loop);
     lua_pushnumber(gly->L, delta_time);
-    if (lua_pcall(gly->L, 1, 0, 0)) {
+    if (lua_pcall(gly->L, 1, 0, 0))
         gly->error_string = luaL_checkstring(gly->L, -1);
-    }
 }
 
 static void callback_draw(gecnd_t *gly) {
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_draw);
-    if (lua_pcall(gly->L, 0, 0, 0)) {
+    if (lua_pcall(gly->L, 0, 0, 0))
         gly->error_string = luaL_checkstring(gly->L, -1);
-    }
 }
 
 extern void libretro_run_frame(void);
 extern bool libretro_is_running(void);
 
-bool gecnd_update(gecnd_t * gly)
+bool gecnd_update(gecnd_t *gly)
 {
     bool should_close = false;
 
     do {
         if (!(gly && !gly->error_string)) break;
 
-        if (!(GECND_INTERNAL_RUNNING & gly->internal)) {
+        if (!(GECND_INTERNAL_RUNNING & gly->internal))
             callback_init(gly);
-        }
         if (gly->error_string) break;
+
         gly->internal |= GECND_INTERNAL_RUNNING;
         gecnd_metrics_finish_wait();
 
-        if (libretro_is_running()) {
+        if (libretro_is_running())
             libretro_run_frame();
-        }
 
         gecnd_metrics_start_input();
-        if (gecnd_is_root(gly)) {
-            gecnd_input_poll_events(gly);
-        }
+        if (gecnd_is_root(gly))
+            gamely_daemon_input_tick();
         callback_keyboard(gly);
         gecnd_metrics_finish_input();
         if (gly->error_string) break;
@@ -261,9 +240,8 @@ bool gecnd_update(gecnd_t * gly)
             gecnd_metrics_start_draw();
             gly->want_blit = true;
             callback_draw(gly);
-            if (gly->want_blit) {
+            if (gly->want_blit)
                 gly->error_string = "[error] engine want blit!\n";
-            }
             gecnd_metrics_finish_draw();
             gecnd_metrics_start_post();
             native_draw_flush();
@@ -273,27 +251,23 @@ bool gecnd_update(gecnd_t * gly)
             native_draw_finish();
             gecnd_metrics_finish_tint();
         }
-        
+
         gecnd_metrics_update();
         gecnd_metrics_start_wait();
         if (gly->error_string) break;
     }
-    while(0);
+    while (0);
 
     do {
         should_close = gly->error_string != 0;
         if (should_close) break;
-
         gly_hook_should_close(&should_close);
         if (should_close) break;
-
         should_close = gly->internal & GECND_INTERNAL_WANT_EXIT;
         if (should_close) break;
-
         should_close = gecnd_signal != 0;
-        if (should_close) break;
     }
-    while(0);
+    while (0);
 
     return !should_close;
 }

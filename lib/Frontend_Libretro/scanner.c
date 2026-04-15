@@ -141,10 +141,14 @@ const char *scanner_resolve_rom(const char *name) {
     if ((name[0] == '/' || (name[0] && name[1] == ':')) && file_exists(name))
         return name;
 
-    char cwd[PATH_CAP];
+    char cwd[PATH_CAP], exedir[PATH_CAP];
     gecnd_utils_get_cwd(cwd, PATH_CAP);
-    if (cwd[0]) {
-        snprintf(s_found, PATH_CAP, "%s/%s", cwd, name);
+    gecnd_utils_get_exe_cwd(exedir, PATH_CAP);
+    const char *bases[] = { cwd, exedir };
+
+    for (size_t d = 0; d < 2; d++) {
+        if (!bases[d][0]) continue;
+        snprintf(s_found, PATH_CAP, "%s/%s", bases[d], name);
         if (file_exists(s_found)) return s_found;
     }
 

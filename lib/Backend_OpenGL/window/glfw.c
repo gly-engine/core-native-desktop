@@ -37,21 +37,16 @@ static const struct {
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     (void)window; (void)scancode; (void)mods;
     if (action == GLFW_REPEAT) return;
-    for (size_t i = 0; i < sizeof(keymap)/sizeof(keymap[0]); i++) {
-        if (keymap[i].key == key) {
-            gecnd_set_btn_state(gecnd_get_root(), keymap[i].name, action != GLFW_RELEASE);
-            return;
-        }
-    }
+    gamely_daemon_input_push(key, action != GLFW_RELEASE, 0);
 }
 
 static void focus_callback(GLFWwindow* window, int focused) {
-    (void)window;
+    (void)window; /** @todo nao sei o porque disso.
     if (!focused) {
         for (size_t i = 0; i < sizeof(keymap)/sizeof(keymap[0]); i++) {
             gecnd_set_btn_state(gecnd_get_root(), keymap[i].name, false);
         }
-    }
+    }*/
 }
 
 void glfw_error_callback(int error, const char* description) {
@@ -120,6 +115,11 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     mat4_ortho(s->projection, 0, width, height, 0, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
     s->last_frame_time = platform_get_time();
     libretro_hw_gl_ready();
+
+    gamely_daemon_input_add_class("glfw");
+    for (uint8_t i = 0; i < sizeof(keymap)/sizeof(*keymap); i++) {
+        gamely_daemon_input_add_keycode(keymap[i].name, keymap[i].key);
+    }
 }
 
 void gly_hook_display_dt(int16_t *delta_time) {

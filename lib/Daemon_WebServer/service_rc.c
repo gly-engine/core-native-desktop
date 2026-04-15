@@ -1,5 +1,5 @@
 #include "gamely_webserver.h"
-#include "gecnd.h"
+#include "gamely_input.h"
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -101,7 +101,7 @@ static void ws_rc(const gly_ws_req_t *req)
     else if (strcmp(keyname, "yellow") == 0) key = "c";
     else if (strcmp(keyname, "blue")   == 0) key = "d";
 
-    gecnd_set_btn_state(gecnd_get_root(), key, pressed);
+    gamely_daemon_input_push_name(key, pressed, 0, 0);
 }
 
 void gamely_service_rc_register(void)

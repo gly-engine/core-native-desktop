@@ -1,24 +1,49 @@
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include "libretro.h"
-#include "gecnd.h"
+#include "gamely_input.h"
+
+#define LR_KEY_COUNT 10
+
+typedef struct { const char *name; unsigned id; } lr_entry_t;
+
+/* sorted by name for bsearch in on_key */
+static const lr_entry_t s_keymap[LR_KEY_COUNT] = {
+    { "a",     RETRO_DEVICE_ID_JOYPAD_A      },
+    { "b",     RETRO_DEVICE_ID_JOYPAD_B      },
+    { "c",     RETRO_DEVICE_ID_JOYPAD_X      },
+    { "d",     RETRO_DEVICE_ID_JOYPAD_Y      },
+    { "down",  RETRO_DEVICE_ID_JOYPAD_DOWN   },
+    { "e",     RETRO_DEVICE_ID_JOYPAD_SELECT },
+    { "f",     RETRO_DEVICE_ID_JOYPAD_START  },
+    { "left",  RETRO_DEVICE_ID_JOYPAD_LEFT   },
+    { "right", RETRO_DEVICE_ID_JOYPAD_RIGHT  },
+    { "up",    RETRO_DEVICE_ID_JOYPAD_UP     },
+};
+
+/* indexed directly by RETRO_DEVICE_ID_JOYPAD_* (0-15) */
+static bool s_pressed[4][16];
+
+static int cmp_name(const void *key, const void *elem) {
+    return strcmp((const char *)key, ((const lr_entry_t *)elem)->name);
+}
+
+static void on_key(const char *name, bool pressed, int port, void *usr) {
+    (void)usr;
+    if ((unsigned)port > 3) return;
+    const lr_entry_t *e = bsearch(name, s_keymap, LR_KEY_COUNT, sizeof(s_keymap[0]), cmp_name);
+    if (!e) return;
+    s_pressed[port][e->id] = pressed;
+}
 
 int16_t RETRO_CALLCONV engine_input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id) {
-    if (port != 0 || device != RETRO_DEVICE_JOYPAD) return 0;
-
-    gecnd_key_t key = GECND_KEY_NULL;
-    switch (id) {
-        case RETRO_DEVICE_ID_JOYPAD_B:      key = GECND_KEY_B; break;
-        case RETRO_DEVICE_ID_JOYPAD_A:      key = GECND_KEY_A; break;
-        case RETRO_DEVICE_ID_JOYPAD_X:      key = GECND_KEY_C; break;
-        case RETRO_DEVICE_ID_JOYPAD_Y:      key = GECND_KEY_D; break;
-        case RETRO_DEVICE_ID_JOYPAD_UP:     key = GECND_KEY_UP; break;
-        case RETRO_DEVICE_ID_JOYPAD_DOWN:   key = GECND_KEY_DOWN; break;
-        case RETRO_DEVICE_ID_JOYPAD_LEFT:   key = GECND_KEY_LEFT; break;
-        case RETRO_DEVICE_ID_JOYPAD_RIGHT:  key = GECND_KEY_RIGHT; break;
-        case RETRO_DEVICE_ID_JOYPAD_SELECT: key = GECND_KEY_E; break;
-        case RETRO_DEVICE_ID_JOYPAD_START:  key = GECND_KEY_F; break;
-        default: break;
+    static bool s_init = false;
+    (void)index;
+    if (!s_init) {
+        gamely_daemon_input_subscribe(on_key, NULL);
+        s_init = true;
     }
-
-    return gecnd_key_get_state(key) ? 1 : 0;
+    if (port > 3 || device != RETRO_DEVICE_JOYPAD || id >= 16) return 0;
+    return s_pressed[port][id] ? 1 : 0;
 }
