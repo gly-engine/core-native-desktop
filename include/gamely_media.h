@@ -47,6 +47,13 @@ void gamely_daemon_media_transmit_shutdown (void);
 bool gamely_daemon_media_transmit_is_online(void);
 void gamely_daemon_media_transmit_push     (const uint8_t *rgba, int width, int height);
 
+/* força IDR no próximo frame — usar ao conectar novo cliente sem IDR cache */
+void gamely_daemon_media_transmit_force_idr(void);
+
+/* retorna cache do último IDR completo (PAT+PMT + SPS+PPS + slice);
+ * *out aponta para buffer interno, válido até o próximo encode_push. */
+int  gamely_daemon_media_transmit_get_idr_cache(const uint8_t **out);
+
 /* -----------------------------------------------------------------------
  * Ciclo de vida
  * --------------------------------------------------------------------- */

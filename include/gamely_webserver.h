@@ -29,7 +29,8 @@ typedef void (*gly_stream_cb_t)(gly_conn_id_t conn_id, bool connected);
 
 void gamely_daemon_webserver_route_http  (const char *path, gly_http_cb_t cb);
 void gamely_daemon_webserver_route_ws   (const char *path, gly_ws_cb_t cb);
-void gamaly_daemon_webserver_route_stream(const char *path, gly_stream_cb_t cb);
+void gamaly_daemon_webserver_route_stream(const char *path, const char *content_type,
+                                          gly_stream_cb_t cb);
 void gamely_daemon_webserver_proxy_http  (const char *from, const char *to);
 void gamely_daemon_webserver_proxy_ws   (const char *from, const char *to);
 void gamely_daemon_webserver_start       (void *loop, int port);
@@ -46,5 +47,10 @@ void gamely_http_respond(gly_conn_id_t  conn_id,
                          const char    *content_type,
                          const char    *body,
                          size_t         body_len);
+
+/* escreve dados TS no ring de um cliente específico e agenda WRITEABLE.
+ * deve ser chamada da mesma thread do loop libuv/LWS. */
+void gamaly_webserver_stream_write_client(gly_conn_id_t conn_id,
+                                          const uint8_t *buf, int size);
 
 #endif /* GAMELY_WEBSERVER_H */
