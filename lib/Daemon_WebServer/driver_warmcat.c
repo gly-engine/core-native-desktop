@@ -309,6 +309,10 @@ static int callback_http(struct lws *wsi,
                     return -1;
                 }
 
+                /* desabilita o PENDING_TIMEOUT_HTTP_CONTENT (padrão 15 s do LWS)
+                 * que encerraria streams chunked que nunca têm fim natural */
+                lws_set_timeout(wsi, NO_PENDING_TIMEOUT, 0);
+
                 /* notifica o serviço — pode já escrever IDR cache no ring */
                 if (real->stream_cb)
                     real->stream_cb(s->conn_id, true);

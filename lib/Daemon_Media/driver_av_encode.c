@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <time.h>
 
 #define GECND_FFMPEG_LOAD_INTERNAL
 #define GECND_STREAM_AVLIB_INTERNAL
@@ -17,9 +18,11 @@ static AVStream        *g_stream = NULL;
 static AVFrame         *g_frame  = NULL;
 static AVPacket        *g_pkt    = NULL;
 
-static encode_ts_cb     g_on_ts  = NULL;
+static encode_ts_cb     g_on_ts   = NULL;
 static int64_t          g_cur_pts = 0;
-static int64_t          g_pts    = 0;
+static int64_t          g_pts     = 0;  /* próximo PTS mínimo aceito */
+static int64_t          g_start_us = 0; /* epoch do primeiro frame (µs) */
+static int              g_fps     = 0;
 
 /* -----------------------------------------------------------------------
  * GOP cache — captura o IDR inteiro + todos os P-frames até "agora".
@@ -136,6 +139,8 @@ bool encode_init(int w, int h, int fps, encode_ts_cb on_ts) {
 
     g_on_ts      = on_ts;
     g_pts        = 0;
+    g_start_us   = 0;
+    g_fps        = fps;
     g_force_idr  = 0;
     g_gop_len    = 0;
     g_gop_active = 0;
@@ -213,9 +218,20 @@ bool encode_init(int w, int h, int fps, encode_ts_cb on_ts) {
 void encode_push(const uint8_t *rgba, int w, int h) {
     if (!g_ctx || w != g_ctx->width || h != g_ctx->height) return;
 
+    /* PTS derivado do relógio real para garantir que a taxa de bits entregue
+     * ao muxer corresponda ao fps configurado, independente da taxa com que
+     * o caller invoca encode_push (GL loop pode rodar a 60+ fps).             */
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    int64_t now_us = (int64_t)ts.tv_sec * 1000000LL + ts.tv_nsec / 1000LL;
+    if (!g_start_us) g_start_us = now_us;
+    int64_t pts = (now_us - g_start_us) * g_fps / 1000000LL;
+    if (pts < g_pts) return;  /* frame adiantado para o slot atual — descarta */
+
     rgba_to_yuv420(rgba, w, h);
 
-    g_frame->pts = g_pts++;
+    g_frame->pts = pts;
+    g_pts        = pts + 1;
     if (g_force_idr) {
         g_frame->pict_type = AV_PICTURE_TYPE_I;
         g_frame->key_frame = 1;
@@ -287,4 +303,6 @@ void encode_shutdown(void) {
     g_gop_active = 0;
     g_gop_ready  = 0;
     g_force_idr  = 0;
+    g_start_us   = 0;
+    g_fps        = 0;
 }
