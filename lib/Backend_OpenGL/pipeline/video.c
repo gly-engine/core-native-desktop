@@ -3,6 +3,7 @@
 #include <string.h>
 #include "geopengl.h"
 #include "gebuffer.h"
+#include "gamely_media.h"
 #include "gefilter.h"
 
 static void update_video_textures(GLBackendState *s, MediaFrame *f) {
@@ -115,10 +116,10 @@ void native_draw_background_video(void) {
     }
 
     // Software render path
-    MediaFrame *f = gecnd_get_background_frame();
+    MediaFrame *f = gamely_daemon_media_background_get_frame();
     if (!f) return;
 
-    if (gecnd_buffer_check_update(&s->video_update_counter)) {
+    if (gamely_daemon_media_background_check_update(&s->video_update_counter)) {
         update_video_textures(s, f);
     }
 

@@ -6,6 +6,10 @@
 #include "gecnd.h"
 #include "gefilter.h"
 #include "geopengl.h"
+#include "gamely_media.h"
+
+static uint8_t *g_readpixels_buf     = NULL;
+static int      g_readpixels_buf_len = 0;
 
 #define MAX_VERTICES GE_MAX_VERTICES
 
@@ -14,6 +18,13 @@ void ge_pipeline_resize(uint16_t w, uint16_t h) {
     s->window_width = w; s->window_height = h;
     glViewport(0, 0, w, h);
     mat4_ortho(s->projection, 0, (float)w, (float)h, 0, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
+
+    int needed = w * h * 4;
+    if (needed > g_readpixels_buf_len) {
+        free(g_readpixels_buf);
+        g_readpixels_buf     = malloc((size_t)needed);
+        g_readpixels_buf_len = needed;
+    }
 }
 
 static void init_batch(GEBatch *b, size_t stride) {
@@ -40,7 +51,14 @@ static void create_atlas_page(GLBackendState *s, int width, int height) {
 void ge_pipeline_init(uint16_t w, uint16_t h) {
     GLBackendState *s = geogl_get_state();
     s->window_width = w; s->window_height = h;
-    
+
+    int needed = w * h * 4;
+    if (needed > g_readpixels_buf_len) {
+        free(g_readpixels_buf);
+        g_readpixels_buf     = malloc((size_t)needed);
+        g_readpixels_buf_len = needed;
+    }
+
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
     kv_init(s->atlas_pages);
@@ -214,6 +232,9 @@ void ge_pipeline_start(void) {
 }
 
 void ge_pipeline_terminate(void) {
+    free(g_readpixels_buf);
+    g_readpixels_buf     = NULL;
+    g_readpixels_buf_len = 0;
     GLBackendState *s = geogl_get_state();
     glDeleteBuffers(1, &s->vbo_simple);
     glDeleteBuffers(1, &s->vbo_complex);
@@ -320,10 +341,22 @@ void ge_pipeline_flush_primitives(void) {
     flush_batch(GE_PROG_COMPLEX, true);
 }
 
-void ge_pipeline_end(void) {
-    ge_pipeline_flush_primitives();
-}
-
 void ge_pipeline_flush(void) {
     ge_pipeline_flush_primitives();
+    bool online = gamely_daemon_media_transmit_is_online();
+
+    static bool prev_online  = false;
+    static int  push_count   = 0;
+
+    if (online && g_readpixels_buf) {
+        GLBackendState *s = geogl_get_state();
+        glReadPixels(0, 0, s->window_width, s->window_height,
+                     GL_RGBA, GL_UNSIGNED_BYTE, g_readpixels_buf);
+        push_count++;
+        if (push_count <= 5 || push_count % 30 == 0)
+            printf("[pipeline] push #%d  %dx%d\n",
+                   push_count, s->window_width, s->window_height);
+        gamely_daemon_media_transmit_push(g_readpixels_buf,
+                                          s->window_width, s->window_height);
+    }
 }

@@ -7,10 +7,9 @@
 #include "libretro.h"
 #include "gemedia.h"
 #include "gecnd.h"
-#include "gebuffer.h"
 #include "gedll.h"
 #include "gehook.h"
-#include "buffer.h"
+#include "gamely_media.h"
 #include "hw_render.h"
 #include "uri_query.h"
 
@@ -78,25 +77,11 @@ static void RETRO_CALLCONV core_video_refresh(const void *data, unsigned width, 
     // HW render: core drew directly into the FBO, nothing to copy
     if (libretro_hw_video_refresh(data, width, height, pitch)) return;
 
-    int ge_fmt = (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) ? GECND_PIX_FMT_RGBA8888 : GECND_PIX_FMT_RGB565;
-    gecnd_buffer_resize((int)width, (int)height, ge_fmt);
-
-    MediaFrame *f = gecnd_buffer_get_back();
-    if (!f) return;
-
     if (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) {
-        // BGRX -> RGBA conversion (SIMD: NEON / SSSE3 / scalar)
-        libretro_copy_xrgb8888(f->data[0], f->linesize[0],
-                               (const uint8_t *)data, (int)pitch,
-                               (int)width, (int)height);
+        gamely_daemon_media_background_push_xrgb8888((const uint8_t *)data, (int)width, (int)height, (int)pitch);
     } else {
-        libretro_copy_rgb565(f->data[0], f->linesize[0],
-                             (const uint8_t *)data, (int)pitch,
-                             (int)width, (int)height);
+        gamely_daemon_media_background_push_rgb565((const uint8_t *)data, (int)width, (int)height, (int)pitch);
     }
-
-    atomic_store(&f->ready, true);
-    gecnd_buffer_swap();
 }
 
 static void RETRO_CALLCONV core_audio_sample(int16_t left, int16_t right) { (void)left; (void)right; }
@@ -157,11 +142,6 @@ static bool core_environment(unsigned cmd, void *data) {
         case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE:
             return libretro_hw_handle_env(cmd, data);
         case RETRO_ENVIRONMENT_SET_GEOMETRY:
-            if (data) {
-                struct retro_game_geometry *geom = (struct retro_game_geometry*)data;
-                int ge_fmt = (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) ? GECND_PIX_FMT_RGBA8888 : GECND_PIX_FMT_RGB565;
-                gecnd_buffer_resize((int)geom->base_width, (int)geom->base_height, ge_fmt);
-            }
             return true;
         case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
         case RETRO_ENVIRONMENT_SET_VARIABLES:
@@ -339,13 +319,9 @@ static bool native_libretro_game(const char *path) {
             int fw = (av_info.geometry.max_width  > 0) ? (int)av_info.geometry.max_width  : (int)av_info.geometry.base_width;
             int fh = (av_info.geometry.max_height > 0) ? (int)av_info.geometry.max_height : (int)av_info.geometry.base_height;
             libretro_hw_context_reset(fw, fh);
-        } else {
-            int ge_fmt = (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) ? GECND_PIX_FMT_RGBA8888 : GECND_PIX_FMT_RGB565;
-            if (av_info.geometry.base_width > 0 && av_info.geometry.base_height > 0) {
-                gecnd_buffer_resize((int)av_info.geometry.base_width, (int)av_info.geometry.base_height, ge_fmt);
-            }
         }
 
+        gamely_daemon_media_background_claim();
         core_initialized = true;
         return true;
     }
@@ -368,13 +344,14 @@ void libretro_deinit_core(void) {
         if (p_retro_deinit) p_retro_deinit();
     }
     if (core_handle) close_library(core_handle);
+    gamely_daemon_media_background_release();
     core_initialized = core_init_done = false;
     core_handle = NULL;
     reset_pointers();
 }
 
 MediaFrame* libretro_get_frame(void) {
-    return gecnd_get_background_frame();
+    return gamely_daemon_media_background_get_frame();
 }
 
 void libretro_run_frame(void) {

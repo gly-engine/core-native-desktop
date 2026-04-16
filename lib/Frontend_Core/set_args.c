@@ -6,6 +6,7 @@
 #include "gecnd.h"
 #include "gehook.h"
 #include "gemetrics.h"
+#include "gamely_media.h"
 
 void gamely_set_toml(gecnd_t *gly, const char *path);
 
@@ -73,8 +74,8 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
             gly->lua_engine_code = opt.arg;
         }
         if (c == 307) {
-            native_media_source(0, opt.arg);
-            native_media_play(0);
+            gamely_daemon_media_playback_source(0, opt.arg);
+            gamely_daemon_media_playback_play(0);
         }
         if (c == 308) {
             if (!native_libretro_url(opt.arg)) {
