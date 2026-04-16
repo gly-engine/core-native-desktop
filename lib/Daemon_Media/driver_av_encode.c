@@ -147,10 +147,16 @@ bool encode_init(int w, int h, int fps, encode_ts_cb on_ts) {
     g_gop_ready  = 0;
 
     const AVCodec *codec = AV.avcodec_find_encoder(AV_CODEC_ID_H264);
-    if (!codec) return false;
+    if (!codec) {
+        fprintf(stderr, "[encode] H264 encoder nao encontrado (libx264 ausente?)\n");
+        return false;
+    }
 
     g_ctx = AV.avcodec_alloc_context3(codec);
-    if (!g_ctx) return false;
+    if (!g_ctx) {
+        fprintf(stderr, "[encode] avcodec_alloc_context3 falhou\n");
+        return false;
+    }
 
     g_ctx->width  = w;
     g_ctx->height = h;
@@ -170,7 +176,11 @@ bool encode_init(int w, int h, int fps, encode_ts_cb on_ts) {
     /* SPS+PPS embutidos em todo IDR — clientes mid-stream conseguem decodificar */
     AV.av_dict_set(&opts, "x264-params", "repeat-headers=1", 0);
 
-    if (AV.avcodec_open2(g_ctx, codec, &opts) < 0) {
+    int open_ret = AV.avcodec_open2(g_ctx, codec, &opts);
+    if (open_ret < 0) {
+        char errbuf[128];
+        AV.av_strerror(open_ret, errbuf, sizeof(errbuf));
+        fprintf(stderr, "[encode] avcodec_open2 falhou: %s\n", errbuf);
         AV.av_dict_free(&opts);
         AV.avcodec_free_context(&g_ctx);
         return false;
