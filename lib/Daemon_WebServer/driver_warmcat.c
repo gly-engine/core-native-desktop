@@ -382,7 +382,8 @@ static int callback_http(struct lws *wsi,
                 memmove(chunk + hlen, data_dst, (size_t)n);
                 chunk[hlen + n]     = '\r';
                 chunk[hlen + n + 1] = '\n';
-                if (lws_write(wsi, chunk, (size_t)(hlen + n + 2), LWS_WRITE_HTTP) < 0)
+                int total = hlen + n + 2;
+                if (lws_write(wsi, chunk, (size_t)total, LWS_WRITE_HTTP) < total)
                     return -1;
                 if (more >= 188)
                     lws_callback_on_writable(wsi);

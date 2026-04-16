@@ -16,14 +16,11 @@ static int                  g_enc_w  = 0;
 static int                  g_enc_h  = 0;
 
 static void on_ts_ready(const uint8_t *buf, int size, int64_t pts) {
-    printf("[transmit] on_ts_ready size=%d pts=%lld\n", size, (long long)pts);
     gamely_transmit_cb_t cb = g_cb;
     if (cb) cb(buf, size, pts);
 }
 
 void gamely_daemon_media_transmit_callback(gamely_transmit_cb_t cb) {
-    printf("[transmit] callback: g_online addr=%p cb=%p\n",
-           (void*)&g_online, (void*)cb);
     g_cb = cb;
     atomic_store(&g_online, cb != NULL);
     if (!cb) {
@@ -51,7 +48,6 @@ int gamely_daemon_media_transmit_get_idr_cache(const uint8_t **out) {
 
 void gamely_daemon_media_transmit_push(const uint8_t *rgba, int width, int height) {
     if (!gamely_daemon_media_transmit_is_online()) return;
-    printf("[transmit] push %dx%d enc_w=%d enc_h=%d\n", width, height, g_enc_w, g_enc_h);
     if (width != g_enc_w || height != g_enc_h) {
         encode_shutdown();
         if (!encode_init(width, height, 30, on_ts_ready)) {
