@@ -1,11 +1,11 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdbool.h>
 #include <lauxlib.h>
 #include <lua.h>
 
 #include "gecnd.h"
-#include "gamely_webclient.h"
 
 static void cb_push(lua_State *L, int64_t req_id, const char *evt)
 {
@@ -52,7 +52,7 @@ typedef struct {
     int64_t    req_id;
 } req_ctx_t;
 
-static void on_status(gly_wc_id_t id, int status, void *user)
+static void on_status(gly_req_id_t id, int status, void *user)
 {
     req_ctx_t *ctx = user;
     cb_push(ctx->L, ctx->req_id, "set-status");
@@ -60,7 +60,7 @@ static void on_status(gly_wc_id_t id, int status, void *user)
     lua_pcall(ctx->L, 3, 0, 0);
 }
 
-static void on_data(gly_wc_id_t id, const char *data, size_t len, void *user)
+static void on_data(gly_req_id_t id, const char *data, size_t len, void *user)
 {
     req_ctx_t *ctx = user;
     cb_push(ctx->L, ctx->req_id, "add-body-data");
@@ -68,14 +68,14 @@ static void on_data(gly_wc_id_t id, const char *data, size_t len, void *user)
     lua_pcall(ctx->L, 3, 0, 0);
 }
 
-static void on_done(gly_wc_id_t id, void *user)
+static void on_done(gly_req_id_t id, void *user)
 {
     req_ctx_t *ctx = user;
     cb_resolve(ctx->L, ctx->req_id);
     free(ctx);
 }
 
-static void on_error(gly_wc_id_t id, const char *msg, void *user)
+static void on_error(gly_req_id_t id, const char *msg, void *user)
 {
     req_ctx_t *ctx = user;
     cb_push(ctx->L, ctx->req_id, "set-error");
@@ -114,8 +114,9 @@ static int lua_native_http_handler(lua_State *L)
     ctx->req_id = req_id;
     fprintf(stderr, "new request %li\n", req_id);
 
-    gly_wc_id_t wc_id = gamely_daemon_webclient_http(
-        method, url, body,
+    gly_http_req_t req = { .method = method, .body = body, .body_len = body ? strlen(body) : 0 };
+    gly_req_id_t wc_id = gamely_daemon_webclient_http(
+        url, &req,
         on_status, on_data, on_done, on_error,
         ctx
     );

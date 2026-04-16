@@ -1,10 +1,19 @@
-#include "gamely_webclient.h"
-
-#include <libwebsockets.h>
-#include <uv.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+
+#include <libwebsockets.h>
+#include <uv.h>
+
+#include "gecnd.h"
+
+extern gly_req_id_t webloop_http_request(const char *path, const char *method,
+                                          const char *body, size_t body_len,
+                                          gly_wc_status_cb, gly_wc_data_cb,
+                                          gly_wc_done_cb, gly_wc_error_cb, void *);
+extern gly_req_id_t webloop_ws_connect  (const char *path,
+                                          gly_wc_ws_open_cb, gly_wc_ws_msg_cb,
+                                          gly_wc_ws_close_cb, gly_wc_error_cb, void *);
 
 #define MAX_CONNS 64
 #define BUF_SIZE  8192
@@ -12,7 +21,7 @@
 typedef enum { CONN_HTTP, CONN_WS } conn_type_t;
 
 typedef struct {
-    gly_wc_id_t        id;
+    gly_req_id_t        id;
     conn_type_t        type;
     int                active;
     int                http_status;
@@ -40,7 +49,7 @@ typedef struct {
 static struct {
     struct lws_context *ctx;
     conn_t              pool[MAX_CONNS];
-    gly_wc_id_t         next_id;
+    gly_req_id_t         next_id;
     int                 started;
 } g;
 
@@ -58,7 +67,7 @@ static conn_t *conn_alloc(void)
     return NULL;
 }
 
-static conn_t *conn_by_id(gly_wc_id_t id)
+static conn_t *conn_by_id(gly_req_id_t id)
 {
     for (int i = 0; i < MAX_CONNS; i++)
         if (g.pool[i].active && g.pool[i].id == id)
@@ -247,16 +256,28 @@ void gamely_daemon_webclient_stop(void)
     memset(&g, 0, sizeof(g));
 }
 
-gly_wc_id_t gamely_daemon_webclient_http(
-    const char      *method,
+gly_req_id_t gamely_daemon_webclient_http(
     const char      *url,
-    const char      *body,
+    gly_http_req_t  *req,
     gly_wc_status_cb on_status,
     gly_wc_data_cb   on_data,
     gly_wc_done_cb   on_done,
     gly_wc_error_cb  on_error,
     void            *user)
 {
+    const char *method   = req && req->method   ? req->method   : "GET";
+    const char *body     = req ? req->body     : NULL;
+    size_t      body_len = req ? req->body_len : 0;
+
+    if (strncmp(url, "self://", 7) == 0) {
+        const char *path = url + 7;
+        if (*path != '/') path--;
+        gly_req_id_t id = webloop_http_request(path, method, body, body_len,
+                                                on_status, on_data, on_done, on_error, user);
+        if (req) req->id = id;
+        return id;
+    }
+
     if (!g.started) return 0;
 
     conn_t *c = conn_alloc();
@@ -269,11 +290,10 @@ gly_wc_id_t gamely_daemon_webclient_http(
     c->on_error  = on_error;
     c->user      = user;
 
-    if (body && body[0]) {
-        size_t blen = strlen(body);
-        if (blen > BUF_SIZE - 1) blen = BUF_SIZE - 1;
-        memcpy(c->http_body, body, blen);
-        c->http_body_len = blen;
+    if (body && body_len) {
+        size_t n = body_len < BUF_SIZE ? body_len : BUF_SIZE;
+        memcpy(c->http_body, body, n);
+        c->http_body_len = n;
     }
 
     char host[256], path[1024];
@@ -293,7 +313,7 @@ gly_wc_id_t gamely_daemon_webclient_http(
     ccinfo.origin         = host;
     ccinfo.protocol       = "http";
     ccinfo.ssl_connection = ssl_flags;
-    ccinfo.method         = method ? method : "GET";
+    ccinfo.method         = method;
     ccinfo.userdata       = c;
 
     c->wsi = lws_client_connect_via_info(&ccinfo);
@@ -303,10 +323,11 @@ gly_wc_id_t gamely_daemon_webclient_http(
         return 0;
     }
 
+    if (req) req->id = c->id;
     return c->id;
 }
 
-gly_wc_id_t gamely_daemon_webclient_ws_connect(
+gly_req_id_t gamely_daemon_webclient_ws_connect(
     const char        *url,
     const char        *protocol,
     gly_wc_ws_open_cb  on_open,
@@ -315,6 +336,12 @@ gly_wc_id_t gamely_daemon_webclient_ws_connect(
     gly_wc_error_cb    on_error,
     void              *user)
 {
+    if (strncmp(url, "self://", 7) == 0) {
+        const char *path = url + 7;
+        if (*path != '/') path--;
+        return webloop_ws_connect(path, on_open, on_msg, on_close, on_error, user);
+    }
+
     if (!g.started) return 0;
 
     conn_t *c = conn_alloc();
@@ -356,8 +383,15 @@ gly_wc_id_t gamely_daemon_webclient_ws_connect(
     return c->id;
 }
 
-void gamely_daemon_webclient_ws_send(gly_wc_id_t id, const char *data, size_t len)
+/* loopback WS send: deliver as a message to the server-side route */
+extern int webloop_respond_ws(gly_req_id_t id, const char *data, size_t len);
+
+void gamely_daemon_webclient_ws_send(gly_req_id_t id, const char *data, size_t len)
 {
+    if (id & 0x80000000u) {
+        webloop_respond_ws(id, data, len);
+        return;
+    }
     conn_t *c = conn_by_id(id);
     if (!c || !c->wsi) return;
     size_t n = len < BUF_SIZE ? len : BUF_SIZE;
@@ -367,8 +401,9 @@ void gamely_daemon_webclient_ws_send(gly_wc_id_t id, const char *data, size_t le
     lws_callback_on_writable(c->wsi);
 }
 
-void gamely_daemon_webclient_ws_close(gly_wc_id_t id)
+void gamely_daemon_webclient_ws_close(gly_req_id_t id)
 {
+    if (id & 0x80000000u) return; /* loopback: server side owns the conn lifetime */
     conn_t *c = conn_by_id(id);
     if (!c || !c->wsi) return;
     lws_close_reason(c->wsi, LWS_CLOSE_STATUS_NORMAL, NULL, 0);

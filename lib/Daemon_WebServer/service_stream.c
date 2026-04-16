@@ -1,12 +1,15 @@
-#include "gamely_webserver.h"
 #include "gamely_media.h"
 #include <stdio.h>
+
+#include "gecnd.h"
+
+extern void gamely_webserver_stream_write_client(gly_req_id_t, const uint8_t *, int);
 
 #define MAX_SLOTS 8
 
 static struct {
-    gly_conn_id_t conn_id;
-    int           active;
+    gly_req_id_t conn_id;
+    int          active;
 } g_slots[MAX_SLOTS];
 
 static int g_count = 0;
@@ -20,7 +23,7 @@ static void on_ts_packet(const uint8_t *buf, int size, int64_t pts)
     (void)pts;
     for (int i = 0; i < MAX_SLOTS; i++) {
         if (!g_slots[i].active) continue;
-        gamaly_webserver_stream_write_client(g_slots[i].conn_id, buf, size);
+        gamely_webserver_stream_write_client(g_slots[i].conn_id, buf, size);
     }
 }
 
@@ -28,7 +31,7 @@ static void on_ts_packet(const uint8_t *buf, int size, int64_t pts)
  * on_stream_client — chamado pelo driver HTTP ao conectar/desconectar.
  * Ao conectar: envia IDR cache para início imediato ou força IDR.
  * ---------------------------------------------------------------------- */
-static void on_stream_client(gly_conn_id_t conn_id, bool connected)
+void service_stream_client_cb(gly_req_id_t conn_id, bool connected)
 {
     if (connected) {
         for (int i = 0; i < MAX_SLOTS; i++) {
@@ -49,7 +52,7 @@ static void on_stream_client(gly_conn_id_t conn_id, bool connected)
             const uint8_t *idr = NULL;
             int idr_len = gamely_daemon_media_transmit_get_idr_cache(&idr);
             if (idr_len > 0) {
-                gamaly_webserver_stream_write_client(conn_id, idr, idr_len);
+                gamely_webserver_stream_write_client(conn_id, idr, idr_len);
             } else {
                 /* stream ainda sem IDR — força keyframe no próximo frame */
                 gamely_daemon_media_transmit_force_idr();
@@ -73,7 +76,3 @@ static void on_stream_client(gly_conn_id_t conn_id, bool connected)
     }
 }
 
-void gamaly_service_stream_register(void)
-{
-    gamaly_daemon_webserver_route_stream("/stream", "video/mp2t", on_stream_client);
-}

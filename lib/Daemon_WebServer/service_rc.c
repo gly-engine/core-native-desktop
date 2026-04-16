@@ -1,8 +1,9 @@
-#include "gamely_webserver.h"
 #include "gamely_input.h"
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
+
+#include "gecnd.h"
 
 static const char s_html[] =
 "<!DOCTYPE html>"
@@ -75,13 +76,13 @@ static const char s_html[] =
 "</body>"
 "</html>";
 
-static void http_rc(const gly_http_req_t *req)
+void http_rc(const gly_http_req_t *req)
 {
-    gamely_http_respond(req->conn_id, 200, "text/html; charset=utf-8",
+    gamely_http_respond(req->id, 200, "text/html; charset=utf-8",
                         s_html, sizeof(s_html) - 1);
 }
 
-static void ws_rc(const gly_ws_req_t *req)
+void ws_rc(const gly_ws_req_t *req)
 {
     if (req->event != GLY_WS_MESSAGE || req->len < 2) return;
 
@@ -104,8 +105,3 @@ static void ws_rc(const gly_ws_req_t *req)
     gamely_daemon_input_push_name(key, pressed, 0, 0);
 }
 
-void gamely_service_rc_register(void)
-{
-    gamely_daemon_webserver_route_http("/rc", http_rc);
-    gamely_daemon_webserver_route_ws("/rc", ws_rc);
-}

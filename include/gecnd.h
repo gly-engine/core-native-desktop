@@ -97,4 +97,63 @@ void gecnd_filter_reset_video_pos();
 bool gencd_filter_is_zero_corners();
 bool gencd_filter_is_zero_video_pos();
 
+/* ---- Web Daemons ---- */
+
+typedef uint32_t gly_req_id_t;
+
+typedef enum { GLY_WS_OPEN, GLY_WS_CLOSE, GLY_WS_MESSAGE } gly_ws_event_t;
+
+typedef struct {
+    gly_req_id_t  id;
+    const char   *method;
+    const char   *path;
+    const char   *body;
+    size_t        body_len;
+} gly_http_req_t;
+
+typedef struct {
+    gly_req_id_t   id;
+    gly_ws_event_t event;
+    const char    *data;
+    size_t         len;
+} gly_ws_req_t;
+
+typedef void (*gly_http_cb_t)   (const gly_http_req_t *req);
+typedef void (*gly_ws_cb_t)     (const gly_ws_req_t   *req);
+typedef void (*gly_stream_cb_t) (gly_req_id_t conn_id, bool connected);
+
+typedef void (*gly_wc_status_cb)  (gly_req_id_t id, int status,                   void *user);
+typedef void (*gly_wc_data_cb)    (gly_req_id_t id, const char *data, size_t len, void *user);
+typedef void (*gly_wc_done_cb)    (gly_req_id_t id,                               void *user);
+typedef void (*gly_wc_error_cb)   (gly_req_id_t id, const char *msg,              void *user);
+typedef void (*gly_wc_ws_open_cb) (gly_req_id_t id,                               void *user);
+typedef void (*gly_wc_ws_msg_cb)  (gly_req_id_t id, const char *data, size_t len, void *user);
+typedef void (*gly_wc_ws_close_cb)(gly_req_id_t id,                               void *user);
+
+void gamely_daemon_webserver_start(void *loop, int port);
+void gamely_daemon_webserver_stop(void);
+void gamely_http_respond(gly_req_id_t id, int status, const char *content_type,
+                         const char *body, size_t body_len);
+void gamely_ws_send(const char *path, gly_req_id_t conn_id, const char *text,
+                    size_t len, gly_req_id_t exclude_id);
+
+void gamely_daemon_webloop_start(void *loop);
+void gamely_daemon_webloop_stop(void);
+void gamely_daemon_webloop_route_http  (const char *path, gly_http_cb_t cb);
+void gamely_daemon_webloop_route_ws    (const char *path, gly_ws_cb_t cb);
+void gamely_daemon_webloop_route_stream(const char *path, const char *content_type,
+                                        gly_stream_cb_t cb);
+void gamely_daemon_webloop_route_proxy (const char *from, const char *to);
+
+void         gamely_daemon_webclient_start(void *loop);
+void         gamely_daemon_webclient_stop(void);
+gly_req_id_t gamely_daemon_webclient_http(const char *url, gly_http_req_t *req,
+    gly_wc_status_cb on_status, gly_wc_data_cb on_data,
+    gly_wc_done_cb on_done, gly_wc_error_cb on_error, void *user);
+gly_req_id_t gamely_daemon_webclient_ws_connect(const char *url, const char *protocol,
+    gly_wc_ws_open_cb on_open, gly_wc_ws_msg_cb on_msg,
+    gly_wc_ws_close_cb on_close, gly_wc_error_cb on_error, void *user);
+void gamely_daemon_webclient_ws_send (gly_req_id_t id, const char *data, size_t len);
+void gamely_daemon_webclient_ws_close(gly_req_id_t id);
+
 #endif

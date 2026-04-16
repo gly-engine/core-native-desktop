@@ -1,14 +1,21 @@
-#include "gamely_webserver.h"
-
-#include <libwebsockets.h>
-#include <uv.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <assert.h>
 
-#include "khash.h"
+#include <libwebsockets.h>
+#include <khash.h>
+#include <uv.h>
+
+#include "gecnd.h"
+
+
 KHASH_MAP_INIT_INT(conn_map, struct lws *)
+
+extern int webloop_respond_http   (gly_req_id_t id, int status, const char *ct,
+                                    const char *body, size_t len);
+extern int webloop_respond_ws     (gly_req_id_t id, const char *data, size_t len);
+extern int webloop_respond_stream (gly_req_id_t id, const uint8_t *buf, int size);
 
 #define MAX_ROUTES         64
 #define MAX_WS_CLIENTS     64
@@ -37,7 +44,7 @@ typedef struct {
  * Sessões HTTP
  * ---------------------------------------------------------------------- */
 typedef struct {
-    gly_conn_id_t  conn_id;
+    gly_req_id_t  conn_id;
     int            has_response;
     int            status;
     char           content_type[64];
@@ -58,7 +65,7 @@ typedef struct {
     size_t         pending_len;
     int            has_pending;
     route_t       *route;
-    gly_conn_id_t  conn_id;
+    gly_req_id_t  conn_id;
 } ws_session_t;
 
 /* -----------------------------------------------------------------------
@@ -73,15 +80,15 @@ static struct {
 
     khash_t(conn_map)   *conn_map;
 
-    gly_conn_id_t        ws_ids[MAX_WS_CLIENTS];
+    gly_req_id_t        ws_ids[MAX_WS_CLIENTS];
     ws_session_t        *ws_sessions[MAX_WS_CLIENTS];
     int                  ws_count;
 
-    gly_conn_id_t        stream_ids[MAX_STREAM_CLIENTS];
+    gly_req_id_t        stream_ids[MAX_STREAM_CLIENTS];
     http_session_t      *stream_sessions[MAX_STREAM_CLIENTS];
     int                  stream_count;
 
-    gly_conn_id_t        next_id;
+    gly_req_id_t        next_id;
     int                  started;
 } g;
 
@@ -217,13 +224,13 @@ static route_t *resolve_route(route_t *r)
 /* -----------------------------------------------------------------------
  * conn_map helpers
  * ---------------------------------------------------------------------- */
-static gly_conn_id_t alloc_id(void)
+static gly_req_id_t alloc_id(void)
 {
     if (++g.next_id == 0) g.next_id = 1;
     return g.next_id;
 }
 
-static struct lws *wsi_by_id(gly_conn_id_t id)
+static struct lws *wsi_by_id(gly_req_id_t id)
 {
     if (!id) return NULL;
     khint_t k = kh_get(conn_map, g.conn_map, id);
@@ -231,7 +238,7 @@ static struct lws *wsi_by_id(gly_conn_id_t id)
     return kh_val(g.conn_map, k);
 }
 
-static void conn_register(gly_conn_id_t id, struct lws *wsi)
+static void conn_register(gly_req_id_t id, struct lws *wsi)
 {
     int ret;
     khint_t k = kh_put(conn_map, g.conn_map, id, &ret);
@@ -239,7 +246,7 @@ static void conn_register(gly_conn_id_t id, struct lws *wsi)
     kh_val(g.conn_map, k) = wsi;
 }
 
-static void conn_remove(gly_conn_id_t id)
+static void conn_remove(gly_req_id_t id)
 {
     khint_t k = kh_get(conn_map, g.conn_map, id);
     if (k != kh_end(g.conn_map)) kh_del(conn_map, g.conn_map, k);
@@ -326,7 +333,7 @@ static int callback_http(struct lws *wsi,
         /* rota HTTP normal */
         r = resolve_route(find_route(path, ROUTE_HTTP));
         if (r && r->http_cb) {
-            gly_http_req_t req = { .conn_id = s->conn_id, .path = path };
+            gly_http_req_t req = { .id = s->conn_id, .path = path };
             r->http_cb(&req);
         } else {
             s->status   = 404;
@@ -477,7 +484,7 @@ static int callback_ws(struct lws *wsi,
 
         route_t *real = resolve_route(s->route);
         if (real && real->ws_cb) {
-            gly_ws_req_t req = { .conn_id=s->conn_id, .event=GLY_WS_OPEN };
+            gly_ws_req_t req = { .id=s->conn_id, .event=GLY_WS_OPEN };
             real->ws_cb(&req);
         }
         break;
@@ -496,7 +503,7 @@ static int callback_ws(struct lws *wsi,
         }
         route_t *real = resolve_route(s->route);
         if (real && real->ws_cb) {
-            gly_ws_req_t req = { .conn_id=s->conn_id, .event=GLY_WS_CLOSE };
+            gly_ws_req_t req = { .id=s->conn_id, .event=GLY_WS_CLOSE };
             real->ws_cb(&req);
         }
         memset(s, 0, sizeof(*s));
@@ -507,8 +514,8 @@ static int callback_ws(struct lws *wsi,
         route_t *real = resolve_route(s->route);
         if (real && real->ws_cb) {
             gly_ws_req_t req = {
-                .conn_id = s->conn_id,
-                .event   = GLY_WS_MESSAGE,
+                .id    = s->conn_id,
+                .event = GLY_WS_MESSAGE,
                 .data    = (const char *)in,
                 .len     = len
             };
@@ -548,7 +555,7 @@ void gamely_daemon_webserver_route_ws(const char *path, gly_ws_cb_t cb)
     r->ws_cb = cb;
 }
 
-void gamaly_daemon_webserver_route_stream(const char *path,
+void gamely_daemon_webserver_route_stream(const char *path,
                                           const char *content_type,
                                           gly_stream_cb_t cb)
 {
@@ -558,20 +565,6 @@ void gamaly_daemon_webserver_route_stream(const char *path,
     strncpy(r->content_type,
             (content_type && content_type[0]) ? content_type : "video/mp2t",
             sizeof(r->content_type) - 1);
-}
-
-void gamely_daemon_webserver_proxy_http(const char *from, const char *to)
-{
-    route_t *r = insert_route(from, ROUTE_HTTP);
-    if (!r) return;
-    strncpy(r->proxy_to, to, sizeof(r->proxy_to) - 1);
-}
-
-void gamely_daemon_webserver_proxy_ws(const char *from, const char *to)
-{
-    route_t *r = insert_route(from, ROUTE_WS);
-    if (!r) return;
-    strncpy(r->proxy_to, to, sizeof(r->proxy_to) - 1);
 }
 
 void gamely_daemon_webserver_start(void *loop, int port)
@@ -634,17 +627,20 @@ void gamely_daemon_webserver_stop(void)
 }
 
 void gamely_ws_send(const char    *path,
-                    gly_conn_id_t  conn_id,
+                    gly_req_id_t  conn_id,
                     const char    *text,
                     size_t         len,
-                    gly_conn_id_t  exclude_id)
+                    gly_req_id_t  exclude_id)
 {
-    if (!g.started || !text || !len) return;
+    if (!text || !len) return;
     if (conn_id != 0) {
+        if (webloop_respond_ws(conn_id, text, len)) return;
+        if (!g.started) return;
         struct lws *wsi = wsi_by_id(conn_id);
         if (wsi) _ws_send_wsi(wsi, text, len);
         return;
     }
+    if (!g.started) return;
     for (int i = 0; i < g.ws_count; i++) {
         if (g.ws_ids[i] == exclude_id) continue;
         if (path) {
@@ -659,12 +655,13 @@ void gamely_ws_send(const char    *path,
     }
 }
 
-void gamely_http_respond(gly_conn_id_t conn_id,
+void gamely_http_respond(gly_req_id_t conn_id,
                          int           status,
                          const char   *content_type,
                          const char   *body,
                          size_t        body_len)
 {
+    if (webloop_respond_http(conn_id, status, content_type, body, body_len)) return;
     if (!g.started) return;
     struct lws *wsi = wsi_by_id(conn_id);
     if (!wsi) return;
@@ -685,10 +682,12 @@ void gamely_http_respond(gly_conn_id_t conn_id,
  *
  * Deve ser chamada da mesma thread do loop libuv/LWS (single-threaded).
  * ---------------------------------------------------------------------- */
-void gamaly_webserver_stream_write_client(gly_conn_id_t conn_id,
+void gamely_webserver_stream_write_client(gly_req_id_t conn_id,
                                           const uint8_t *buf, int size)
 {
-    if (!g.started || size <= 0 || !conn_id) return;
+    if (size <= 0 || !conn_id) return;
+    if (webloop_respond_stream(conn_id, buf, size)) return;
+    if (!g.started) return;
 
     for (int i = 0; i < g.stream_count; i++) {
         if (g.stream_ids[i] != conn_id) continue;
