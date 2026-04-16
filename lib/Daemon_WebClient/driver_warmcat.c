@@ -383,13 +383,13 @@ gly_req_id_t gamely_daemon_webclient_ws_connect(
     return c->id;
 }
 
-/* loopback WS send: deliver as a message to the server-side route */
-extern int webloop_respond_ws(gly_req_id_t id, const char *data, size_t len);
+extern void webloop_client_ws_send (gly_req_id_t id, const char *data, size_t len);
+extern void webloop_client_ws_close(gly_req_id_t id);
 
 void gamely_daemon_webclient_ws_send(gly_req_id_t id, const char *data, size_t len)
 {
     if (id & 0x80000000u) {
-        webloop_respond_ws(id, data, len);
+        webloop_client_ws_send(id, data, len);
         return;
     }
     conn_t *c = conn_by_id(id);
@@ -403,7 +403,10 @@ void gamely_daemon_webclient_ws_send(gly_req_id_t id, const char *data, size_t l
 
 void gamely_daemon_webclient_ws_close(gly_req_id_t id)
 {
-    if (id & 0x80000000u) return; /* loopback: server side owns the conn lifetime */
+    if (id & 0x80000000u) {
+        webloop_client_ws_close(id);
+        return;
+    }
     conn_t *c = conn_by_id(id);
     if (!c || !c->wsi) return;
     lws_close_reason(c->wsi, LWS_CLOSE_STATUS_NORMAL, NULL, 0);

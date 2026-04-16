@@ -12,10 +12,8 @@
 
 KHASH_MAP_INIT_INT(conn_map, struct lws *)
 
-extern int webloop_respond_http   (gly_req_id_t id, int status, const char *ct,
-                                    const char *body, size_t len);
-extern int webloop_respond_ws     (gly_req_id_t id, const char *data, size_t len);
-extern int webloop_respond_stream (gly_req_id_t id, const uint8_t *buf, int size);
+extern gly_req_id_t webloop_alloc_req(uint32_t conn_id);
+extern void         webloop_free_req (uint32_t conn_id);
 
 #define MAX_ROUTES         64
 #define MAX_WS_CLIENTS     64
@@ -44,7 +42,8 @@ typedef struct {
  * Sessões HTTP
  * ---------------------------------------------------------------------- */
 typedef struct {
-    gly_req_id_t  conn_id;
+    uint32_t      conn_id;
+    gly_req_id_t  req_id;
     int            has_response;
     int            status;
     char           content_type[64];
@@ -65,7 +64,8 @@ typedef struct {
     size_t         pending_len;
     int            has_pending;
     route_t       *route;
-    gly_req_id_t  conn_id;
+    uint32_t      conn_id;
+    gly_req_id_t  req_id;
 } ws_session_t;
 
 /* -----------------------------------------------------------------------
@@ -80,15 +80,15 @@ static struct {
 
     khash_t(conn_map)   *conn_map;
 
-    gly_req_id_t        ws_ids[MAX_WS_CLIENTS];
+    uint32_t             ws_ids[MAX_WS_CLIENTS];
     ws_session_t        *ws_sessions[MAX_WS_CLIENTS];
     int                  ws_count;
 
-    gly_req_id_t        stream_ids[MAX_STREAM_CLIENTS];
+    uint32_t             stream_ids[MAX_STREAM_CLIENTS];
     http_session_t      *stream_sessions[MAX_STREAM_CLIENTS];
     int                  stream_count;
 
-    gly_req_id_t        next_id;
+    uint32_t             next_id;
     int                  started;
 } g;
 
@@ -224,13 +224,13 @@ static route_t *resolve_route(route_t *r)
 /* -----------------------------------------------------------------------
  * conn_map helpers
  * ---------------------------------------------------------------------- */
-static gly_req_id_t alloc_id(void)
+static uint32_t alloc_id(void)
 {
     if (++g.next_id == 0) g.next_id = 1;
     return g.next_id;
 }
 
-static struct lws *wsi_by_id(gly_req_id_t id)
+static struct lws *wsi_by_conn_id(uint32_t id)
 {
     if (!id) return NULL;
     khint_t k = kh_get(conn_map, g.conn_map, id);
@@ -238,7 +238,7 @@ static struct lws *wsi_by_id(gly_req_id_t id)
     return kh_val(g.conn_map, k);
 }
 
-static void conn_register(gly_req_id_t id, struct lws *wsi)
+static void conn_register(uint32_t id, struct lws *wsi)
 {
     int ret;
     khint_t k = kh_put(conn_map, g.conn_map, id, &ret);
@@ -246,7 +246,7 @@ static void conn_register(gly_req_id_t id, struct lws *wsi)
     kh_val(g.conn_map, k) = wsi;
 }
 
-static void conn_remove(gly_req_id_t id)
+static void conn_remove(uint32_t id)
 {
     khint_t k = kh_get(conn_map, g.conn_map, id);
     if (k != kh_end(g.conn_map)) kh_del(conn_map, g.conn_map, k);
@@ -285,6 +285,7 @@ static int callback_http(struct lws *wsi,
 
         s->conn_id = alloc_id();
         conn_register(s->conn_id, wsi);
+        s->req_id = webloop_alloc_req(s->conn_id);
 
         const char *path = in ? (const char *)in : "/";
 
@@ -294,7 +295,7 @@ static int callback_http(struct lws *wsi,
             route_t *real = resolve_route(r);
             if (real && real->type == ROUTE_STREAM) {
                 uint8_t *buf = malloc(STREAM_RING);
-                if (!buf) { conn_remove(s->conn_id); return -1; }
+                if (!buf) { webloop_free_req(s->conn_id); conn_remove(s->conn_id); return -1; }
 
                 s->is_stream        = 1;
                 s->headers_sent     = 0;
@@ -312,6 +313,7 @@ static int callback_http(struct lws *wsi,
                     free(buf);
                     s->ring_buf = NULL;
                     fprintf(stderr, "[webserver] MAX_STREAM_CLIENTS atingido\n");
+                    webloop_free_req(s->conn_id);
                     conn_remove(s->conn_id);
                     return -1;
                 }
@@ -322,7 +324,7 @@ static int callback_http(struct lws *wsi,
 
                 /* notifica o serviço — pode já escrever IDR cache no ring */
                 if (real->stream_cb)
-                    real->stream_cb(s->conn_id, true);
+                    real->stream_cb(s->req_id, true);
 
                 /* agenda envio imediato de headers (+ IDR cache se já no ring) */
                 lws_callback_on_writable(wsi);
@@ -333,7 +335,7 @@ static int callback_http(struct lws *wsi,
         /* rota HTTP normal */
         r = resolve_route(find_route(path, ROUTE_HTTP));
         if (r && r->http_cb) {
-            gly_http_req_t req = { .id = s->conn_id, .path = path };
+            gly_http_req_t req = { .id = s->req_id, .path = path };
             r->http_cb(&req);
         } else {
             s->status   = 404;
@@ -442,8 +444,9 @@ static int callback_http(struct lws *wsi,
 
             route_t *real = resolve_route(s->stream_route);
             if (real && real->stream_cb)
-                real->stream_cb(s->conn_id, false);
+                real->stream_cb(s->req_id, false);
         }
+        webloop_free_req(s->conn_id);
         conn_remove(s->conn_id);
         break;
 
@@ -471,6 +474,7 @@ static int callback_ws(struct lws *wsi,
         s->route   = find_route(path, ROUTE_WS);
         s->conn_id = alloc_id();
         conn_register(s->conn_id, wsi);
+        s->req_id  = webloop_alloc_req(s->conn_id);
 
         if (g.ws_count < MAX_WS_CLIENTS) {
             g.ws_ids[g.ws_count]      = s->conn_id;
@@ -478,19 +482,21 @@ static int callback_ws(struct lws *wsi,
             g.ws_count++;
         } else {
             fprintf(stderr, "[webserver] MAX_WS_CLIENTS atingido, rejeitando\n");
+            webloop_free_req(s->conn_id);
             conn_remove(s->conn_id);
             return -1;
         }
 
         route_t *real = resolve_route(s->route);
         if (real && real->ws_cb) {
-            gly_ws_req_t req = { .id=s->conn_id, .event=GLY_WS_OPEN };
+            gly_ws_req_t req = { .id=s->req_id, .event=GLY_WS_OPEN };
             real->ws_cb(&req);
         }
         break;
     }
 
     case LWS_CALLBACK_CLOSED: {
+        webloop_free_req(s->conn_id);
         conn_remove(s->conn_id);
         for (int i = 0; i < g.ws_count; i++) {
             if (g.ws_ids[i] == s->conn_id) {
@@ -503,7 +509,7 @@ static int callback_ws(struct lws *wsi,
         }
         route_t *real = resolve_route(s->route);
         if (real && real->ws_cb) {
-            gly_ws_req_t req = { .id=s->conn_id, .event=GLY_WS_CLOSE };
+            gly_ws_req_t req = { .id=s->req_id, .event=GLY_WS_CLOSE };
             real->ws_cb(&req);
         }
         memset(s, 0, sizeof(*s));
@@ -514,10 +520,10 @@ static int callback_ws(struct lws *wsi,
         route_t *real = resolve_route(s->route);
         if (real && real->ws_cb) {
             gly_ws_req_t req = {
-                .id    = s->conn_id,
+                .id    = s->req_id,
                 .event = GLY_WS_MESSAGE,
-                .data    = (const char *)in,
-                .len     = len
+                .data  = (const char *)in,
+                .len   = len
             };
             real->ws_cb(&req);
         }
@@ -626,23 +632,42 @@ void gamely_daemon_webserver_stop(void)
     memset(&g, 0, sizeof(g));
 }
 
-void gamely_ws_send(const char    *path,
-                    gly_req_id_t  conn_id,
-                    const char    *text,
-                    size_t         len,
-                    gly_req_id_t  exclude_id)
+/* -----------------------------------------------------------------------
+ * driver_http_send / driver_ws_send / driver_ws_send_all / driver_stream_write
+ * Internal transport functions — called by WebLoop (service_loopback.c) only.
+ * ---------------------------------------------------------------------- */
+void driver_http_send(uint32_t conn_id, int status, const char *content_type,
+                      const char *body, size_t body_len)
 {
-    if (!text || !len) return;
-    if (conn_id != 0) {
-        if (webloop_respond_ws(conn_id, text, len)) return;
-        if (!g.started) return;
-        struct lws *wsi = wsi_by_id(conn_id);
-        if (wsi) _ws_send_wsi(wsi, text, len);
-        return;
-    }
     if (!g.started) return;
+    struct lws *wsi = wsi_by_conn_id(conn_id);
+    if (!wsi) return;
+    http_session_t *s = (http_session_t *)lws_wsi_user(wsi);
+    if (!s) return;
+
+    s->status = status;
+    strncpy(s->content_type, content_type ? content_type : "text/plain",
+            sizeof(s->content_type) - 1);
+    size_t n = body_len < (MSG_BUF - 1) ? body_len : (MSG_BUF - 1);
+    if (body && n) memcpy(s->body, body, n);
+    s->body_len     = n;
+    s->has_response = 1;
+    lws_callback_on_writable(wsi);
+}
+
+void driver_ws_send(uint32_t conn_id, const char *data, size_t len)
+{
+    if (!g.started || !data || !len) return;
+    struct lws *wsi = wsi_by_conn_id(conn_id);
+    if (wsi) _ws_send_wsi(wsi, data, len);
+}
+
+void driver_ws_send_all(const char *path, const char *data, size_t len,
+                        uint32_t exclude_conn_id)
+{
+    if (!g.started || !data || !len) return;
     for (int i = 0; i < g.ws_count; i++) {
-        if (g.ws_ids[i] == exclude_id) continue;
+        if (g.ws_ids[i] == exclude_conn_id) continue;
         if (path) {
             ws_session_t *s = g.ws_sessions[i];
             if (!s || !s->route) continue;
@@ -650,51 +675,20 @@ void gamely_ws_send(const char    *path,
             const char *tpath = s->route->proxy_to[0] ? s->route->proxy_to : rpath;
             if (strcmp(rpath, path) != 0 && strcmp(tpath, path) != 0) continue;
         }
-        struct lws *wsi = wsi_by_id(g.ws_ids[i]);
-        if (wsi) _ws_send_wsi(wsi, text, len);
+        struct lws *wsi = wsi_by_conn_id(g.ws_ids[i]);
+        if (wsi) _ws_send_wsi(wsi, data, len);
     }
 }
 
-void gamely_http_respond(gly_req_id_t conn_id,
-                         int           status,
-                         const char   *content_type,
-                         const char   *body,
-                         size_t        body_len)
+void driver_stream_write(uint32_t conn_id, const uint8_t *buf, int size)
 {
-    if (webloop_respond_http(conn_id, status, content_type, body, body_len)) return;
-    if (!g.started) return;
-    struct lws *wsi = wsi_by_id(conn_id);
-    if (!wsi) return;
-    http_session_t *s = (http_session_t *)lws_wsi_user(wsi);
-    if (!s) return;
-
-    s->status = status;
-    strncpy(s->content_type, content_type, sizeof(s->content_type) - 1);
-    size_t n = body_len < (MSG_BUF - 1) ? body_len : (MSG_BUF - 1);
-    memcpy(s->body, body, n);
-    s->body_len     = n;
-    s->has_response = 1;
-}
-
-/* -----------------------------------------------------------------------
- * gamaly_webserver_stream_write_client — escreve dados TS no ring de um
- * cliente específico e agenda WRITEABLE.
- *
- * Deve ser chamada da mesma thread do loop libuv/LWS (single-threaded).
- * ---------------------------------------------------------------------- */
-void gamely_webserver_stream_write_client(gly_req_id_t conn_id,
-                                          const uint8_t *buf, int size)
-{
-    if (size <= 0 || !conn_id) return;
-    if (webloop_respond_stream(conn_id, buf, size)) return;
-    if (!g.started) return;
-
+    if (!g.started || size <= 0 || !conn_id) return;
     for (int i = 0; i < g.stream_count; i++) {
         if (g.stream_ids[i] != conn_id) continue;
         http_session_t *s = g.stream_sessions[i];
         if (s && s->ring_buf) {
             ring_write(s, buf, size);
-            struct lws *wsi = wsi_by_id(conn_id);
+            struct lws *wsi = wsi_by_conn_id(conn_id);
             if (wsi) lws_callback_on_writable(wsi);
         }
         return;

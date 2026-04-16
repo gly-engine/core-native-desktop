@@ -132,10 +132,12 @@ typedef void (*gly_wc_ws_close_cb)(gly_req_id_t id,                             
 
 void gamely_daemon_webserver_start(void *loop, int port);
 void gamely_daemon_webserver_stop(void);
-void gamely_http_respond(gly_req_id_t id, int status, const char *content_type,
-                         const char *body, size_t body_len);
-void gamely_ws_send(const char *path, gly_req_id_t conn_id, const char *text,
-                    size_t len, gly_req_id_t exclude_id);
+void gamely_daemon_webserver_http_send(gly_req_id_t id, int status,
+        const char *content_type, const char *body, size_t body_len);
+void gamely_daemon_webserver_ws_send    (gly_req_id_t id, const char *data, size_t len);
+void gamely_daemon_webserver_ws_send_all(const char *path, const char *data, size_t len,
+        gly_req_id_t exclude_id);
+void gamely_daemon_webserver_stream_write(gly_req_id_t id, const uint8_t *buf, int size);
 
 void gamely_daemon_webloop_start(void *loop);
 void gamely_daemon_webloop_stop(void);

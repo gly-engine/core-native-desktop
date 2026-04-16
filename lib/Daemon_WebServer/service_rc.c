@@ -78,8 +78,8 @@ static const char s_html[] =
 
 void http_rc(const gly_http_req_t *req)
 {
-    gamely_http_respond(req->id, 200, "text/html; charset=utf-8",
-                        s_html, sizeof(s_html) - 1);
+    gamely_daemon_webserver_http_send(req->id, 200, "text/html; charset=utf-8",
+                                      s_html, sizeof(s_html) - 1);
 }
 
 void ws_rc(const gly_ws_req_t *req)
