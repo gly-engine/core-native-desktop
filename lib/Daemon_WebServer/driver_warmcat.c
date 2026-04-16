@@ -14,8 +14,8 @@ KHASH_MAP_INIT_INT(conn_map, struct lws *)
 #define MAX_WS_CLIENTS     64
 #define MAX_STREAM_CLIENTS  8
 #define MSG_BUF           4096
-#define CHUNK_MAX         2632        /* 14 × 188 — múltiplo de TS packet */
-#define STREAM_RING       (1 << 21)   /* 2 MB por cliente                  */
+#define CHUNK_MAX         (52 * 188)  /* 9776 bytes — 52 TS packets por send    */
+#define STREAM_RING       (1 << 21)   /* 2 MB por cliente                       */
 #define STREAM_MASK       (STREAM_RING - 1)
 
 /* -----------------------------------------------------------------------
@@ -50,6 +50,7 @@ typedef struct {
     uint8_t       *ring_buf;
     unsigned int   ring_wr;
     unsigned int   ring_rd;
+    int            waiting_for_idr; /* 1: overflow ocorreu — descartar até próximo IDR */
 } http_session_t;
 
 typedef struct {
@@ -87,11 +88,38 @@ static struct {
 /* -----------------------------------------------------------------------
  * Ring buffer helpers — sem lock (mesma thread do loop)
  * ---------------------------------------------------------------------- */
+
+/* Detecta se o bloco TS contém um pacote PAT (PID=0, PUSI=1).
+ * PAT precede todo IDR quando mpegts_flags=resend_headers está ativo.
+ * Critério: byte0=0x47, byte1 & 0x5f == 0x40, byte2 == 0x00            */
+static int ts_has_pat(const uint8_t *data, int size)
+{
+    for (int i = 0; i + 3 <= size; i += 188)
+        if (data[i] == 0x47 && (data[i+1] & 0x5fu) == 0x40u && data[i+2] == 0x00u)
+            return 1;
+    return 0;
+}
+
 static void ring_write(http_session_t *s, const uint8_t *data, int size)
 {
     unsigned int avail = STREAM_RING - (s->ring_wr - s->ring_rd);
+
+    /* overflow: não cabe — aguardar até próximo IDR antes de gravar */
     if ((unsigned int)size > avail)
-        s->ring_rd = s->ring_wr - STREAM_RING + (unsigned int)size; /* drop agressivo */
+        s->waiting_for_idr = 1;
+
+    if (s->waiting_for_idr) {
+        /* descarta frames até receber PAT+PMT (início de IDR) */
+        if (!ts_has_pat(data, size)) return;
+
+        /* IDR chegou: recalcula espaço disponível e faz room se necessário */
+        avail = STREAM_RING - (s->ring_wr - s->ring_rd);
+        if ((unsigned int)size > avail) {
+            unsigned int new_rd = s->ring_wr - STREAM_RING + (unsigned int)size;
+            s->ring_rd = ((new_rd + 187u) / 188u) * 188u;
+        }
+        s->waiting_for_idr = 0;
+    }
 
     unsigned int off   = s->ring_wr & STREAM_MASK;
     unsigned int part1 = STREAM_RING - off;
@@ -261,12 +289,13 @@ static int callback_http(struct lws *wsi,
                 uint8_t *buf = malloc(STREAM_RING);
                 if (!buf) { conn_remove(s->conn_id); return -1; }
 
-                s->is_stream    = 1;
-                s->headers_sent = 0;
-                s->stream_route = real;
-                s->ring_buf     = buf;
-                s->ring_wr      = 0;
-                s->ring_rd      = 0;
+                s->is_stream        = 1;
+                s->headers_sent     = 0;
+                s->stream_route     = real;
+                s->ring_buf         = buf;
+                s->ring_wr          = 0;
+                s->ring_rd          = 0;
+                s->waiting_for_idr  = 0;
 
                 if (g.stream_count < MAX_STREAM_CLIENTS) {
                     g.stream_ids[g.stream_count]      = s->conn_id;

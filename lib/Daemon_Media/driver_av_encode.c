@@ -22,23 +22,21 @@ static int64_t          g_cur_pts = 0;
 static int64_t          g_pts    = 0;
 
 /* -----------------------------------------------------------------------
- * Welcome packet — PAT+PMT capturado durante avformat_write_header.
- * Enviado para clientes que conectam antes do primeiro IDR.
+ * GOP cache — captura o IDR inteiro + todos os P-frames até "agora".
+ * Enviado a novos clientes para início imediato e sem gaps de frame_num.
+ *
+ * Tamanho: 720p ultrafast ~2Mbps × 0.5s (GOP=15@30fps) ≈ 125 KB de H.264
+ * + overhead MPEG-TS (~5%) + PAT/PMT (resend_headers) ≈ 200 KB no pior caso.
+ * 1 MB dá margem para 4×4 Mbps sem problema.
  * ---------------------------------------------------------------------- */
-#define WELCOME_MAX (16 * 188)   /* 3008 bytes — mais que suficiente para PAT+PMT */
-static uint8_t g_welcome[WELCOME_MAX];
-static int     g_welcome_len = 0;
-static int     g_in_header   = 0;
+#define GOP_CACHE_MAX (1 * 1024 * 1024)   /* 1 MB */
+static uint8_t g_gop_buf[GOP_CACHE_MAX];
+static int     g_gop_len     = 0;
+static int     g_gop_active  = 0;  /* 1: acumulando frames desde o último IDR */
+static int     g_gop_ready   = 0;  /* 1: há pelo menos um IDR no cache       */
 
-/* -----------------------------------------------------------------------
- * IDR cache — PAT+PMT + SPS+PPS + slice IDR completo.
- * Com pat_period baixo + resend_headers, o muxer emite PAT+PMT junto com
- * o IDR, então g_in_idr=1 durante av_interleaved_write_frame captura tudo.
- * ---------------------------------------------------------------------- */
-#define IDR_CACHE_MAX (512 * 1024)   /* 512 KB — confortável para 720p ultrafast */
-static uint8_t g_idr_buf[IDR_CACHE_MAX];
-static int     g_idr_len = 0;
-static int     g_in_idr  = 0;
+/* flag: dentro de avformat_write_header (para não poluir o GOP cache) */
+static int     g_in_header   = 0;
 
 /* -----------------------------------------------------------------------
  * Força IDR no próximo encode_push
@@ -46,20 +44,20 @@ static int     g_in_idr  = 0;
 static int g_force_idr = 0;
 
 /* -----------------------------------------------------------------------
- * AVIO write callback — captura welcome e IDR cache conforme flags
+ * AVIO write callback — acumula GOP cache e despacha para o serviço
  * ---------------------------------------------------------------------- */
 static int ts_write_cb(void *opaque, uint8_t *buf, int size) {
     (void)opaque;
-    if (g_in_header) {
-        if (g_welcome_len + size <= WELCOME_MAX) {
-            memcpy(g_welcome + g_welcome_len, buf, size);
-            g_welcome_len += size;
-        }
-    }
-    if (g_in_idr) {
-        if (g_idr_len + size <= IDR_CACHE_MAX) {
-            memcpy(g_idr_buf + g_idr_len, buf, size);
-            g_idr_len += size;
+    /* acumula no GOP cache (IDR + todos P-frames até o momento) */
+    if (g_gop_active && !g_in_header) {
+        if (g_gop_len + size <= GOP_CACHE_MAX) {
+            memcpy(g_gop_buf + g_gop_len, buf, size);
+            g_gop_len += size;
+        } else {
+            /* cache cheio: GOP maior que esperado — descarta e aguarda próximo IDR */
+            g_gop_active = 0;
+            g_gop_ready  = 0;
+            g_gop_len    = 0;
         }
     }
     if (g_on_ts) g_on_ts((const uint8_t *)buf, size, g_cur_pts);
@@ -99,7 +97,11 @@ static void rgba_to_yuv420(const uint8_t *rgba, int w, int h) {
 
 /* -----------------------------------------------------------------------
  * drain_encoder — recebe pacotes do codec e multiplexia no TS.
- * Ativa g_in_idr durante a escrita de pacotes KEY para capturar IDR cache.
+ *
+ * GOP cache: no IDR, reseta o buffer e começa a acumular; nos P/B-frames,
+ * continua acumulando. Assim o cache sempre contém [PAT+PMT + IDR + P…]
+ * i.e., o GOP completo até "agora", que é exatamente o que um novo cliente
+ * precisa para decodificar sem gaps de frame_num.
  * ---------------------------------------------------------------------- */
 static void drain_encoder(void) {
     int ret;
@@ -107,15 +109,19 @@ static void drain_encoder(void) {
         g_cur_pts = g_pkt->pts;
         g_pkt->stream_index = g_stream->index;
 
-        /* ativa IDR cache: com resend_headers, muxer emite PAT+PMT antes do
-         * KEY frame dentro do mesmo av_interleaved_write_frame — tudo capturado */
-        if (g_pkt->flags & AV_PKT_FLAG_KEY) {
-            g_idr_len = 0;
-            g_in_idr  = 1;
+        int is_key = (g_pkt->flags & AV_PKT_FLAG_KEY) != 0;
+        if (is_key) {
+            /* novo IDR: reinicia o GOP cache (inclui PAT+PMT via resend_headers) */
+            g_gop_len    = 0;
+            g_gop_active = 1;
+            g_gop_ready  = 0;
         }
 
         AV.av_interleaved_write_frame(g_fmt, g_pkt);
-        g_in_idr = 0;
+        /* g_gop_active permanece 1 para os P-frames seguintes */
+
+        if (is_key)
+            g_gop_ready = 1; /* IDR já está no cache — partials são utilizáveis */
 
         AV.av_packet_unref(g_pkt);
     }
@@ -128,11 +134,12 @@ static void drain_encoder(void) {
 bool encode_init(int w, int h, int fps, encode_ts_cb on_ts) {
     if (!av_load_ffmpeg()) return false;
 
-    g_on_ts       = on_ts;
-    g_pts         = 0;
-    g_force_idr   = 0;
-    g_welcome_len = 0;
-    g_idr_len     = 0;
+    g_on_ts      = on_ts;
+    g_pts        = 0;
+    g_force_idr  = 0;
+    g_gop_len    = 0;
+    g_gop_active = 0;
+    g_gop_ready  = 0;
 
     const AVCodec *codec = AV.avcodec_find_encoder(AV_CODEC_ID_H264);
     if (!codec) return false;
@@ -230,12 +237,17 @@ void encode_force_idr(void) {
 }
 
 /* -----------------------------------------------------------------------
- * encode_get_idr_cache — último IDR completo (PAT+PMT + SPS+PPS + slice).
- * Retorna comprimento; *out aponta para buffer interno estático.
+ * encode_get_idr_cache — GOP cache atual: PAT+PMT + IDR + P-frames até agora.
+ * Retorna o comprimento; *out aponta para buffer interno estático.
+ * Válido até o próximo encode_push (single-thread: sem race condition).
  * ---------------------------------------------------------------------- */
 int encode_get_idr_cache(const uint8_t **out) {
-    if (out) *out = g_idr_len > 0 ? g_idr_buf : NULL;
-    return g_idr_len;
+    if (g_gop_ready && g_gop_len > 0) {
+        if (out) *out = g_gop_buf;
+        return g_gop_len;
+    }
+    if (out) *out = NULL;
+    return 0;
 }
 
 /* -----------------------------------------------------------------------
@@ -270,8 +282,9 @@ void encode_shutdown(void) {
         g_ctx = NULL;
     }
 
-    g_stream      = NULL;
-    g_welcome_len = 0;
-    g_idr_len     = 0;
-    g_force_idr   = 0;
+    g_stream     = NULL;
+    g_gop_len    = 0;
+    g_gop_active = 0;
+    g_gop_ready  = 0;
+    g_force_idr  = 0;
 }
