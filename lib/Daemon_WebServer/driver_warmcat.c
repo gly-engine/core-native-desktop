@@ -14,8 +14,8 @@ KHASH_MAP_INIT_INT(conn_map, struct lws *)
 #define MAX_WS_CLIENTS     64
 #define MAX_STREAM_CLIENTS  8
 #define MSG_BUF           4096
-#define CHUNK_MAX         4096
-#define STREAM_RING       (1 << 19)   /* 512KB por cliente */
+#define CHUNK_MAX         2632        /* 14 * 188 (divisivel por TS packet) */
+#define STREAM_RING       (1 << 21)   /* 2MB por cliente */
 #define STREAM_MASK       (STREAM_RING - 1)
 
 /* -----------------------------------------------------------------------
@@ -109,8 +109,13 @@ static void ring_write(http_session_t *s, const uint8_t *data, int size)
 static int ring_read(http_session_t *s, uint8_t *dst, int max)
 {
     unsigned int avail = s->ring_wr - s->ring_rd;
-    unsigned int n     = avail < (unsigned int)max ? avail : (unsigned int)max;
+    if (avail < 188) return 0;
+
+    /* garante múltiplo de 188 */
+    unsigned int n = avail < (unsigned int)max ? avail : (unsigned int)max;
+    n = (n / 188) * 188;
     if (!n) return 0;
+
     unsigned int off   = s->ring_rd & STREAM_MASK;
     unsigned int part1 = STREAM_RING - off;
     if (n <= part1) {
@@ -345,39 +350,33 @@ static int callback_http(struct lws *wsi,
                     return -1;
                 s->headers_sent = 1;
                 printf("[stream] headers enviados id=%u\n", s->conn_id);
-                /* não escrever body no mesmo WRITEABLE que os headers */
                 lws_callback_on_writable(wsi);
-                return 0;  /* nunca lws_callback_http_dummy para streams */
+                return 0;
             }
 
-            /* drena ring: chunk = "hex\r\n<data>\r\n" */
+            /* drena ring: formato chunked = "hex\r\n<dados TS>\r\n"
+             * Com 'transfer-encoding: chunked', precisamos formatar cada chunk manualmente
+             * para que o player não se perca no sync do MPEG-TS (0x47). */
             unsigned char wbuf[LWS_PRE + 12 + CHUNK_MAX + 2];
             unsigned char *chunk    = wbuf + LWS_PRE;
-            unsigned char *data_dst = chunk + 12;   /* 12 bytes p/ "hex\r\n" */
+            unsigned char *data_dst = chunk + 12;
 
             uv_mutex_lock(&g.stream_lock);
             int n    = ring_read(s, data_dst, CHUNK_MAX);
             int more = (int)(s->ring_wr - s->ring_rd);
             uv_mutex_unlock(&g.stream_lock);
 
-            printf("[stream] WRITEABLE drain id=%u n=%d more=%d\n",
-                   s->conn_id, n, more);
-
             if (n > 0) {
                 int hlen = snprintf((char *)chunk, 12, "%x\r\n", (unsigned)n);
                 memmove(chunk + hlen, data_dst, (size_t)n);
                 chunk[hlen + n]     = '\r';
                 chunk[hlen + n + 1] = '\n';
-                int wrote = lws_write(wsi, chunk, (size_t)(hlen + n + 2),
-                                      LWS_WRITE_HTTP);
-                printf("[stream] lws_write ret=%d bytes=%d\n",
-                       wrote, hlen + n + 2);
-                if (wrote < 0)
+                if (lws_write(wsi, chunk, (size_t)(hlen + n + 2), LWS_WRITE_HTTP) < 0)
                     return -1;
-                if (more > 0)
+                if (more >= 188)
                     lws_callback_on_writable(wsi);
             }
-            return 0;  /* nunca lws_callback_http_dummy para streams */
+            return 0;
         }
 
         /* --- HTTP normal --- */

@@ -72,6 +72,7 @@ static void drain_encoder(void) {
         AV.av_interleaved_write_frame(g_fmt, g_pkt);
         AV.av_packet_unref(g_pkt);
     }
+    if (g_fmt && g_fmt->pb) AV.avio_flush(g_fmt->pb);
 }
 
 static void encode_thread(void *arg) {
@@ -120,17 +121,29 @@ bool encode_init(int w, int h, int fps, encode_ts_cb on_ts) {
     if (!codec) return false;
 
     g_ctx = AV.avcodec_alloc_context3(codec);
-    AV.av_opt_set_int(g_ctx, "width", w, 0);
-    AV.av_opt_set_int(g_ctx, "height", h, 0);
-    AV.av_opt_set_int(g_ctx, "pix_fmt", AV_PIX_FMT_YUV420P, 0);
-    AV.av_opt_set_q(g_ctx, "time_base", (AVRational){1, fps}, 0);
-    AV.av_opt_set_q(g_ctx, "framerate", (AVRational){fps, 1}, 0);
-    AV.av_opt_set_int(g_ctx, "gop", fps, 0);
-    AV.av_opt_set_int(g_ctx, "bf", 0, 0);
+    if (!g_ctx) return false;
+
+    /* width/height: acesso direto — campos estáveis desde FFmpeg 3.x, offset
+     * compila == runtime (comprovado: 1910 frames sem crash nestes campos).
+     * Os campos abaixo SÃO afetados pelo mismatch de ABI; usamos av_opt_set_*
+     * para que a libavutil aplique o offset correto em runtime. */
+    g_ctx->width  = w;
+    g_ctx->height = h;
+    AV.av_opt_set_q  (g_ctx, "time_base",    (AVRational){1,   fps}, 0);
+    AV.av_opt_set_q  (g_ctx, "framerate",    (AVRational){fps, 1},   0);
+    AV.av_opt_set_int(g_ctx, "g",            (int64_t)fps,           0); /* gop_size */
+    AV.av_opt_set_int(g_ctx, "bf",           0,                      0); /* max_b_frames */
+    if (AV.av_opt_set(g_ctx, "pixel_format", "yuv420p",              0) < 0) {
+        fprintf(stderr, "[encode] falha ao setar pixel_format\n");
+        AV.avcodec_free_context(&g_ctx);
+        return false;
+    }
 
     AVDictionary *opts = NULL;
-    AV.av_dict_set(&opts, "preset", "ultrafast", 0);
-    AV.av_dict_set(&opts, "tune",   "zerolatency", 0);
+    AV.av_dict_set(&opts, "preset",      "ultrafast",        0);
+    AV.av_dict_set(&opts, "tune",        "zerolatency",      0);
+    /* SPS+PPS em todo IDR — clientes que conectam mid-stream conseguem decodificar */
+    AV.av_dict_set(&opts, "x264-params", "repeat-headers=1", 0);
 
     if (AV.avcodec_open2(g_ctx, codec, &opts) < 0) {
         AV.av_dict_free(&opts);
@@ -140,14 +153,14 @@ bool encode_init(int w, int h, int fps, encode_ts_cb on_ts) {
     AV.av_dict_free(&opts);
 
     AV.avformat_alloc_output_context2(&g_fmt, NULL, "mpegts", NULL);
-    g_fmt->flags |= AVFMT_FLAG_CUSTOM_IO;
+    g_fmt->flags |= AVFMT_FLAG_CUSTOM_IO | AVFMT_FLAG_FLUSH_PACKETS;
 
     g_stream = AV.avformat_new_stream(g_fmt, NULL);
     g_stream->time_base = (AVRational){1, fps};
     AV.avcodec_parameters_from_context(g_stream->codecpar, g_ctx);
 
-    uint8_t *io_buf = AV.av_malloc(4096);
-    g_fmt->pb = AV.avio_alloc_context(io_buf, 4096, 1, NULL, NULL, ts_write_cb, NULL);
+    uint8_t *io_buf = AV.av_malloc(3760);
+    g_fmt->pb = AV.avio_alloc_context(io_buf, 3760, 1, NULL, NULL, ts_write_cb, NULL);
 
     AV.avformat_write_header(g_fmt, NULL);
 

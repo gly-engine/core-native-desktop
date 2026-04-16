@@ -92,6 +92,7 @@ typedef struct {
     int (*avio_open_dyn_buf)(AVIOContext **s);
     int (*avio_close_dyn_buf)(AVIOContext *s, uint8_t **pbuffer);
     AVIOContext* (*avio_alloc_context)(unsigned char *buffer, int buffer_size, int write_flag, void *opaque, int (*read_packet)(void*, uint8_t*, int), int (*write_packet)(void*, uint8_t*, int), int64_t (*seek)(void*, int64_t, int));
+    void (*avio_flush)(AVIOContext *s);
 
     // libswscale
     struct SwsContext* (*sws_getContext)(int srcW, int srcH, enum AVPixelFormat srcFormat, int dstW, int dstH, enum AVPixelFormat dstFormat, int flags, SwsFilter *srcFilter, SwsFilter *dstFilter, const double *param);

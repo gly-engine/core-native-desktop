@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdatomic.h>
@@ -43,9 +44,12 @@ void gamely_daemon_media_transmit_push(const uint8_t *rgba, int width, int heigh
     printf("[transmit] push %dx%d enc_w=%d enc_h=%d\n", width, height, g_enc_w, g_enc_h);
     if (width != g_enc_w || height != g_enc_h) {
         encode_shutdown();
+        if (!encode_init(width, height, 30, on_ts_ready)) {
+            fprintf(stderr, "[transmit] encode_init falhou para %dx%d\n", width, height);
+            return;  /* g_enc_w/h ficam em 0 — retry no próximo frame */
+        }
         g_enc_w = width;
         g_enc_h = height;
-        encode_init(width, height, 30, on_ts_ready);
     }
     encode_push(rgba, width, height);
 }

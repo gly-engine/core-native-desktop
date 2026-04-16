@@ -134,6 +134,7 @@ bool av_load_ffmpeg(void) {
             LOAD_SYM(libavformat, avio_open_dyn_buf);
             LOAD_SYM(libavformat, avio_close_dyn_buf);
             LOAD_SYM(libavformat, avio_alloc_context);
+            LOAD_SYM(libavformat, avio_flush);
 
             // libavutil
             LOAD_SYM(libavutil, av_malloc);
