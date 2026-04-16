@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
+#include "gecnd.h"
 #include "gamely_media.h"
 #include "gefilter.h"
 
@@ -10,6 +12,8 @@
 #define MAX_CHANNELS 4
 
 static VideoStream *g_streams[MAX_CHANNELS] = {0};
+
+bool av_load_ffmpeg(void);
 
 void gamely_daemon_media_playback_source(uint8_t channel, const char *url) {
     if (channel >= MAX_CHANNELS) return;
