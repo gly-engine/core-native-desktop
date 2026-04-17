@@ -68,7 +68,7 @@ void gamely_set_toml(gecnd_t *gly, const char *path)
     if (args.type == TOML_TABLE) {
         toml_datum_t input_val = toml_get(args, "input");
         if (input_val.type == TOML_STRING)
-            gly->input = strdup(input_val.u.str.ptr); /* known leak; intentional */
+            gamely_daemon_input_add_source(input_val.u.str.ptr);
     }
 
     toml_free(res);

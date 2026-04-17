@@ -84,14 +84,29 @@ void http_rc(const gly_http_req_t *req)
 
 void ws_rc(const gly_ws_req_t *req)
 {
-    if (req->event != GLY_WS_MESSAGE || req->len < 2) return;
+    if (req->event == GLY_WS_OPEN)  { *req->usr = 0; return; }
+    if (req->event == GLY_WS_CLOSE) { gamely_daemon_input_reset_port((int)(intptr_t)*req->usr); return; }
+    if (req->event != GLY_WS_MESSAGE || req->len < 1) return;
 
     const char *data = req->data;
-    if (data[0] != '+' && data[0] != '-') return;
+    size_t      len  = req->len;
+
+    char tmp[16] = {0};
+    memcpy(tmp, data, len < sizeof(tmp) - 1 ? len : sizeof(tmp) - 1);
+
+    int port;
+    if (sscanf(tmp, "%d", &port) == 1) {
+        int old = (int)(intptr_t)*req->usr;
+        if (port != old) gamely_daemon_input_reset_port(old);
+        *req->usr = (void *)(intptr_t)port;
+        return;
+    }
+
+    if (len < 2 || (data[0] != '+' && data[0] != '-')) return;
 
     bool pressed = (data[0] == '+');
     char keyname[128];
-    size_t name_len = req->len - 1;
+    size_t name_len = len - 1;
     if (name_len >= sizeof(keyname)) return;
     memcpy(keyname, data + 1, name_len);
     keyname[name_len] = '\0';
@@ -102,6 +117,6 @@ void ws_rc(const gly_ws_req_t *req)
     else if (strcmp(keyname, "yellow") == 0) key = "c";
     else if (strcmp(keyname, "blue")   == 0) key = "d";
 
-    gamely_daemon_input_push_name(key, pressed, 0, 0);
+    gamely_daemon_input_push_name(key, pressed, (int)(intptr_t)*req->usr, 0);
 }
 

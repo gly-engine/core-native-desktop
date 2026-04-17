@@ -33,7 +33,8 @@ static ko_longopt_t longopts[] = {
     { "browser-bin", ko_required_argument, 409 },
     { "browser-url", ko_required_argument, 410 },
     { "toml",  ko_required_argument, 501, },
-    { "input", ko_required_argument, 502, },
+    { "input",  ko_required_argument, 502, },
+    { "remote", ko_required_argument, 503, },
     { NULL, 0, 0 }
 };
 
@@ -134,7 +135,10 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
             gamely_set_toml(gly, opt.arg);
         }
         if (c == 502) {
-            gly->input = opt.arg;
+            gamely_daemon_input_add_source(opt.arg);
+        }
+        if (c == 503) {
+            gamely_daemon_input_remote(opt.arg);
         }
     }
 }

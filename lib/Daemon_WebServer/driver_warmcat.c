@@ -66,6 +66,7 @@ typedef struct {
     route_t       *route;
     uint32_t      conn_id;
     gly_req_id_t  req_id;
+    void          *usr;
 } ws_session_t;
 
 /* -----------------------------------------------------------------------
@@ -489,7 +490,7 @@ static int callback_ws(struct lws *wsi,
 
         route_t *real = resolve_route(s->route);
         if (real && real->ws_cb) {
-            gly_ws_req_t req = { .id=s->req_id, .event=GLY_WS_OPEN };
+            gly_ws_req_t req = { .id=s->req_id, .event=GLY_WS_OPEN, .usr=&s->usr };
             real->ws_cb(&req);
         }
         break;
@@ -509,7 +510,7 @@ static int callback_ws(struct lws *wsi,
         }
         route_t *real = resolve_route(s->route);
         if (real && real->ws_cb) {
-            gly_ws_req_t req = { .id=s->req_id, .event=GLY_WS_CLOSE };
+            gly_ws_req_t req = { .id=s->req_id, .event=GLY_WS_CLOSE, .usr=&s->usr };
             real->ws_cb(&req);
         }
         memset(s, 0, sizeof(*s));
@@ -523,7 +524,8 @@ static int callback_ws(struct lws *wsi,
                 .id    = s->req_id,
                 .event = GLY_WS_MESSAGE,
                 .data  = (const char *)in,
-                .len   = len
+                .len   = len,
+                .usr   = &s->usr
             };
             real->ws_cb(&req);
         }

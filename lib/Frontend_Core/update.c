@@ -82,8 +82,9 @@ static void callback_init(gecnd_t *gly) {
             if (gencd_filter_is_zero_corners())  gecnd_filter_reset_corners();
             if (gencd_filter_is_zero_video_pos()) gecnd_filter_reset_video_pos();
             gamely_daemon_webloop_start(gly->loop);
+            gamely_daemon_webclient_start(gly->loop);
             gamely_daemon_webserver_start(gly->loop, gly->port);
-            gamely_daemon_input_open(gly->input ? gly->input : "void://0");
+            gamely_daemon_input_open();
             gamely_daemon_input_subscribe(on_input_key, gly);
         }
 

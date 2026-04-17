@@ -49,7 +49,6 @@ typedef struct {
     char *lua_game_code;
     char *lua_engine_code;
     char *browser_bin;
-    const char *input;       // URI do input ativo; default "void://0"
     const char* error_string;
 } gecnd_t;
 
@@ -116,6 +115,7 @@ typedef struct {
     gly_ws_event_t event;
     const char    *data;
     size_t         len;
+    void         **usr;
 } gly_ws_req_t;
 
 typedef void (*gly_http_cb_t)   (const gly_http_req_t *req);

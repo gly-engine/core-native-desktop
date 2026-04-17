@@ -7,11 +7,13 @@
  * T  -> KM : add_class("vivensis.dtv30")
  * T  -> KM : add_keycode("up", 0xF3)
  * T  -> KM : add_keycode("a",  0xF1)
+ * ...add_source()...
+ * KM -> KM : parse URI — proto, classname, device, port, debug
+ * KM -> KM : store source slot
  * ...open()...
- * KM -> KM : parse URI — proto, classname, device, debug
- * KM -> KM : validate proto + classname
- * KM -> D  : open(port=0, device)
- * KM -> KM : free unused classes (if !debug)
+ * KM -> KM : validate proto + classname per source
+ * KM -> D  : open(port, device) per source
+ * KM -> KM : free unused classes (if no source has debug=1)
  * @enduml
  */
 
@@ -55,25 +57,35 @@ typedef struct {
     gamely_keymap_entry_t *entries;
     int   count;
     int   capacity;
-    char  name[32]; /* includes '\0'; max 31 useful chars */
+    char  name[32];
     int   debug;
 } gamely_keymap_t;
+
+/* -- source -- */
+
+#define MAX_SOURCES 8
+
+typedef struct {
+    char                         proto[16];
+    char                         classname[32];
+    char                         device[256];
+    int                          port;
+    int                          debug;
+    const gamely_input_driver_t *driver;
+    gamely_keymap_t             *active;
+} gamely_input_source_t;
 
 /* -- registry -- */
 
 #define MAX_CLASSES 64
 
 typedef struct {
-    gamely_keymap_t       *classes[MAX_CLASSES];
-    int                    count;
-    gamely_keyname_bucket_t bucket;
-    gamely_keymap_t       *current; /* class being built */
-    gamely_keymap_t       *active;  /* selected by open() */
-    char                   device[256];
-    char                   proto[16];
-    int                    debug;
-    int                    port;
-    const gamely_input_driver_t *driver;
+    gamely_keymap_t         *classes[MAX_CLASSES];
+    int                      count;
+    gamely_keyname_bucket_t  bucket;
+    gamely_keymap_t         *current;
+    gamely_input_source_t    sources[MAX_SOURCES];
+    int                      source_count;
 } gamely_keymap_registry_t;
 
 static gamely_keymap_registry_t g_reg;
@@ -130,7 +142,6 @@ void gamely_daemon_input_add_keycode(const char *key_name, uint32_t hex)
         km->capacity = nc;
     }
 
-    /* insert sorted by code */
     int pos = km->count;
     while (pos > 0 && km->entries[pos - 1].code > hex) {
         km->entries[pos] = km->entries[pos - 1];
@@ -158,9 +169,9 @@ const char *gamely_keymap_lookup(gamely_keymap_t *km, uint32_t code)
 
 /* -- internal accessors used by service_io -- */
 
-gamely_keymap_t *gamely_keymap_get_active(void) { return g_reg.active; }
-int              gamely_keymap_get_debug(void)  { return g_reg.debug;  }
-int              gamely_keymap_get_port(void)   { return g_reg.port;   }
+gamely_keymap_t *gamely_keymap_get_active(void) { return g_reg.source_count ? g_reg.sources[0].active : NULL; }
+int              gamely_keymap_get_debug(void)  { return g_reg.source_count ? g_reg.sources[0].debug  : 0;    }
+int              gamely_keymap_get_port(void)   { return g_reg.source_count ? g_reg.sources[0].port   : 0;    }
 
 const char *gamely_keymap_lookup_debug(uint32_t code, const char **out_class)
 {
@@ -175,48 +186,43 @@ const char *gamely_keymap_lookup_debug(uint32_t code, const char **out_class)
     return NULL;
 }
 
-/* -- activate -- */
+/* -- add source -- */
 
-bool gamely_daemon_input_open(const char *uri)
+void gamely_daemon_input_add_source(const char *uri)
 {
-    if (!uri) return false;
+    if (!uri || g_reg.source_count >= MAX_SOURCES) return;
+
+    gamely_input_source_t *src = &g_reg.sources[g_reg.source_count];
+    memset(src, 0, sizeof(*src));
 
     const char *sep = strstr(uri, "://");
     if (!sep) {
         fprintf(stderr, "[core:input] invalid URI: %s\n", uri);
-        return false;
+        return;
     }
 
     size_t plen = (size_t)(sep - uri);
-    if (plen >= sizeof(g_reg.proto)) plen = sizeof(g_reg.proto) - 1;
-    memcpy(g_reg.proto, uri, plen);
-    g_reg.proto[plen] = '\0';
+    if (plen >= sizeof(src->proto)) plen = sizeof(src->proto) - 1;
+    memcpy(src->proto, uri, plen);
+    src->proto[plen] = '\0';
 
-    /* find driver */
-    g_reg.driver = NULL;
     for (int i = 0; i < k_driver_count; i++) {
-        if (strcmp(k_drivers[i].proto, g_reg.proto) == 0) {
-            g_reg.driver = k_drivers[i].drv;
+        if (strcmp(k_drivers[i].proto, src->proto) == 0) {
+            src->driver = k_drivers[i].drv;
             break;
         }
     }
-    if (!g_reg.driver) {
-        fprintf(stderr, "[core:input] unknown protocol: %s\n", g_reg.proto);
-        return false;
+    if (!src->driver) {
+        fprintf(stderr, "[core:input] unknown protocol: %s\n", src->proto);
+        return;
     }
 
-    /* parse classname */
-    const char *rest   = sep + 3;
-    const char *qmark  = strchr(rest, '?');
-    char classname[32] = {0};
+    const char *rest  = sep + 3;
+    const char *qmark = strchr(rest, '?');
     size_t clen = qmark ? (size_t)(qmark - rest) : strlen(rest);
-    if (clen >= sizeof(classname)) clen = sizeof(classname) - 1;
-    memcpy(classname, rest, clen);
-
-    /* parse query params */
-    g_reg.device[0] = '\0';
-    g_reg.debug     = 0;
-    g_reg.port      = 0;
+    if (clen >= sizeof(src->classname)) clen = sizeof(src->classname) - 1;
+    memcpy(src->classname, rest, clen);
+    src->classname[clen] = '\0';
 
     if (qmark) {
         const char *p = qmark + 1;
@@ -225,52 +231,71 @@ bool gamely_daemon_input_open(const char *uri)
             size_t seg = amp ? (size_t)(amp - p) : strlen(p);
             if (strncmp(p, "device=", 7) == 0) {
                 size_t vlen = seg - 7;
-                if (vlen >= sizeof(g_reg.device)) vlen = sizeof(g_reg.device) - 1;
-                memcpy(g_reg.device, p + 7, vlen);
-                g_reg.device[vlen] = '\0';
+                if (vlen >= sizeof(src->device)) vlen = sizeof(src->device) - 1;
+                memcpy(src->device, p + 7, vlen);
+                src->device[vlen] = '\0';
             } else if (strncmp(p, "debug=", 6) == 0) {
-                g_reg.debug = (p[6] == '1');
+                src->debug = (p[6] == '1');
+            } else if (strncmp(p, "port=", 5) == 0) {
+                src->port = (int)strtol(p + 5, NULL, 10);
             }
             p = amp ? amp + 1 : NULL;
         }
     }
 
-    /* find class ("0" = no class) */
-    g_reg.active = NULL;
-    if (strcmp(classname, "0") != 0) {
-        for (int i = 0; i < g_reg.count; i++) {
-            if (strcmp(g_reg.classes[i]->name, classname) == 0) {
-                g_reg.active = g_reg.classes[i];
-                break;
+    g_reg.source_count++;
+}
+
+/* -- activate -- */
+
+bool gamely_daemon_input_open(void)
+{
+    if (g_reg.source_count == 0)
+        gamely_daemon_input_add_source("void://0");
+
+    int any_debug = 0;
+    for (int i = 0; i < g_reg.source_count; i++)
+        if (g_reg.sources[i].debug) any_debug = 1;
+
+    for (int i = 0; i < g_reg.source_count; i++) {
+        gamely_input_source_t *src = &g_reg.sources[i];
+
+        src->active = NULL;
+        if (strcmp(src->classname, "0") != 0) {
+            for (int j = 0; j < g_reg.count; j++) {
+                if (strcmp(g_reg.classes[j]->name, src->classname) == 0) {
+                    src->active = g_reg.classes[j];
+                    break;
+                }
+            }
+            if (!src->active) {
+                fprintf(stderr, "[core:input] class not found: %s\n", src->classname);
+                return false;
             }
         }
-        if (!g_reg.active) {
-            fprintf(stderr, "[core:input] class not found: %s\n", classname);
+
+        if (!src->driver->open(src->port, src->device[0] ? src->device : NULL)) {
+            fprintf(stderr, "[core:input] driver open failed: %s\n", src->proto);
             return false;
         }
     }
 
-    /* open driver */
-    if (!g_reg.driver->open(g_reg.port, g_reg.device[0] ? g_reg.device : NULL)) {
-        fprintf(stderr, "[core:input] driver open failed: %s\n", g_reg.proto);
-        return false;
-    }
-
-    /* free unused classes if not debug */
-    if (!g_reg.debug) {
+    if (!any_debug) {
         for (int i = 0; i < g_reg.count; i++) {
-            if (g_reg.classes[i] != g_reg.active) {
+            int used = 0;
+            for (int j = 0; j < g_reg.source_count; j++) {
+                if (g_reg.classes[i] == g_reg.sources[j].active) { used = 1; break; }
+            }
+            if (!used) {
                 free(g_reg.classes[i]->entries);
                 free(g_reg.classes[i]);
                 g_reg.classes[i] = NULL;
             }
         }
-        if (g_reg.active) {
-            g_reg.classes[0] = g_reg.active;
-            g_reg.count = 1;
-        } else {
-            g_reg.count = 0;
-        }
+        int w = 0;
+        for (int i = 0; i < g_reg.count; i++)
+            if (g_reg.classes[i]) g_reg.classes[w++] = g_reg.classes[i];
+        g_reg.count = w;
     }
 
     return true;
@@ -278,8 +303,10 @@ bool gamely_daemon_input_open(const char *uri)
 
 void gamely_daemon_input_close(void)
 {
-    if (g_reg.driver)
-        g_reg.driver->close(g_reg.port);
+    for (int i = 0; i < g_reg.source_count; i++) {
+        if (g_reg.sources[i].driver)
+            g_reg.sources[i].driver->close(g_reg.sources[i].port);
+    }
 
     for (int i = 0; i < g_reg.count; i++) {
         if (g_reg.classes[i]) {
@@ -293,7 +320,11 @@ void gamely_daemon_input_close(void)
 
 void gamely_daemon_input_init_keys(gamely_input_key_cb cb, void *usr)
 {
-    if (!cb || !g_reg.active) return;
-    for (int i = 0; i < g_reg.active->count; i++)
-        cb(g_reg.active->entries[i].name, false, 0, usr);
+    if (!cb) return;
+    for (int s = 0; s < g_reg.source_count; s++) {
+        gamely_keymap_t *km = g_reg.sources[s].active;
+        if (!km) continue;
+        for (int i = 0; i < km->count; i++)
+            cb(km->entries[i].name, false, g_reg.sources[s].port, usr);
+    }
 }
