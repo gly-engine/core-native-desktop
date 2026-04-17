@@ -84,8 +84,15 @@ static void RETRO_CALLCONV core_video_refresh(const void *data, unsigned width, 
     }
 }
 
-static void RETRO_CALLCONV core_audio_sample(int16_t left, int16_t right) { (void)left; (void)right; }
-static size_t RETRO_CALLCONV core_audio_sample_batch(const int16_t *data, size_t frames) { (void)data; return frames; }
+static void RETRO_CALLCONV core_audio_sample(int16_t left, int16_t right) {
+    int16_t buf[2] = { left, right };
+    gamely_daemon_media_audio_push(buf, 1);
+}
+
+static size_t RETRO_CALLCONV core_audio_sample_batch(const int16_t *data, size_t frames) {
+    gamely_daemon_media_audio_push(data, frames);
+    return frames;
+}
 static void RETRO_CALLCONV core_input_poll(void) {}
 
 extern int16_t RETRO_CALLCONV engine_input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id);
@@ -313,6 +320,8 @@ static bool native_libretro_game(const char *path) {
     if (ok) {
         struct retro_system_av_info av_info = {0};
         if (p_retro_get_system_av_info) p_retro_get_system_av_info(&av_info);
+
+        gamely_daemon_media_audio_configure((unsigned)av_info.timing.sample_rate, 2);
 
         if (libretro_hw_is_active()) {
             // Use max_width/max_height so we don't have to resize the FBO mid-game

@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <stdatomic.h>
 #include "gebuffer.h"
 
@@ -53,6 +54,16 @@ void gamely_daemon_media_transmit_force_idr(void);
 /* retorna cache do último IDR completo (PAT+PMT + SPS+PPS + slice);
  * *out aponta para buffer interno, válido até o próximo encode_push. */
 int  gamely_daemon_media_transmit_get_idr_cache(const uint8_t **out);
+
+/* -----------------------------------------------------------------------
+ * Áudio — PCM S16_LE estéreo interleaved
+ * --------------------------------------------------------------------- */
+typedef void (*gamely_audio_cb_t)(const int16_t *data, size_t frames,
+                                   unsigned rate, unsigned channels, void *usr);
+
+void gamely_daemon_media_audio_subscribe (gamely_audio_cb_t cb, void *usr);
+void gamely_daemon_media_audio_configure (unsigned rate, unsigned channels);
+void gamely_daemon_media_audio_push      (const int16_t *data, size_t frames);
 
 /* -----------------------------------------------------------------------
  * Ciclo de vida
