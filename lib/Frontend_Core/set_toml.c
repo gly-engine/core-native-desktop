@@ -3,9 +3,13 @@
 #include <stdlib.h>
 
 #include <tomlc17.h>
+#include <ketopt.h>
 
 #include "gecnd.h"
 #include "gamely_input.h"
+
+void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt);
+
 /* recursively traverse [keymap] tables; path built dot-by-dot */
 static void traverse_keymap(toml_datum_t node, char *path, int path_len)
 {
@@ -45,7 +49,7 @@ static void traverse_keymap(toml_datum_t node, char *path, int path_len)
     }
 }
 
-void gamely_set_toml(gecnd_t *gly, const char *path)
+void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts)
 {
     if (!gly || !path) return;
 
@@ -63,12 +67,40 @@ void gamely_set_toml(gecnd_t *gly, const char *path)
         traverse_keymap(keymap, path_buf, 0);
     }
 
-    /* apply [args] as CLI — last value wins; --toml inside TOML is ignored */
+    /* apply [args] — stop before longopts last named entry (toml/9999) to prevent recursion */
     toml_datum_t args = toml_get(res.toptab, "args");
     if (args.type == TOML_TABLE) {
-        toml_datum_t input_val = toml_get(args, "input");
-        if (input_val.type == TOML_STRING)
-            gamely_daemon_input_add_source(input_val.u.str.ptr);
+        for (int i = 0; longopts[i].name != NULL && longopts[i + 1].name != NULL; i++) {
+            toml_datum_t val = toml_get(args, longopts[i].name);
+            ketopt_t fake = {0};
+
+            if (longopts[i].has_arg == ko_no_argument) {
+                if (val.type == TOML_BOOLEAN && val.u.boolean)
+                    gecnd_set_opt(gly, longopts[i].val, fake);
+            } else if (val.type == TOML_STRING) {
+                fake.arg = strdup(val.u.str.ptr); /** @todo memory leak here*/
+                gecnd_set_opt(gly, longopts[i].val, fake);
+            } else if (val.type == TOML_ARRAY) {
+                /* TODO: error — array requires plural key (e.g. "inputs" not "input") */
+            } else if (val.type != 0) {
+                /* TODO: error — incompatible type for key */
+            } else {
+                char plural[68];
+                snprintf(plural, sizeof(plural), "%ss", longopts[i].name);
+                toml_datum_t arr = toml_get(args, plural);
+                if (arr.type == TOML_ARRAY) {
+                    for (int j = 0; j < arr.u.arr.size; j++) {
+                        toml_datum_t elem = arr.u.arr.elem[j];
+                        if (elem.type == TOML_STRING) {
+                            fake.arg = strdup(elem.u.str.ptr); /** @todo memory leak here*/
+                            gecnd_set_opt(gly, longopts[i].val, fake);
+                        }
+                    }
+                } else if (arr.type != 0) {
+                    /* TODO: error — plural key must be an array */
+                }
+            }
+        }
     }
 
     toml_free(res);
