@@ -167,7 +167,7 @@ void gamely_daemon_input_push(uint32_t code, bool pressed, uint32_t ttl_ms)
     if (gamely_keymap_get_debug()) {
         const char *dbg_class = NULL;
         const char *dbg_name  = gamely_keymap_lookup_debug(code, &dbg_class);
-        fprintf(stderr, "[core:debug:input] hex=%08X class=%s key=%s press=%d\n",
+        fprintf(stderr, "[core:debug:input] hex= 0x%08X class= %s key= %s press= %d\n",
                 code,
                 dbg_class ? dbg_class : "?",
                 dbg_name  ? dbg_name  : "?",

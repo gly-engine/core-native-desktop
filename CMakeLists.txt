@@ -637,7 +637,6 @@ endif()
 # todo: move aui to private repo
 target_sources(${PROJECT_NAME} PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_void.c"
-    "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_aui.c"
     "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_lirc.c"
     "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_serial.c"
     "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_read.c"

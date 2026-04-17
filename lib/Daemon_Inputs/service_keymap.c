@@ -96,15 +96,14 @@ extern const gamely_input_driver_t gamely_driver_void;
 extern const gamely_input_driver_t gamely_driver_lirc;
 extern const gamely_input_driver_t gamely_driver_serial;
 extern const gamely_input_driver_t gamely_driver_read;
-extern const gamely_input_driver_t gamely_driver_aui;
 
 static const struct { const char *proto; const gamely_input_driver_t *drv; } k_drivers[] = {
     {"void",   &gamely_driver_void},
     {"lirc",   &gamely_driver_lirc},
     {"serial", &gamely_driver_serial},
-    {"read",   &gamely_driver_read},
-    {"aui",    &gamely_driver_aui},
+    {"read",   &gamely_driver_read}
 };
+
 static const int k_driver_count = (int)(sizeof(k_drivers) / sizeof(k_drivers[0]));
 
 /* -- build phase -- */
