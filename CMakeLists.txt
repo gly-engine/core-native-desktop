@@ -259,6 +259,7 @@ option(GECND_USE_WARMCAT "use warmcat to http/webosocket client/server" ON)
 
 # Plugins
 option(GECND_USE_PLUGIN_SHIM "build plugin shim for core native" OFF)
+option(GECND_USE_PLUGIN_CHROMIUM "build plugin chromium for core native" OFF)
 
 if(GECND_USE_LUA51)
     FetchContent_Populate(lua51-static URL "${LUA51_DOWNLOAD}" SOURCE_DIR ${LUA51_DIR})
@@ -657,6 +658,17 @@ if(GECND_USE_PLUGIN_SHIM)
     add_library(shim_gecnd SHARED "${CMAKE_CURRENT_LIST_DIR}/plugins/shim/main.c")
     target_link_libraries(shim_gecnd PRIVATE gecnd_header)
     set_target_properties(shim_gecnd PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+    )
+endif()
+
+if(GECND_USE_PLUGIN_CHROMIUM)
+    add_library(chromium_gecnd SHARED "${CMAKE_CURRENT_LIST_DIR}/plugins/chromium/main.c")
+    target_include_directories(chromium_gecnd PRIVATE ${LIBUV_DIR}/include)
+    target_link_libraries(chromium_gecnd PRIVATE gecnd_header)
+    set_target_properties(chromium_gecnd PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
         ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
