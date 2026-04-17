@@ -5,8 +5,9 @@
 #include <dlfcn.h>
 
 typedef int (*fn_shim_init)(void);
-
-static void callback(const gly_http_req_t *req) {
+   
+void coreopen_shim_gecnd() {
+    char *err = NULL;
     void *lib = NULL;
     int status = 500;
     char buffer[256];
@@ -20,17 +21,18 @@ static void callback(const gly_http_req_t *req) {
         setenv("cfg_resolution", buffer, 1);
 
         lib = dlopen(path, RTLD_LAZY);
+        err = dlerror();
         if (!lib) {
-            const char *err = dlerror();
-            snprintf(buffer, sizeof(buffer), "dlopen('%s') failed: %s", path, err ? err : "unknown error");
+            err = err? err: "unknown error";
+            snprintf(buffer, sizeof(buffer), "dlopen('%s') failed: %s", path, err);
             break;
         }
 
-        dlerror();
         fn_shim_init p_init = (fn_shim_init)dlsym(lib, "ShimInitialize");
+        err = dlerror();
 
-        const char *err = dlerror();
-        if (err) {
+        if (err || !p_init) {
+            err = err? err: "undefined symbol";
             snprintf(buffer, sizeof(buffer), "dlsym('ShimInitialize') failed: %s", err);
             break;
         }
@@ -42,13 +44,7 @@ static void callback(const gly_http_req_t *req) {
 
     } while (0);
 
-    if (lib) {
+    if (err && lib) {
         dlclose(lib);
     }
-
-    gamely_daemon_webserver_http_send(req->id, status, "text/plain; charset=utf-8", buffer, strlen(buffer));
-}
-
-void coreopen_shim_gecnd() {
-    gamely_daemon_webloop_route_http("/plugin/shim", callback);
 }
