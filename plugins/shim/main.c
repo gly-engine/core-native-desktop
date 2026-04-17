@@ -50,5 +50,5 @@ static void callback(const gly_http_req_t *req) {
 }
 
 void init() {
-    gamely_daemon_webloop_route_http("/plugin/egl_shim", callback);
+    gamely_daemon_webloop_route_http("/plugin/shim", callback);
 }

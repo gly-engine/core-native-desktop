@@ -18,6 +18,7 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
 
+option(GECND_EXPORTS "allow rdynamic" OFF)
 option(GECND_AS_LIBRARY "build static lib gecnd intead binary" OFF)
 option(GECND_NO_SANITIZE "disable UB flags on clang/llvm" OFF)
 option(GECND_USE_PROFILER "use google gperftools" OFF)
@@ -666,6 +667,10 @@ set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAK
 set_target_properties(${PROJECT_NAME} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
 target_link_libraries(${PROJECT_NAME} PRIVATE m)
+
+if(GECND_EXPORTS)                                                                                                                                                                                 
+  set_target_properties(${PROJECT_NAME} PROPERTIES ENABLE_EXPORTS ON)
+endif()  
 
 if (GECND_AS_LIBRARY)
 elseif(DEFINED GECND_ENTRYPOINT AND GECND_ENTRYPOINT)

@@ -7,6 +7,7 @@
 #include "gehook.h"
 #include "gemetrics.h"
 #include "gamely_media.h"
+#include "gedll.h"
 
 void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts);
 void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt);
@@ -34,6 +35,7 @@ static ko_longopt_t longopts[] = {
     { "browser-bin",    ko_required_argument, 1409 },
     { "browser-url",    ko_required_argument, 1410 },
     { "remote",         ko_required_argument, 1503 },
+    { "plugin",         ko_required_argument, 2501 },
     { "input",          ko_required_argument, 2502 },
     { "conf",           ko_required_argument, 9999 },
     { NULL, 0, 0 }
@@ -137,6 +139,13 @@ void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
     }
     if (c == 1503) {
         gamely_daemon_input_remote(opt.arg);
+    }
+    if (c == 2501) {
+        typedef void (*fn_init)(void);
+        LIB_HANDLE lib = load_library(opt.arg);
+        if (!lib) { gly->error_string = "failed to load plugin"; return; }
+        fn_init init = (fn_init)get_symbol(lib, "init");
+        if (init) init();
     }
     if (c == 2502) {
         gamely_daemon_input_add_source(opt.arg);
