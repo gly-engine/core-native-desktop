@@ -60,6 +60,16 @@ void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts)
         return;
     }
 
+    /* apply [envs] */
+    toml_datum_t envs = toml_get(res.toptab, "envs");
+    if (envs.type == TOML_TABLE) {
+        for (int i = 0; i < envs.u.tab.size; i++) {
+            toml_datum_t val = envs.u.tab.value[i];
+            if (val.type == TOML_STRING)
+                setenv(envs.u.tab.key[i], val.u.str.ptr, 1);
+        }
+    }
+
     /* traverse [keymap] */
     toml_datum_t keymap = toml_get(res.toptab, "keymap");
     if (keymap.type == TOML_TABLE) {

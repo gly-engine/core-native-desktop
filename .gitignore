@@ -27,5 +27,6 @@ Thumbs.db
 
 # GECND Files
 *.db
+*.lua
 *.out
 *.toml

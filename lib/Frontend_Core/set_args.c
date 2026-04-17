@@ -7,7 +7,6 @@
 #include "gehook.h"
 #include "gemetrics.h"
 #include "gamely_media.h"
-#include "gedll.h"
 
 void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts);
 void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt);
@@ -32,8 +31,6 @@ static ko_longopt_t longopts[] = {
     { "filter-scratch", ko_required_argument, 1406 },
     { "filter-jitter",  ko_required_argument, 1407 },
     { "offset",         ko_required_argument, 1408 },
-    { "browser-bin",    ko_required_argument, 1409 },
-    { "browser-url",    ko_required_argument, 1410 },
     { "remote",         ko_required_argument, 1503 },
     { "plugin",         ko_required_argument, 2501 },
     { "input",          ko_required_argument, 2502 },
@@ -131,21 +128,11 @@ void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
             gecnd_filter_set_corners(x1, y1, x3, y1, x3, y3, x1, y3);
         }
     }
-    if (c == 1409) {
-        gly->browser_bin = opt.arg;
-    }
-    if (c == 1410) {
-        native_browser_url(opt.arg);
-    }
     if (c == 1503) {
         gamely_daemon_input_remote(opt.arg);
     }
     if (c == 2501) {
-        typedef void (*fn_init)(void);
-        LIB_HANDLE lib = load_library(opt.arg);
-        if (!lib) { gly->error_string = "failed to load plugin"; return; }
-        fn_init init = (fn_init)get_symbol(lib, "init");
-        if (init) init();
+        gecnd_plugin_load(gly, opt.arg);
     }
     if (c == 2502) {
         gamely_daemon_input_add_source(opt.arg);

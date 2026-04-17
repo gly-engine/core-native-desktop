@@ -49,6 +49,6 @@ static void callback(const gly_http_req_t *req) {
     gamely_daemon_webserver_http_send(req->id, status, "text/plain; charset=utf-8", buffer, strlen(buffer));
 }
 
-void init() {
+void coreopen_shim_gecnd() {
     gamely_daemon_webloop_route_http("/plugin/shim", callback);
 }

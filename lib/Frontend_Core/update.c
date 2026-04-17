@@ -93,6 +93,9 @@ static void callback_init(gecnd_t *gly) {
         else
             gly_hook_display_fps(gly->target_fps);
 
+        gly->error_string = gecnd_plugins_open_lua(gly->L);
+        if (gly->error_string) break;
+
         gly->error_string = open_script(gly, gly->lua_engine_code, "main", 0);
         if (gly->error_string) break;
 

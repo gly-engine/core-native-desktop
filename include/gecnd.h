@@ -52,6 +52,10 @@ typedef struct {
     const char* error_string;
 } gecnd_t;
 
+// plugins
+bool gecnd_plugin_load(gecnd_t *gly, const char *path);
+const char *gecnd_plugins_open_lua(lua_State *L);
+
 // instance
 gecnd_t *gecnd_new(lua_State* L);
 gecnd_t *gecnd_get_root();
