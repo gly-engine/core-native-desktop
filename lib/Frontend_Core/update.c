@@ -84,6 +84,13 @@ static void callback_init(gecnd_t *gly) {
             gamely_daemon_webloop_start(gly->loop);
             gamely_daemon_webclient_start(gly->loop);
             gamely_daemon_webserver_start(gly->loop, gly->port);
+            gamely_daemon_fs_start(gly->loop);
+            gamely_daemon_db_start();
+            gamely_daemon_img_start(gly->loop);
+            gamely_daemon_img_spng_register();
+            gly_hook_daemon_img_backend_register();
+            gamely_daemon_io_resolver_start();
+            gamely_daemon_webclient_img_register();
             gamely_daemon_input_open();
             gamely_daemon_input_subscribe(on_input_key, gly);
         }
@@ -220,8 +227,10 @@ bool gecnd_update(gecnd_t *gly)
             libretro_run_frame();
 
         gecnd_metrics_start_input();
-        if (gecnd_is_root(gly))
+        if (gecnd_is_root(gly)) {
             gamely_daemon_input_tick();
+            gamely_daemon_fs_tick();
+        }
         callback_keyboard(gly);
         gecnd_metrics_finish_input();
         if (gly->error_string) break;

@@ -108,6 +108,8 @@ static int lua_native_http_handler(lua_State *L)
     const char *method = cb_get_str(L, req_id, "get-method");
     const char *body   = cb_get_str(L, req_id, "get-body-data");
 
+    if (!url) { cb_error_immediate(L, "missing url"); return 0; }
+
     req_ctx_t *ctx = malloc(sizeof(req_ctx_t));
     if (!ctx) { cb_error_immediate(L, "out of memory"); return 0; }
     ctx->L      = L;

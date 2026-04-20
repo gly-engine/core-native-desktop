@@ -90,10 +90,21 @@ void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts)
             } else if (val.type == TOML_STRING) {
                 fake.arg = strdup(val.u.str.ptr); /** @todo memory leak here*/
                 gecnd_set_opt(gly, longopts[i].val, fake);
+            } else if (val.type == TOML_INT64) {
+                char buf[32];
+                snprintf(buf, sizeof(buf), "%lld", (long long)val.u.int64);
+                fake.arg = strdup(buf);
+                gecnd_set_opt(gly, longopts[i].val, fake);
+            } else if (val.type == TOML_FP64) {
+                char buf[32];
+                snprintf(buf, sizeof(buf), "%g", val.u.fp64);
+                fake.arg = strdup(buf);
+                gecnd_set_opt(gly, longopts[i].val, fake);
             } else if (val.type == TOML_ARRAY) {
-                /* TODO: error — array requires plural key (e.g. "inputs" not "input") */
+                /* array requires plural key (e.g. "plugins" not "plugin") */
             } else if (val.type != 0) {
-                /* TODO: error — incompatible type for key */
+                fprintf(stderr, "[core:toml] incompatible type for key '%s'\n",
+                        longopts[i].name);
             } else {
                 char plural[68];
                 snprintf(plural, sizeof(plural), "%ss", longopts[i].name);

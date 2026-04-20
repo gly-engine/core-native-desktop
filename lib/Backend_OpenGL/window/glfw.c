@@ -123,6 +123,10 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     }
 }
 
+void gly_hook_daemon_img_backend_register(void) {
+    gamely_daemon_img_opengl_register();
+}
+
 void gly_hook_display_dt(int16_t *delta_time) {
     GLBackendState *state = geogl_get_state();
     double t = platform_get_time();

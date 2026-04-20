@@ -265,6 +265,8 @@ gly_req_id_t gamely_daemon_webclient_http(
     gly_wc_error_cb  on_error,
     void            *user)
 {
+    if (!url) return 0;
+
     const char *method   = req && req->method   ? req->method   : "GET";
     const char *body     = req ? req->body     : NULL;
     size_t      body_len = req ? req->body_len : 0;

@@ -66,7 +66,6 @@ size_t gecnd_utils_get_cwd(char *buffer, size_t max_size) {
  */
 #if defined(_WIN32)
 #include <stdint.h>
-void native_image_unload_all(bool *) {}
 void gly_hook_keyboard_has_media(bool *) {}
 void gly_hook_luaopen_http(void*) {}
 void native_text_font_previous() {}

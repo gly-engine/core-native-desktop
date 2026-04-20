@@ -1,96 +1,84 @@
-#include <spng.h>
-
-#include "gefilter.h"
-#include "gehook.h"
+#include <stdlib.h>
+#include "gecnd.h"
 #include "geopengl.h"
 
-void native_image_load(const char *path, int32_t image_id, bool *success) {
+static void gl_upload(int32_t id, void **backend_data,
+                      const uint8_t *data, size_t len,
+                      int16_t w, int16_t h,
+                      gamely_img_release_cb release) {
+    (void)id; (void)len;
     GLBackendState *s = geogl_get_state();
-    size_t idx = image_id - 1;
-    bool reuse = false;
     int ox, oy, page_idx = 0;
-    spng_ctx *ctx = spng_ctx_new(0);
-    if (!ctx) { if(success) *success = false; return; }
-    FILE *fp = fopen(path, "rb");
-    if (!fp) { spng_ctx_free(ctx); if(success) *success = false; return; }
-    spng_set_png_file(ctx, fp);
-    struct spng_ihdr ihdr;
-    if (spng_get_ihdr(ctx, &ihdr)) { spng_ctx_free(ctx); fclose(fp); if(success) *success = false; return; }
-    if (kv_size(s->textures) > idx) {
-        GLTexture old = kv_A(s->textures, idx);
-        if (old.width == (int)ihdr.width && old.height == (int)ihdr.height) {
-            reuse = true; 
-            ox = (int)(old.u * (float)GE_ATLAS_SIZE); 
-            oy = (int)(old.v * (float)GE_ATLAS_SIZE);
-            page_idx = old.page_index;
-        }
-    }
-    size_t sz;
-    spng_decoded_image_size(ctx, SPNG_FMT_RGBA8, &sz);
-    unsigned char *img = malloc(sz);
-    spng_decode_image(ctx, img, sz, SPNG_FMT_RGBA8, SPNG_DECODE_TRNS | SPNG_DECODE_GAMMA);
+    ge_atlas_alloc((int)w, (int)h, &page_idx, &ox, &oy);
 
     bool is_opaque = true;
-    for (size_t i = 0; i < sz; i += 4) {
-        if (img[i+3] < 254) {
+    for (size_t i = 3; i < (size_t)(w * h * 4); i += 4) {
+        if (data[i] < 254) {
             is_opaque = false;
             break;
         }
     }
 
-    if (!reuse) ge_atlas_alloc(ihdr.width, ihdr.height, &page_idx, &ox, &oy);
     glBindTexture(GL_TEXTURE_2D, s->atlas_pages.a[page_idx].tex_id);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, ox, oy, ihdr.width, ihdr.height, GL_RGBA, GL_UNSIGNED_BYTE, img);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, ox, oy, (GLsizei)w, (GLsizei)h,
+                    GL_RGBA, GL_UNSIGNED_BYTE, data);
     s->atlas_dirty = true;
-    while (kv_size(s->textures) <= idx) kv_push(GLTexture, s->textures, (GLTexture){0});
-    GLTexture *t = &kv_A(s->textures, idx);
-    t->id = s->atlas_pages.a[page_idx].tex_id; t->width = ihdr.width; t->height = ihdr.height;
-    t->u = (float)ox / (float)GE_ATLAS_SIZE; t->v = (float)oy / (float)GE_ATLAS_SIZE;
-    t->u2 = (float)(ox + ihdr.width) / (float)GE_ATLAS_SIZE; t->v2 = (float)(oy + ihdr.height) / (float)GE_ATLAS_SIZE;
-    t->is_opaque = is_opaque;
-    t->page_index = page_idx;
-    if (success) *success = true;
-    free(img); spng_ctx_free(ctx); fclose(fp);
+
+    GLTexture *t   = malloc(sizeof(GLTexture));
+    t->id          = s->atlas_pages.a[page_idx].tex_id;
+    t->width       = (int)w;
+    t->height      = (int)h;
+    t->u           = (float)ox / (float)GE_ATLAS_SIZE;
+    t->v           = (float)oy / (float)GE_ATLAS_SIZE;
+    t->u2          = (float)(ox + w) / (float)GE_ATLAS_SIZE;
+    t->v2          = (float)(oy + h) / (float)GE_ATLAS_SIZE;
+    t->is_opaque   = is_opaque;
+    t->page_index  = page_idx;
+    *backend_data  = t;
+
+    release((void *)data);
 }
 
-void native_image_draw(int32_t image_id, int16_t x, int16_t y) {
-    GLBackendState *s = geogl_get_state();
-    size_t idx = image_id - 1;
-    if (image_id <= 0 || kv_size(s->textures) <= idx) return;
-    GLTexture t = kv_A(s->textures, idx);
-    if (!t.width) return;
+static void gl_draw(int32_t id, void *backend_data, int16_t x, int16_t y) {
+    (void)id;
+    GLBackendState *s  = geogl_get_state();
+    GLTexture      *t  = (GLTexture *)backend_data;
+    if (!t) return;
+
     static const uint32_t color = 0xFFFFFFFF;
-    int16_t ix = x, iy = y, iw = (int16_t)t.width, ih = (int16_t)t.height;
+    int16_t iw = (int16_t)t->width;
+    int16_t ih = (int16_t)t->height;
 
     float half = 0.5f / (float)GE_ATLAS_SIZE;
-    float u1 = t.u + half, v1 = t.v + half;
-    float u2 = t.u2 - half, v2 = t.v2 - half;
+    float u1 = t->u  + half, v1 = t->v  + half;
+    float u2 = t->u2 - half, v2 = t->v2 - half;
 
-    ge_batch_add_vertex_tex(ix, iy, u1, v1, color, t.is_opaque, t.page_index);
-    ge_batch_add_vertex_tex(ix, iy + ih, u1, v2, color, t.is_opaque, t.page_index);
-    ge_batch_add_vertex_tex(ix + iw, iy + ih, u2, v2, color, t.is_opaque, t.page_index);
-    ge_batch_add_vertex_tex(ix, iy, u1, v1, color, t.is_opaque, t.page_index);
-    ge_batch_add_vertex_tex(ix + iw, iy + ih, u2, v2, color, t.is_opaque, t.page_index);
-    ge_batch_add_vertex_tex(ix + iw, iy, u2, v1, color, t.is_opaque, t.page_index);
+    ge_batch_add_vertex_tex(x,      y,      u1, v1, color, t->is_opaque, t->page_index);
+    ge_batch_add_vertex_tex(x,      y + ih, u1, v2, color, t->is_opaque, t->page_index);
+    ge_batch_add_vertex_tex(x + iw, y + ih, u2, v2, color, t->is_opaque, t->page_index);
+    ge_batch_add_vertex_tex(x,      y,      u1, v1, color, t->is_opaque, t->page_index);
+    ge_batch_add_vertex_tex(x + iw, y + ih, u2, v2, color, t->is_opaque, t->page_index);
+    ge_batch_add_vertex_tex(x + iw, y,      u2, v1, color, t->is_opaque, t->page_index);
 
     s->current_z++;
 }
 
-void native_image_mensure(int32_t image_id, int16_t *w, int16_t *h) {
-    GLBackendState *s = geogl_get_state();
-    size_t idx = image_id - 1;
-    if (image_id > 0 && kv_size(s->textures) > idx) {
-        GLTexture t = kv_A(s->textures, idx);
-        if (t.width && w && h) { *w = (int16_t)t.width; *h = (int16_t)t.height; }
-    }
+static void gl_unload(int32_t id, void *backend_data) {
+    (void)id;
+    free(backend_data);
 }
 
-void native_image_unload(int32_t image_id, bool *success) {
-    GLBackendState *s = geogl_get_state();
-    size_t idx = image_id - 1;
-    if (image_id > 0 && kv_size(s->textures) > idx) {
-        kv_A(s->textures, idx).width = 0;
-        if (success) *success = true; return;
-    }
-    if (success) *success = false;
+static void gl_unload_all(void) {
+    /* atlas pages persist; per-image GLTexture freed via gl_unload */
+}
+
+static const gamely_img_backend_t s_backend = {
+    .upload     = gl_upload,
+    .draw       = gl_draw,
+    .unload     = gl_unload,
+    .unload_all = gl_unload_all,
+};
+
+void gamely_daemon_img_opengl_register(void) {
+    gamely_daemon_img_register_backend("rgba", &s_backend);
 }

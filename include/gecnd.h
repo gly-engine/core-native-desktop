@@ -100,6 +100,144 @@ void gecnd_filter_reset_video_pos();
 bool gencd_filter_is_zero_corners();
 bool gencd_filter_is_zero_video_pos();
 
+/* ---- Daemon_FS ---- */
+
+typedef enum {
+    GLY_FS_ONE,           /* sync,  first result  — a=char**, b=NULL     */
+    GLY_FS_ONE_CB,        /* sync,  first result  — a=gamely_fs_cb, b=usr */
+    GLY_FS_ALL_CB,        /* sync,  all results   — a=gamely_fs_cb, b=usr */
+    GLY_FS_ONE_CB_ASYNC,  /* async, first result  — a=gamely_fs_cb, b=usr */
+    GLY_FS_ALL_CB_ASYNC,  /* async, all results   — a=gamely_fs_cb, b=usr */
+} gamely_fs_mode_t;
+
+typedef void (*gamely_fs_cb)     (const char *path, void *usr);
+typedef void (*gamely_fs_read_cb)(uint8_t *data, size_t len, void *usr);
+
+void gamely_daemon_fs_start(void *loop);
+void gamely_daemon_fs_stop (void);
+
+/* paths[]: dirs or full paths, NULL-terminated; support globs (/mnt/ * / * /roms).
+ * files[]: NULL=use paths as-is, ["*"]=list dir, ["name"]=search file.
+ * exts[] : NULL=no filter, [".png",".etc1",...]=filter by extension.
+ * a/b    : GLY_FS_ONE->(char**,NULL) | others->(gamely_fs_cb,usr).
+ * Returns 0 on success (or async started), -1 on error / not found. */
+int  gamely_daemon_fs_search(const char      **paths,
+                              const char      **files,
+                              const char      **exts,
+                              gamely_fs_mode_t  mode,
+                              void             *a,
+                              void             *b);
+
+/* on_done=NULL -> sync (fills *out_data/*out_len, caller frees).
+ * on_done!=NULL -> async; delivered via gamely_daemon_fs_tick(). */
+int  gamely_daemon_fs_read  (const char        *path,
+                              uint8_t          **out_data,
+                              size_t            *out_len,
+                              gamely_fs_read_cb  on_done,
+                              void              *usr);
+
+void gamely_daemon_fs_tick(void);
+
+/* Registers file:// and "" schemas with Daemon_Img.
+ * Call after gamely_daemon_fs_start() and gamely_daemon_img_start(). */
+void gamely_daemon_io_resolver_start(void);
+
+/* ---- Daemon_DB ---- */
+
+void    gamely_daemon_db_start(void);
+void    gamely_daemon_db_stop (void);
+
+int32_t gamely_daemon_db_insert_media(
+    const char *name,
+    const char *short_id,
+    const char *url,
+    const char *type,
+    const char *url_image
+);
+void    gamely_daemon_db_delete_media(const char *short_id);
+
+int32_t gamely_daemon_db_insert_blob(
+    const uint8_t *data,
+    size_t         len,
+    const char    *hint
+);
+void    gamely_daemon_db_delete_blob(int32_t id);
+
+void        gamely_daemon_db_kv_set(const char *key, const char *value);
+const char *gamely_daemon_db_kv_get(const char *key);
+
+/* Generic query — parses db://table/field?k=v[&k=v…], returns heap-allocated
+ * value cast to the column type (TEXT→char*, INTEGER→int64_t*, BLOB→uint8_t*).
+ * *out_len is filled for BLOB; optional for TEXT (strlen). NULL if not found.
+ * Caller must free() the returned pointer. */
+void *gamely_daemon_db_query_uri(const char *uri, size_t *out_len);
+
+/* ---- Daemon_Img ---- */
+
+typedef enum {
+    GLY_IMG_SEARCHING = 0,
+    GLY_IMG_DECODING  = 1,
+    GLY_IMG_READY     = 2,
+    GLY_IMG_ERROR     = 3,
+} gamely_img_state_t;
+
+typedef struct {
+    uint8_t *pixels;
+    int16_t  w, h;
+} gamely_img_decoded_t;
+
+typedef gamely_img_decoded_t (*gamely_img_decoder_cb)(const uint8_t *data, size_t len);
+
+typedef void (*gamely_img_release_cb)(void *ptr);
+
+typedef void (*gamely_img_upload_cb)(
+    int32_t               id,
+    void                **backend_data,
+    const uint8_t        *data,
+    size_t                len,
+    int16_t               w,
+    int16_t               h,
+    gamely_img_release_cb release
+);
+
+typedef struct {
+    gamely_img_upload_cb  upload;
+    void (*draw)      (int32_t id, void *backend_data, int16_t x, int16_t y);
+    void (*unload)    (int32_t id, void *backend_data);
+    void (*unload_all)(void);
+} gamely_img_backend_t;
+
+typedef void (*gamely_img_on_fetch_cb)(
+    const uint8_t *data, size_t len, const char *hint, void *usr
+);
+
+typedef void (*gamely_img_schema_cb)(
+    const char *url, void *schema_usr,
+    gamely_img_on_fetch_cb on_done, void *on_done_usr
+);
+
+void gamely_daemon_img_start(void *loop);
+void gamely_daemon_img_stop (void);
+
+void gamely_daemon_img_register_schema (const char *prefix,
+                                         gamely_img_schema_cb  cb, void *usr);
+void gamely_daemon_img_register_decoder(const char *from, const char *to,
+                                         bool use_thread, gamely_img_decoder_cb cb);
+void gamely_daemon_img_register_backend(const char *fmt,
+                                         const gamely_img_backend_t *cbs);
+
+/* Returns the ID for url. Starts async load on first call.
+ * Every URL keeps its ID until an unload is called. */
+int32_t            gamely_daemon_img_get_id     (const char *url);
+gamely_img_state_t gamely_daemon_img_get_state  (int32_t id);
+const char        *gamely_daemon_img_get_error  (int32_t id);
+void               gamely_daemon_img_get_mensure(int32_t id, int16_t *w, int16_t *h);
+void               gamely_daemon_img_draw       (int32_t id, int16_t x, int16_t y);
+void               gamely_daemon_img_unload_id  (int32_t id);
+void               gamely_daemon_img_unload_url (const char *url);
+void               gamely_daemon_img_unload_all (void);
+void               gamely_daemon_img_tick       (void);
+
 /* ---- Web Daemons ---- */
 
 typedef uint32_t gly_req_id_t;
@@ -151,6 +289,10 @@ void gamely_daemon_webloop_route_stream(const char *path, const char *content_ty
                                         gly_stream_cb_t cb);
 void gamely_daemon_webloop_route_proxy (const char *from, const char *to);
 
+/* Registers http:// and https:// schemas with Daemon_Img.
+ * Call after gamely_daemon_webclient_start() and gamely_daemon_img_start(). */
+void gamely_daemon_webclient_img_register(void);
+
 void         gamely_daemon_webclient_start(void *loop);
 void         gamely_daemon_webclient_stop(void);
 gly_req_id_t gamely_daemon_webclient_http(const char *url, gly_http_req_t *req,
@@ -161,5 +303,15 @@ gly_req_id_t gamely_daemon_webclient_ws_connect(const char *url, const char *pro
     gly_wc_ws_close_cb on_close, gly_wc_error_cb on_error, void *user);
 void gamely_daemon_webclient_ws_send (gly_req_id_t id, const char *data, size_t len);
 void gamely_daemon_webclient_ws_close(gly_req_id_t id);
+
+/* ---- Backends ---- */
+
+/* Registers the OpenGL atlas backend for "rgba" with Daemon_Img.
+ * Call after gamely_daemon_img_start(). */
+void gamely_daemon_img_opengl_register(void);
+
+/* Registers the libspng PNG decoder with Daemon_Img (requires GECND_USE_SPNG).
+ * Call after gamely_daemon_img_start(). */
+void gamely_daemon_img_spng_register(void);
 
 #endif

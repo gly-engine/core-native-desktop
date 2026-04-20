@@ -119,3 +119,7 @@ void gly_hook_display_close(void) {
     native_text_terminate();
     platform_terminate();
 }
+
+void gly_hook_daemon_img_backend_register(void) {
+    gamely_daemon_img_opengl_register();
+}
