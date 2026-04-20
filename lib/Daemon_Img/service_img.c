@@ -116,7 +116,7 @@ static void release_free(void *ptr) { free(ptr); }
 
 typedef struct {
     uv_work_t            work;
-    img_entry_t         *entry;
+    int32_t              entry_id;
     decoder_t           *dec;
     uint8_t             *src;
     size_t               src_len;
@@ -133,11 +133,11 @@ static void decode_work_cb(uv_work_t *req) {
 static void decode_after_cb(uv_work_t *req, int status) {
     decode_work_t *w = (decode_work_t *)req;
     (void)status;
-    img_entry_t *e = w->entry;
-    if (!e->active || !w->result.pixels) {
+    img_entry_t *e = find_by_id(w->entry_id);
+    if (!e || !w->result.pixels) {
         free(w->result.pixels);
         free(w);
-        if (e->active) set_error(e, "decode failed");
+        if (e) set_error(e, "decode failed");
         return;
     }
     backend_t *b = find_backend(e->fmt);
@@ -160,8 +160,8 @@ static void dispatch_url(img_entry_t *e, const char *url);
 
 static void on_fetch(const uint8_t *data, size_t len,
                       const char *hint, void *usr) {
-    img_entry_t *e = (img_entry_t *)usr;
-    if (!e->active) { free((void *)data); return; }
+    img_entry_t *e = find_by_id((int32_t)(intptr_t)usr);
+    if (!e) { free((void *)data); return; }
 
     if (!data) {
         if (hint) dispatch_url(e, hint);
@@ -199,8 +199,8 @@ static void on_fetch(const uint8_t *data, size_t len,
     if (dec->use_thread && s_loop) {
         decode_work_t *w = calloc(1, sizeof(*w));
         if (!w) { free((void *)data); set_error(e, "oom"); return; }
-        w->entry   = e;
-        w->dec     = dec;
+        w->entry_id = e->id;
+        w->dec      = dec;
         w->src     = (uint8_t *)data;
         w->src_len = len;
         uv_queue_work(s_loop, &w->work, decode_work_cb, decode_after_cb);
@@ -224,7 +224,7 @@ static void dispatch_url(img_entry_t *e, const char *url) {
         set_error(e, "no schema handler");
         return;
     }
-    schema->cb(url, schema->usr, on_fetch, e);
+    schema->cb(url, schema->usr, on_fetch, (void *)(intptr_t)e->id);
 }
 
 /* ── public API ───────────────────────────────────────────────────── */
