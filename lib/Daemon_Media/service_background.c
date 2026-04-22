@@ -1,7 +1,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdatomic.h>
-#include "gamely_media.h"
+
+#include "gecnd.h"
 
 #if defined(_WIN32)
 #  include <malloc.h>
@@ -17,10 +18,6 @@ static inline void *bg_aligned_alloc(size_t align, size_t size) {
 #endif
 
 static atomic_int g_owner = 0;
-
-bool gamely_daemon_media_background_is_available(void) {
-    return atomic_load(&g_owner) == 0;
-}
 
 bool gamely_daemon_media_background_claim(void) {
     int expected = 0;

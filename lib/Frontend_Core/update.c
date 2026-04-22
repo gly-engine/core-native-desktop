@@ -7,8 +7,8 @@
 #include "gehook.h"
 #include "gecnd.h"
 #include "gemetrics.h"
-#include "gamely_input.h"
-#include "gamely_media.h"
+
+
 
 void gamely_daemon_webloop_start(void *loop);
 

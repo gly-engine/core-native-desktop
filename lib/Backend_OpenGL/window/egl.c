@@ -7,8 +7,7 @@
 #include <dlfcn.h>
 
 #include "gecnd.h"
-#include "gebuffer.h"
-#include "gamely_media.h"
+
 #include "gehook.h"
 #include "geopengl.h"
 /** @todo move — forward decl para evitar include cruzado Backend↔Frontend */

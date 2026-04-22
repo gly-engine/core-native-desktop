@@ -1,9 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+
 #include "gecnd.h"
-#include "gebuffer.h"
-#include "gamely_media.h"
 #include "gefilter.h"
 #include "gehook.h"
 #include "geopengl.h"

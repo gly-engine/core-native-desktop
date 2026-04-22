@@ -15,15 +15,14 @@
  * T -> S   : cb(name, pressed, port, usr)
  * @enduml
  */
-
-#include "gamely_input.h"
-
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdatomic.h>
 #include <pthread.h>
 #include <time.h>
+
+#include "gecnd.h"
 
 /* forward decls from service_keymap.c */
 typedef struct { uint32_t code; const char *name; } gamely_keymap_entry_t;

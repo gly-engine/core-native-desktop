@@ -2,7 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdatomic.h>
-#include "gamely_media.h"
+
+#include "gecnd.h"
 
 bool encode_init         (int w, int h, int fps, void (*on_ts)(const uint8_t *, int, int64_t));
 void encode_push         (const uint8_t *rgba, int w, int h);

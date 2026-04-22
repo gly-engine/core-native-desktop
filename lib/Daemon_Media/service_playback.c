@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "gecnd.h"
-#include "gamely_media.h"
+
 #include "gefilter.h"
 
 #define PLAYER_CAP  32

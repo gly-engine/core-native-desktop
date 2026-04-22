@@ -4,10 +4,11 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "gecnd.h"
+
 #define GECND_STREAM_AVLIB_INTERNAL
 #define GECND_FFMPEG_LOAD_INTERNAL
 #include "gemedia.h"
-#include "gamely_media.h"
 
 static inline double now_sec(void) {
     return AV.av_gettime_relative() / 1e6;

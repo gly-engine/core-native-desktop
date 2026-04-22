@@ -1,4 +1,4 @@
-#include "gamely_input.h"
+
 #include "gecnd.h"
 
 #include <string.h>

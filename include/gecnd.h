@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdatomic.h>
 
 #define GLY_REGISTRYINDEX ((uint32_t)(uintptr_t)(gecnd_new))
 #define GECND_FLAG_NONE   (0u)
@@ -23,6 +24,23 @@
 // alias:
 #define gecnd_add_flags(gly)  gecnd_set_flags(gly, gecnd_get_flags(gly) | FLAG_A)
 #define gecnd_del_flags(gly)  gecnd_set_flags(gly, gecnd_get_flags(gly) & ~FLAG_A);
+
+typedef enum {
+    GECND_PIX_FMT_RGBA8888 = 0,
+    GECND_PIX_FMT_YUV420P  = 1,
+    GECND_PIX_FMT_RGB565   = 2,
+    GECND_PIX_FMT_NONE     = -1
+} GECNDColorFormat;
+
+typedef struct {
+    uint8_t    *data[4];
+    int         linesize[4];
+    int         width;
+    int         height;
+    int         format;
+    double      pts;
+    atomic_bool ready;
+} MediaFrame;
 
 typedef struct lua_State lua_State;
 
@@ -310,5 +328,104 @@ void gamely_daemon_webclient_ws_close(gly_req_id_t id);
 /* Registers the OpenGL atlas backend for "rgba" with Daemon_Img.
  * Call after gamely_daemon_img_start(). */
 void gamely_daemon_img_opengl_register(void);
+
+/* ---- Hypervisor ---- */
+
+void gecnd_hypervisor              (void *loop);
+void gecnd_hypervisor_close_daemons(void);
+
+/* ---- Daemon_Input ---- */
+
+typedef void (*gamely_input_key_cb)(const char *name, bool pressed, int port, void *usr);
+
+typedef struct {
+    bool (*open)(int port, const char *device);
+    void (*close)(int port);
+} gamely_input_driver_t;
+
+/* build phase — called by set_toml.c */
+void gamely_daemon_input_add_class  (const char *name);
+void gamely_daemon_input_add_keycode(const char *key_name, uint32_t hex);
+
+/* register sources — called once per --input before open() */
+void gamely_daemon_input_add_source(const char *uri);
+
+/* activate all registered sources; falls back to void://0 if none */
+bool gamely_daemon_input_open (void);
+void gamely_daemon_input_close(void);
+
+/* inject from driver threads; port from open(); ttl_ms=0 = no TTL */
+void gamely_daemon_input_push     (uint32_t code, bool pressed, uint32_t ttl_ms);
+/* inject with explicit port — for service_rc.c; ttl_ms=0 = no TTL */
+void gamely_daemon_input_push_name(const char *name, bool pressed, int port, uint32_t ttl_ms);
+
+/* main thread */
+void gamely_daemon_input_subscribe (gamely_input_key_cb cb, void *usr);
+void gamely_daemon_input_tick      (void);
+void gamely_daemon_input_reset_port(int port);
+
+/* fires cb(name, false, port, usr) for every entry across all active sources */
+void gamely_daemon_input_init_keys(gamely_input_key_cb cb, void *usr);
+
+/* remote input propagator — connects to url and forwards local inputs */
+void gamely_daemon_input_remote(const char *url);
+
+/* ---- Daemon_Media ---- */
+
+bool        gamely_daemon_media_background_claim        (void);
+void        gamely_daemon_media_background_release      (void);
+
+void        gamely_daemon_media_background_push_yuv420  (const uint8_t *y,
+                                                          const uint8_t *u,
+                                                          const uint8_t *v,
+                                                          int w, int h,
+                                                          int y_stride, int uv_stride);
+void        gamely_daemon_media_background_push_xrgb8888(const uint8_t *data,
+                                                          int w, int h, int pitch);
+void        gamely_daemon_media_background_push_rgb565  (const uint8_t *data,
+                                                          int w, int h, int pitch);
+
+MediaFrame *gamely_daemon_media_background_get_frame   (void);
+bool        gamely_daemon_media_background_check_update(atomic_int *local_counter);
+
+typedef struct {
+    void (*start)(uint8_t channel, const char *url, void *usr);
+    void (*stop) (uint8_t channel, void *usr);
+    void (*tick) (uint8_t channel, void *usr);   /* NULL = own thread */
+    void (*pause)(uint8_t channel, void *usr);   /* NULL = ignored    */
+    void (*play) (uint8_t channel, void *usr);   /* NULL = ignored    */
+} gamely_media_player_t;
+
+void gamely_daemon_media_register_player(const char                  *schema,
+                                          const gamely_media_player_t *cbs,
+                                          void                        *usr);
+
+void gamely_daemon_media_playback_source  (uint8_t channel, const char *url);
+void gamely_daemon_media_playback_play    (uint8_t channel);
+void gamely_daemon_media_playback_pause   (uint8_t channel);
+void gamely_daemon_media_playback_stop    (uint8_t channel);
+void gamely_daemon_media_playback_position(uint8_t channel,
+                                            int16_t x, int16_t y,
+                                            int16_t w, int16_t h);
+void gamely_daemon_media_playback_tick    (void);
+
+typedef void (*gamely_transmit_cb_t)(const uint8_t *buf, int size, int64_t pts);
+
+void gamely_daemon_media_transmit_callback    (gamely_transmit_cb_t cb);
+void gamely_daemon_media_transmit_shutdown    (void);
+bool gamely_daemon_media_transmit_is_online   (void);
+void gamely_daemon_media_transmit_push        (const uint8_t *rgba, int width, int height);
+void gamely_daemon_media_transmit_force_idr   (void);
+int  gamely_daemon_media_transmit_get_idr_cache(const uint8_t **out);
+
+typedef void (*gamely_audio_cb_t)(const int16_t *data, size_t frames,
+                                   unsigned rate, unsigned channels, void *usr);
+
+void gamely_daemon_media_audio_subscribe(gamely_audio_cb_t cb, void *usr);
+void gamely_daemon_media_audio_configure(unsigned rate, unsigned channels);
+void gamely_daemon_media_audio_push     (const int16_t *data, size_t frames);
+
+void gamely_daemon_media_init    (void);
+void gamely_daemon_media_shutdown(void);
 
 #endif

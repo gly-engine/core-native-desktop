@@ -1,4 +1,4 @@
-#include "gamely_input.h"
+#include "gecnd.h"
 
 static bool void_open(int port, const char *device)
 {

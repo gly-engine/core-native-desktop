@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stddef.h>
 #include <string.h>
+
+#include "gecnd.h"
 #include "geopengl.h"
-#include "gebuffer.h"
-#include "gamely_media.h"
 #include "gefilter.h"
 
 static void update_video_textures(GLBackendState *s, MediaFrame *f) {

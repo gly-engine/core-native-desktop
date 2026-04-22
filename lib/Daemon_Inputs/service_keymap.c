@@ -16,14 +16,11 @@
  * KM -> KM : free unused classes (if no source has debug=1)
  * @enduml
  */
-
-#include "gamely_input.h"
-
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 
-/* -- keyname bucket -- */
+#include "gecnd.h"
 
 typedef struct {
     char (*pool)[8];

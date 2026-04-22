@@ -1,6 +1,6 @@
-#include "gamely_input.h"
 #include <stdio.h>
 
+#include "gecnd.h"
 /* @todo implement generic device file reading and call gamely_daemon_input_push() */
 
 static bool read_open(int port, const char *device)

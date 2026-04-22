@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "libretro.h"
-#include "gamely_input.h"
+
 
 #define LR_KEY_COUNT 10
 

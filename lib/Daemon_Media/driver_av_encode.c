@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <time.h>
 
+#include "gecnd.h"
+
 #define GECND_FFMPEG_LOAD_INTERNAL
 #define GECND_STREAM_AVLIB_INTERNAL
 #include "gemedia.h"

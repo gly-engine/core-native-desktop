@@ -6,7 +6,7 @@
 #include "gecnd.h"
 #include "gefilter.h"
 #include "geopengl.h"
-#include "gamely_media.h"
+
 
 static uint8_t *g_readpixels_buf     = NULL;
 static int      g_readpixels_buf_len = 0;

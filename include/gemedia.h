@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdatomic.h>
-#include "gebuffer.h"
 
 #if defined(GECND_STREAM_AVLIB_INTERNAL)
 

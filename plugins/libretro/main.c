@@ -6,7 +6,7 @@
 #include <lua.h>
 
 #include "gecnd.h"
-#include "gamely_media.h"
+
 #include "uri_query.h"
 
 /* Protótipos de open_libretro.c */

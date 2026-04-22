@@ -8,7 +8,7 @@
 #include "gemedia.h"
 #include "gecnd.h"
 #include "gedll.h"
-#include "gamely_media.h"
+
 #include "hw_render.h"
 #include "uri_query.h"
 

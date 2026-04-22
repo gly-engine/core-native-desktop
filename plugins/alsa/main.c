@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include <dlfcn.h>
 
-#include "gamely_media.h"
+
 
 /* --------------------------------------------------------------------------
  * ALSA PCM — carregado dinamicamente de libasound.so.2

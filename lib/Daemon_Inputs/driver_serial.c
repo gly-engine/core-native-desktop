@@ -1,4 +1,4 @@
-#include "gamely_input.h"
+#include "gecnd.h"
 #include <stdio.h>
 
 /* @todo implement serial port reading and call gamely_daemon_input_push() */

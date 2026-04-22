@@ -6,7 +6,7 @@
 #include <ketopt.h>
 
 #include "gecnd.h"
-#include "gamely_input.h"
+
 
 void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt);
 

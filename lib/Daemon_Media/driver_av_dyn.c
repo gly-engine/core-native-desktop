@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "gecnd.h"
 #define GECND_STREAM_AVLIB_INTERNAL
 #define GECND_FFMPEG_LOAD_INTERNAL
 #include "gemedia.h"

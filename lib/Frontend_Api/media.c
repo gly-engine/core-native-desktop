@@ -5,7 +5,7 @@
 
 #include "gehook.h"
 #include "gecnd.h"
-#include "gamely_media.h"
+
 
 static int lua_native_media_bootstrap(lua_State *L) {
     lua_pushinteger(L, 1);

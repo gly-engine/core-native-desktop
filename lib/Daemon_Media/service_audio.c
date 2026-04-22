@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stddef.h>
-#include "gamely_media.h"
+
+#include "gecnd.h"
 
 static gamely_audio_cb_t g_cb       = NULL;
 static void             *g_usr      = NULL;
