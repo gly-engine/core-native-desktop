@@ -228,6 +228,10 @@ set(SPNG_STATIC ON CACHE BOOL "" FORCE)
 set(SPNG_USE_MINIZ OFF CACHE BOOL "" FORCE)
 set(SPNG_INSTALL OFF CACHE BOOL "" FORCE)
 
+# Libretro 
+set(LIBRETRO_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/retroarch")
+set(LIBRETRO_DOWNLOAD "https://raw.githubusercontent.com/libretro/RetroArch/ee3eae34c425a1645b923395854dda7f2543df31/libretro-common/include/libretro.h")
+
 # FontStash
 set(FONTSTASH_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/fontstash")
 set(FONTSTASH_DOWNLOAD "https://github.com/memononen/fontstash/archive/b5ddc9741061343740d85d636d782ed3e07cf7be.tar.gz")
@@ -262,6 +266,7 @@ option(GECND_USE_WARMCAT "use warmcat to http/webosocket client/server" ON)
 option(GECND_USE_PLUGIN_ALSA "build plugin alsa for core native" OFF)
 option(GECND_USE_PLUGIN_SHIM "build plugin shim for core native" OFF)
 option(GECND_USE_PLUGIN_CHROMIUM "build plugin chromium for core native" OFF)
+option(GECND_USE_PLUGIN_LIBRETRO "build plugin libretro for core native" OFF)
 
 if(GECND_USE_LUA51)
     FetchContent_Populate(lua51-static URL "${LUA51_DOWNLOAD}" SOURCE_DIR ${LUA51_DIR})
@@ -684,6 +689,21 @@ if(GECND_USE_PLUGIN_CHROMIUM)
     target_include_directories(chromium_gecnd PRIVATE ${LIBUV_DIR}/include)
     target_link_libraries(chromium_gecnd PRIVATE gecnd_header gecnd_lua)
     set_target_properties(chromium_gecnd PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+    )
+endif()
+
+if(GECND_USE_PLUGIN_LIBRETRO)
+    if(NOT EXISTS "${LIBRETRO_DIR}/libretro.h")
+        file(DOWNLOAD "${LIBRETRO_DOWNLOAD}" "${LIBRETRO_DIR}/libretro.h")
+    endif()
+    file(GLOB_RECURSE libretro_files "${CMAKE_CURRENT_LIST_DIR}/plugins/libretro/*.c")
+    add_library(libretro_gecnd SHARED "${libretro_files}")
+    target_include_directories(libretro_gecnd PRIVATE ${LIBRETRO_DIR})
+    target_link_libraries(libretro_gecnd PRIVATE gecnd_header gecnd_lua)
+    set_target_properties(libretro_gecnd PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
         ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib

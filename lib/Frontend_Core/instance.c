@@ -30,7 +30,6 @@ extern const luaL_Reg frontend_api_text[];
 extern const luaL_Reg frontend_api_image[];
 extern const luaL_Reg frontend_api_media[];
 extern const luaL_Reg frontend_api_system[];
-extern const luaL_Reg frontend_api_libretro[];
 
 static gecnd_t *instance;
 
@@ -83,9 +82,6 @@ gecnd_t *gecnd_new(lua_State* L) {
         }
         for (int i = 0; frontend_api_system[i].name != NULL; i++) {
             lua_register(L, frontend_api_system[i].name, frontend_api_system[i].func);
-        }
-        for (int i = 0; frontend_api_libretro[i].name != NULL; i++) {
-            lua_register(L, frontend_api_libretro[i].name, frontend_api_libretro[i].func);
         }
 
         gly_hook_keyboard_has_media(&native_keyboard_has_media);

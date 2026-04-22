@@ -153,3 +153,39 @@ void stream_destroy(VideoStream *s) {
     uv_thread_join(&s->thread);
     free(s->url); free(s);
 }
+
+/* ── player callbacks ─────────────────────────────────────────────── */
+
+static VideoStream *s_streams[4] = {0};
+
+static void av_start(uint8_t channel, const char *url, void *usr) {
+    (void)usr;
+    if (channel >= 4) return;
+    if (s_streams[channel]) {
+        stream_destroy(s_streams[channel]);
+        gamely_daemon_media_background_release();
+        s_streams[channel] = NULL;
+    }
+    if (!gamely_daemon_media_background_claim()) {
+        fprintf(stderr, "[media] background buffer in use\n");
+        return;
+    }
+    s_streams[channel] = stream_create(url);
+    if (!s_streams[channel]) gamely_daemon_media_background_release();
+}
+
+static void av_stop(uint8_t channel, void *usr) {
+    (void)usr;
+    if (channel >= 4 || !s_streams[channel]) return;
+    stream_destroy(s_streams[channel]);
+    s_streams[channel] = NULL;
+    gamely_daemon_media_background_release();
+}
+
+gamely_media_player_t gamely_player_ffmpeg = {
+    .start = av_start,
+    .stop  = av_stop,
+    .tick  = NULL,
+    .pause = NULL,
+    .play  = NULL,
+};

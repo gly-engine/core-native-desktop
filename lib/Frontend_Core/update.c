@@ -8,6 +8,7 @@
 #include "gecnd.h"
 #include "gemetrics.h"
 #include "gamely_input.h"
+#include "gamely_media.h"
 
 void gamely_daemon_webloop_start(void *loop);
 
@@ -87,7 +88,6 @@ static void callback_init(gecnd_t *gly) {
             gamely_daemon_fs_start(gly->loop);
             gamely_daemon_db_start();
             gamely_daemon_img_start(gly->loop);
-            gamely_daemon_img_spng_register();
             gly_hook_daemon_img_backend_register();
             gamely_daemon_io_resolver_start();
             gamely_daemon_webclient_img_register();
@@ -206,9 +206,6 @@ static void callback_draw(gecnd_t *gly) {
         gly->error_string = luaL_checkstring(gly->L, -1);
 }
 
-extern void libretro_run_frame(void);
-extern bool libretro_is_running(void);
-
 bool gecnd_update(gecnd_t *gly)
 {
     bool should_close = false;
@@ -223,8 +220,7 @@ bool gecnd_update(gecnd_t *gly)
         gly->internal |= GECND_INTERNAL_RUNNING;
         gecnd_metrics_finish_wait();
 
-        if (libretro_is_running())
-            libretro_run_frame();
+        gamely_daemon_media_playback_tick();
 
         gecnd_metrics_start_input();
         if (gecnd_is_root(gly)) {

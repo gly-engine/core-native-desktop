@@ -28,6 +28,21 @@ MediaFrame *gamely_daemon_media_background_get_frame    (void);
 bool        gamely_daemon_media_background_check_update (atomic_int *local_counter);
 
 /* -----------------------------------------------------------------------
+ * Player registry — registro de players por schema composto
+ * --------------------------------------------------------------------- */
+typedef struct {
+    void (*start)(uint8_t channel, const char *url, void *usr);
+    void (*stop) (uint8_t channel, void *usr);
+    void (*tick) (uint8_t channel, void *usr);   /* NULL = thread própria */
+    void (*pause)(uint8_t channel, void *usr);   /* NULL = ignorado */
+    void (*play) (uint8_t channel, void *usr);   /* NULL = ignorado */
+} gamely_media_player_t;
+
+void gamely_daemon_media_register_player(const char                  *schema,
+                                          const gamely_media_player_t *cbs,
+                                          void                        *usr);
+
+/* -----------------------------------------------------------------------
  * Playback — reprodução de vídeo por canal
  * --------------------------------------------------------------------- */
 void gamely_daemon_media_playback_source  (uint8_t channel, const char *url);
@@ -37,6 +52,7 @@ void gamely_daemon_media_playback_stop    (uint8_t channel);
 void gamely_daemon_media_playback_position(uint8_t channel,
                                             int16_t x, int16_t y,
                                             int16_t w, int16_t h);
+void gamely_daemon_media_playback_tick    (void);
 
 /* -----------------------------------------------------------------------
  * Transmissão — H264/MPEG-TS → clientes HTTP /stream
@@ -64,6 +80,14 @@ typedef void (*gamely_audio_cb_t)(const int16_t *data, size_t frames,
 void gamely_daemon_media_audio_subscribe (gamely_audio_cb_t cb, void *usr);
 void gamely_daemon_media_audio_configure (unsigned rate, unsigned channels);
 void gamely_daemon_media_audio_push      (const int16_t *data, size_t frames);
+
+/* -----------------------------------------------------------------------
+ * Hardware render readiness — notifica players que o contexto GL está pronto
+ * --------------------------------------------------------------------- */
+typedef void (*gamely_media_hw_ready_cb)(void);
+
+void gamely_daemon_media_register_hw_ready(gamely_media_hw_ready_cb cb);
+void gamely_daemon_media_hw_gl_ready      (void);
 
 /* -----------------------------------------------------------------------
  * Ciclo de vida

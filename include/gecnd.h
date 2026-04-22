@@ -17,6 +17,7 @@
 #define GECND_INTERNAL_RUNNING          (2u)
 #define GECND_INTERNAL_WANT_EXIT        (4u)
 #define GECND_INTERNAL_BROWSER          (8u)
+#define GECND_INTERNAL_HW_GL_READY      (16u)
 #endif
 
 // alias:
@@ -309,9 +310,5 @@ void gamely_daemon_webclient_ws_close(gly_req_id_t id);
 /* Registers the OpenGL atlas backend for "rgba" with Daemon_Img.
  * Call after gamely_daemon_img_start(). */
 void gamely_daemon_img_opengl_register(void);
-
-/* Registers the libspng PNG decoder with Daemon_Img (requires GECND_USE_SPNG).
- * Call after gamely_daemon_img_start(). */
-void gamely_daemon_img_spng_register(void);
 
 #endif

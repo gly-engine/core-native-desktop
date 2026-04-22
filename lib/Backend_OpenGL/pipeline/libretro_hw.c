@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include "geopengl.h"
-#include "libretro.h"  // retro_proc_address_t
 
 // ---------------------------------------------------------------------------
 // Strong implementations of the ge_hw_* weak interface declared in
@@ -74,8 +73,11 @@ void ge_hw_set_active(bool active, bool bottom_left_origin) {
     s->hw_bottom_left_origin = bottom_left_origin;
 }
 
-retro_proc_address_t ge_hw_proc_address(const char *sym) {
-    return (retro_proc_address_t)platform_get_proc_address(sym);
+/**
+ * @todo move?
+ */
+void* ge_hw_proc_address(const char *sym) {
+    return (void*) platform_get_proc_address(sym);
 }
 
 void ge_hw_restore_context(void) {

@@ -21,7 +21,6 @@ static ko_longopt_t longopts[] = {
     { "game",           ko_required_argument, 1305 },
     { "engine",         ko_required_argument, 1306 },
     { "play",           ko_required_argument, 1307 },
-    { "libretro",       ko_required_argument, 1308 },
     { "disable-radius", ko_no_argument,       1309 },
     { "port",           ko_required_argument, 1310 },
     { "filter-aa",      ko_required_argument, 1401 },
@@ -84,11 +83,6 @@ void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
     if (c == 1307) {
         gamely_daemon_media_playback_source(0, opt.arg);
         gamely_daemon_media_playback_play(0);
-    }
-    if (c == 1308) {
-        if (!native_libretro_url(opt.arg)) {
-            gly->error_string = native_libretro_error();
-        }
     }
     if (c == 1309) {
         gly->disable_radius = true;

@@ -8,7 +8,6 @@
 #include "gemedia.h"
 #include "gecnd.h"
 #include "gedll.h"
-#include "gehook.h"
 #include "gamely_media.h"
 #include "hw_render.h"
 #include "uri_query.h"
@@ -23,7 +22,6 @@ static LIB_HANDLE core_handle = NULL;
 static char system_dir[1024] = ".";
 static char s_error[256]     = "";
 
-// Libretro API function pointers
 static void (*p_retro_set_environment)(retro_environment_t) = NULL;
 static void (*p_retro_set_video_refresh)(retro_video_refresh_t) = NULL;
 static void (*p_retro_set_audio_sample)(retro_audio_sample_t) = NULL;
@@ -71,12 +69,8 @@ static void RETRO_CALLCONV core_log(enum retro_log_level level, const char *fmt,
 }
 
 static void RETRO_CALLCONV core_video_refresh(const void *data, unsigned width, unsigned height, size_t pitch) {
-    // data == NULL: core requests frame dupe (GET_CAN_DUPE=true) — keep last frame
     if (!data) return;
-
-    // HW render: core drew directly into the FBO, nothing to copy
     if (libretro_hw_video_refresh(data, width, height, pitch)) return;
-
     if (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) {
         gamely_daemon_media_background_push_xrgb8888((const uint8_t *)data, (int)width, (int)height, (int)pitch);
     } else {
@@ -93,6 +87,7 @@ static size_t RETRO_CALLCONV core_audio_sample_batch(const int16_t *data, size_t
     gamely_daemon_media_audio_push(data, frames);
     return frames;
 }
+
 static void RETRO_CALLCONV core_input_poll(void) {}
 
 extern int16_t RETRO_CALLCONV engine_input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id);
@@ -131,7 +126,7 @@ static bool core_environment(unsigned cmd, void *data) {
             if (data) *(bool*)data = false;
             return true;
         case RETRO_ENVIRONMENT_GET_LANGUAGE:
-            if (data) *(unsigned*)data = 0; // English
+            if (data) *(unsigned*)data = 0;
             return true;
         case RETRO_ENVIRONMENT_GET_USERNAME:
             if (data) *(const char**)data = "gecnd";
@@ -170,8 +165,9 @@ static bool core_environment(unsigned cmd, void *data) {
 #define LOAD_SYM_OPTIONAL(name) \
     *(void**)(&p_##name) = get_symbol(core_handle, #name);
 
-static bool native_libretro_load(const char *path);
-static bool native_libretro_game(const char *path);
+bool native_libretro_load(const char *path);
+bool native_libretro_game(const char *path);
+bool native_libretro_game_from_buffer(const uint8_t *data, size_t size);
 static void libretro_deinit_core(void);
 
 const char *native_libretro_error(void) {
@@ -220,11 +216,11 @@ bool native_libretro_url(const char *url) {
     return true;
 }
 
-static bool native_libretro_load(const char *path) {
+bool native_libretro_load(const char *path) {
     if (core_handle) close_library(core_handle);
     core_handle = NULL;
     reset_pointers();
-    
+
     char exe_dir[512];
     gecnd_utils_get_exe_cwd(exe_dir, sizeof(exe_dir));
     strncpy(system_dir, exe_dir[0] ? exe_dir : ".", sizeof(system_dir));
@@ -255,7 +251,7 @@ static bool native_libretro_load(const char *path) {
     return true;
 }
 
-static bool native_libretro_game(const char *path) {
+bool native_libretro_game(const char *path) {
     if (!core_handle) return false;
 
     char full_path[1024];
@@ -276,7 +272,7 @@ static bool native_libretro_game(const char *path) {
     struct retro_game_info info = {0};
     info.path = full_path;
     info.meta = NULL;
-    
+
     FILE *f = fopen(full_path, "rb");
     if (f) {
         fseek(f, 0, SEEK_END);
@@ -295,11 +291,11 @@ static bool native_libretro_game(const char *path) {
         return false;
     }
 
-    if (p_retro_set_video_refresh) p_retro_set_video_refresh(core_video_refresh);
-    if (p_retro_set_audio_sample) p_retro_set_audio_sample(core_audio_sample);
+    if (p_retro_set_video_refresh)      p_retro_set_video_refresh(core_video_refresh);
+    if (p_retro_set_audio_sample)       p_retro_set_audio_sample(core_audio_sample);
     if (p_retro_set_audio_sample_batch) p_retro_set_audio_sample_batch(core_audio_sample_batch);
-    if (p_retro_set_input_poll) p_retro_set_input_poll(core_input_poll);
-    if (p_retro_set_input_state) p_retro_set_input_state(engine_input_state_cb);
+    if (p_retro_set_input_poll)         p_retro_set_input_poll(core_input_poll);
+    if (p_retro_set_input_state)        p_retro_set_input_state(engine_input_state_cb);
 
     if (!core_init_done) {
         if (p_retro_init) {
@@ -308,28 +304,23 @@ static bool native_libretro_game(const char *path) {
         }
         core_init_done = true;
     }
-    
+
     if (p_retro_set_controller_port_device) p_retro_set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
-    
+
     printf("Libretro: Loading game: %s\n", full_path);
-    bool ok = false;
-    if (p_retro_load_game) ok = p_retro_load_game(&info);
-    
+    bool ok = p_retro_load_game ? p_retro_load_game(&info) : false;
+
     if (info.data) free((void*)info.data);
 
     if (ok) {
         struct retro_system_av_info av_info = {0};
         if (p_retro_get_system_av_info) p_retro_get_system_av_info(&av_info);
-
         gamely_daemon_media_audio_configure((unsigned)av_info.timing.sample_rate, 2);
-
         if (libretro_hw_is_active()) {
-            // Use max_width/max_height so we don't have to resize the FBO mid-game
             int fw = (av_info.geometry.max_width  > 0) ? (int)av_info.geometry.max_width  : (int)av_info.geometry.base_width;
             int fh = (av_info.geometry.max_height > 0) ? (int)av_info.geometry.max_height : (int)av_info.geometry.base_height;
             libretro_hw_context_reset(fw, fh);
         }
-
         gamely_daemon_media_background_claim();
         core_initialized = true;
         return true;
@@ -337,14 +328,53 @@ static bool native_libretro_game(const char *path) {
     return false;
 }
 
-void libretro_init_core(void) {
+bool native_libretro_game_from_buffer(const uint8_t *data, size_t size) {
+    if (!core_handle) return false;
+
+    struct retro_system_info sys_info = {0};
+    if (p_retro_get_system_info) p_retro_get_system_info(&sys_info);
+
+    struct retro_game_info info = {0};
+    info.path = NULL;
+    info.data = data;
+    info.size = size;
+    info.meta = NULL;
+
+    if (p_retro_set_video_refresh)      p_retro_set_video_refresh(core_video_refresh);
+    if (p_retro_set_audio_sample)       p_retro_set_audio_sample(core_audio_sample);
+    if (p_retro_set_audio_sample_batch) p_retro_set_audio_sample_batch(core_audio_sample_batch);
+    if (p_retro_set_input_poll)         p_retro_set_input_poll(core_input_poll);
+    if (p_retro_set_input_state)        p_retro_set_input_state(engine_input_state_cb);
+
+    if (!core_init_done) {
+        if (p_retro_init) p_retro_init();
+        core_init_done = true;
+    }
+
+    if (p_retro_set_controller_port_device)
+        p_retro_set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
+
+    bool ok = p_retro_load_game ? p_retro_load_game(&info) : false;
+    if (ok) {
+        struct retro_system_av_info av_info = {0};
+        if (p_retro_get_system_av_info) p_retro_get_system_av_info(&av_info);
+        gamely_daemon_media_audio_configure((unsigned)av_info.timing.sample_rate, 2);
+        if (libretro_hw_is_active()) {
+            int fw = av_info.geometry.max_width  > 0 ? (int)av_info.geometry.max_width  : (int)av_info.geometry.base_width;
+            int fh = av_info.geometry.max_height > 0 ? (int)av_info.geometry.max_height : (int)av_info.geometry.base_height;
+            libretro_hw_context_reset(fw, fh);
+        }
+        gamely_daemon_media_background_claim();
+        core_initialized = true;
+    }
+    return ok;
 }
 
 void native_libretro_exit(void) {
     libretro_deinit_core();
 }
 
-void libretro_deinit_core(void) {
+static void libretro_deinit_core(void) {
     if (core_initialized) {
         if (p_retro_unload_game) p_retro_unload_game();
     }
@@ -359,15 +389,13 @@ void libretro_deinit_core(void) {
     reset_pointers();
 }
 
-MediaFrame* libretro_get_frame(void) {
+MediaFrame *libretro_get_frame(void) {
     return gamely_daemon_media_background_get_frame();
 }
 
 void libretro_run_frame(void) {
     if (!core_initialized || !p_retro_run) return;
     p_retro_run();
-    // HW cores change FBO/viewport; restore default framebuffer so the display
-    // backend starts clean.  ge_hw_restore_context is a weak no-op without GL.
     if (libretro_hw_is_active()) ge_hw_restore_context();
 }
 
@@ -375,7 +403,6 @@ bool libretro_is_running(void) {
     return core_initialized;
 }
 
-// Libretro dummy stubs (some cores might expect these if they link against the frontend)
 RETRO_API void retro_init(void) { if (p_retro_init) p_retro_init(); }
 RETRO_API void retro_deinit(void) { if (p_retro_deinit) p_retro_deinit(); }
 RETRO_API unsigned retro_api_version(void) { return p_retro_api_version ? p_retro_api_version() : 0; }
