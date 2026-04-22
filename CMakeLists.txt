@@ -92,6 +92,7 @@ target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${KLIB_DIR})
 set(STB_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/stb")
 set(STB_DOWNLOAD "https://github.com/nothings/stb/archive/f1c79c02822848a9bed4315b12c8c8f3761e1296.tar.gz")
 target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${STB_DIR})
+target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Img/driver_stb.c")
 
 # Toml
 set(TOMLC17_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/toml")

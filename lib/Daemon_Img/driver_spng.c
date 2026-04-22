@@ -44,6 +44,12 @@ static gamely_img_decoded_t spng_decode_cb(const uint8_t *data, size_t len) {
     return out;
 }
 
+gamely_img_decoded_t gamely_driver_decoder_stb(const uint8_t *data, size_t len);
+/** 
+ * @todo move this!
+ */
 void gamely_daemon_img_spng_register(void) {
+    gamely_daemon_img_register_decoder("bmp", "rgba", true, gamely_driver_decoder_stb);
+    gamely_daemon_img_register_decoder("gif", "rgba", true, gamely_driver_decoder_stb);
     gamely_daemon_img_register_decoder("png", "rgba", true, spng_decode_cb);
 }
