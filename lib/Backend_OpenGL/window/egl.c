@@ -97,7 +97,8 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     mat4_ortho(s->projection, 0, width, height, 0, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
     s->last_frame_time = platform_get_time();
     // Complete deferred HW render init for cores loaded before GL was ready.
-    libretro_hw_gl_ready();
+    gecnd_t *root = gecnd_get_root();
+    if (root) root->internal |= GECND_INTERNAL_HW_GL_READY;
 }
 
 void gly_hook_display_dt(int16_t *delta_time) {

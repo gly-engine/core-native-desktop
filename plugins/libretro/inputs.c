@@ -1,8 +1,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include "libretro.h"
 
+#include <libretro.h>
+
+#include "gecnd.h"
 
 #define LR_KEY_COUNT 10
 

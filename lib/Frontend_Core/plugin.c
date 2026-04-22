@@ -39,6 +39,12 @@ static void extract_module_name(const char *path, char *out, size_t out_size) {
 bool gecnd_plugin_load(gecnd_t *gly, const char *path) {
     LIB_HANDLE lib = load_library(path);
     if (!lib) {
+#ifndef _WIN32
+        const char *dl_err = dlerror();
+        fprintf(stderr, "[plugin] failed to load '%s': %s\n", path, dl_err ? dl_err : "unknown error");
+#else
+        fprintf(stderr, "[plugin] failed to load '%s'\n", path);
+#endif
         gly->error_string = "failed to load plugin";
         return false;
     }

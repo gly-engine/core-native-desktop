@@ -7,8 +7,6 @@
 #include "gehook.h"
 #include "gemetrics.h"
 
-
-
 void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts);
 void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt);
 

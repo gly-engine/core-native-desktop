@@ -10,7 +10,8 @@
 
 
 
-void gamely_daemon_webloop_start(void *loop);
+void gecnd_hypervisor_daemons(gecnd_t *gly);
+void gecnd_input_key_cb(const char *name, bool pressed, int port, void *usr);
 
 typedef struct {
     FILE *fp;
@@ -65,11 +66,6 @@ static const char *open_script(gecnd_t *gly, const char *lua_code, const char *l
     return NULL;
 }
 
-static void on_input_key(const char *name, bool pressed, int port, void *usr)
-{
-    gecnd_dispatch_key_event((gecnd_t *)usr, name, pressed, port);
-}
-
 static void callback_init(gecnd_t *gly) {
     do {
         gly_hook_display_init(gly->width, gly->height);
@@ -79,21 +75,8 @@ static void callback_init(gecnd_t *gly) {
             gly->window_height = gly->height;
         }
 
-        if (gecnd_is_root(gly)) {
-            if (gencd_filter_is_zero_corners())  gecnd_filter_reset_corners();
-            if (gencd_filter_is_zero_video_pos()) gecnd_filter_reset_video_pos();
-            gamely_daemon_webloop_start(gly->loop);
-            gamely_daemon_webclient_start(gly->loop);
-            gamely_daemon_webserver_start(gly->loop, gly->port);
-            gamely_daemon_fs_start(gly->loop);
-            gamely_daemon_db_start();
-            gamely_daemon_img_start(gly->loop);
-            gly_hook_daemon_img_backend_register();
-            gamely_daemon_io_resolver_start();
-            gamely_daemon_webclient_img_register();
-            gamely_daemon_input_open();
-            gamely_daemon_input_subscribe(on_input_key, gly);
-        }
+        if (gecnd_is_root(gly))
+            gecnd_hypervisor_daemons(gly);
 
         if (gly->loop)
             gly_hook_display_fps(0);
@@ -146,7 +129,7 @@ static void callback_init(gecnd_t *gly) {
 
         /* fire initial unpressed state for all mapped keys */
         if (gecnd_is_root(gly))
-            gamely_daemon_input_init_keys(on_input_key, gly);
+            gamely_daemon_input_init_keys(gecnd_input_key_cb, gly);
     }
     while (0);
 }

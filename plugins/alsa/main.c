@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include <dlfcn.h>
 
-
+#include "gecnd.h"
 
 /* --------------------------------------------------------------------------
  * ALSA PCM — carregado dinamicamente de libasound.so.2
