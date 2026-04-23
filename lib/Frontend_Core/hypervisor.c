@@ -21,6 +21,12 @@ void gecnd_hypervisor(void* loop)
     gamely_daemon_media_register_player("rtsp"  , &gamely_player_ffmpeg, NULL);
     gamely_daemon_media_register_player("rtmp"  , &gamely_player_ffmpeg, NULL);
     gamely_daemon_media_register_player("udp"   , &gamely_player_ffmpeg, NULL);
+    gamely_daemon_media_register_player("ffmpeg+file"  , &gamely_player_ffmpeg, NULL);
+    gamely_daemon_media_register_player("ffmpeg+http"  , &gamely_player_ffmpeg, NULL);
+    gamely_daemon_media_register_player("ffmpeg+https" , &gamely_player_ffmpeg, NULL);
+    gamely_daemon_media_register_player("ffmpeg+rtsp"  , &gamely_player_ffmpeg, NULL);
+    gamely_daemon_media_register_player("ffmpeg+rtmp"  , &gamely_player_ffmpeg, NULL);
+    gamely_daemon_media_register_player("ffmpeg+udp"   , &gamely_player_ffmpeg, NULL);
 }
 
 void gecnd_input_key_cb(const char *name, bool pressed, int port, void *usr)

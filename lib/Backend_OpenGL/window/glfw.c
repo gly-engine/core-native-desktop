@@ -4,8 +4,6 @@
 #include "gecnd.h"
 #include "gehook.h"
 #include "geopengl.h"
-/** @todo move — forward decl para evitar include cruzado Backend↔Frontend */
-
 static GLBackendState g_gl_state;
 
 GLBackendState* geogl_get_state(void) {

@@ -19,7 +19,7 @@ void        libretro_run_frame              (void);
 bool        libretro_is_running             (void);
 const char *native_libretro_error          (void);
 
-/* Protótipo de hw_render.c */
+/* Protótipos de hw_render.c */
 void libretro_hw_gl_ready(void);
 
 /* Protótipos de scanner.c */
@@ -252,13 +252,17 @@ static gamely_media_player_t libretro_http_player = {
 
 static int lua_native_libretro_url(lua_State *L) {
     const char *url = lua_tostring(L, 1);
-    lua_pushboolean(L, url ? native_libretro_url(url) : 0);
+    if (!url) { lua_pushboolean(L, 0); return 1; }
+    char media_url[2048];
+    snprintf(media_url, sizeof(media_url), "libretro+%s", url);
+    gamely_daemon_media_playback_source(0, media_url);
+    lua_pushboolean(L, 1);
     return 1;
 }
 
 static int lua_native_libretro_exit(lua_State *L) {
     (void)L;
-    native_libretro_exit();
+    gamely_daemon_media_playback_stop(0);
     return 0;
 }
 

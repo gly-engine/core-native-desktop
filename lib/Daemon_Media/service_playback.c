@@ -76,6 +76,14 @@ static int count_extras(const char url_tok[][TOKEN_LEN], int url_n,
     return extras;
 }
 
+/* ffmpeg+file://x → file://x  |  aui+rtsp://x → rtsp://x  |  rtsp://x → rtsp://x */
+static const char *strip_driver_prefix(const char *url) {
+    const char *sep  = strstr(url, "://");
+    if (!sep) return url;
+    const char *plus = memchr(url, '+', (size_t)(sep - url));
+    return plus ? plus + 1 : url;
+}
+
 static player_reg_t *select_player(const char *url) {
     char url_tok[TOKEN_CAP][TOKEN_LEN];
     int  url_n = parse_url_schema(url, url_tok, TOKEN_CAP);

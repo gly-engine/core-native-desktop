@@ -10,8 +10,6 @@
 
 #include "gehook.h"
 #include "geopengl.h"
-/** @todo move — forward decl para evitar include cruzado Backend↔Frontend */
-void libretro_hw_gl_ready(void);
 
 static GLBackendState g_gl_state;
 static EGLDisplay egl_display = EGL_NO_DISPLAY;

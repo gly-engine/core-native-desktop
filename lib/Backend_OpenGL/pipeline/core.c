@@ -210,7 +210,7 @@ void ge_pipeline_start(void) {
     // glBindFramebuffer(GL_FRAMEBUFFER, s->fbo_id);
 
     glViewport(0, 0, s->window_width, s->window_height);
-    glClearColor(1, 0, 1, 1);
+    glClearColor(1, 0, 1, 0);
     glDepthMask(GL_TRUE);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     

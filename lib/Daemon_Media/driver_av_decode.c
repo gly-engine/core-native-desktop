@@ -10,6 +10,17 @@
 #define GECND_FFMPEG_LOAD_INTERNAL
 #include "gemedia.h"
 
+static void normalize_url(char *url) {
+    if (strncmp(url, "file://", 7) != 0) return;
+    const char *path = url + 7;
+    if (*path == '/') {
+        memmove(url, path, strlen(path) + 1);      /* file:///x → /x */
+    } else {
+        memmove(url + 1, path, strlen(path) + 1);  /* file://x  → /x */
+        url[0] = '/';
+    }
+}
+
 static inline double now_sec(void) {
     return AV.av_gettime_relative() / 1e6;
 }
@@ -140,6 +151,7 @@ VideoStream *stream_create(const char *url) {
     VideoStream *s = calloc(1, sizeof(VideoStream));
     if (!s) return NULL;
     s->url = strdup(url);
+    normalize_url(s->url);
     atomic_store(&s->running, 1);
     atomic_store(&s->paused, 0);
     if (uv_thread_create(&s->thread, threadworker, s) != 0) {
