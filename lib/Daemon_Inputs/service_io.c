@@ -53,7 +53,7 @@ static uint64_t now_ms(void)
 
 #define QUEUE_SIZE 128
 
-typedef struct { const char *name; bool pressed; int port; } gamely_io_event_t;
+typedef struct { char name[8]; bool pressed; int port; } gamely_io_event_t;
 
 static gamely_io_event_t  g_queue[QUEUE_SIZE];
 static atomic_int         g_head = 0;
@@ -66,7 +66,8 @@ static void enqueue(const char *name, bool pressed, int port)
     int cur  = atomic_load_explicit(&g_head, memory_order_relaxed);
     int next = (cur + 1) % QUEUE_SIZE;
     if (next != atomic_load_explicit(&g_tail, memory_order_acquire)) {
-        g_queue[cur].name    = name;
+        strncpy(g_queue[cur].name, name, 7);
+        g_queue[cur].name[7] = '\0';
         g_queue[cur].pressed = pressed;
         g_queue[cur].port    = port;
         atomic_store_explicit(&g_head, next, memory_order_release);
@@ -76,7 +77,7 @@ static void enqueue(const char *name, bool pressed, int port)
 
 /* -- key state -- */
 
-typedef struct { const char *name; bool pressed[4]; } gamely_key_state_t;
+typedef struct { char name[8]; bool pressed[4]; } gamely_key_state_t;
 
 static gamely_key_state_t *g_states    = NULL;
 static int                 g_state_cnt = 0;
@@ -86,7 +87,7 @@ static void key_state_set(int port, const char *name, bool pressed)
 {
     if (port < 0 || port >= 4 || !name) return;
     for (int i = 0; i < g_state_cnt; i++) {
-        if (g_states[i].name == name) {
+        if (strcmp(g_states[i].name, name) == 0) {
             g_states[i].pressed[port] = pressed;
             return;
         }
@@ -98,7 +99,8 @@ static void key_state_set(int port, const char *name, bool pressed)
         g_states    = ns;
         g_state_cap = nc;
     }
-    g_states[g_state_cnt].name = name;
+    strncpy(g_states[g_state_cnt].name, name, 7);
+    g_states[g_state_cnt].name[7] = '\0';
     memset(g_states[g_state_cnt].pressed, 0, sizeof(g_states[g_state_cnt].pressed));
     g_states[g_state_cnt].pressed[port] = pressed;
     g_state_cnt++;
@@ -106,7 +108,7 @@ static void key_state_set(int port, const char *name, bool pressed)
 
 /* -- TTL -- */
 
-typedef struct { const char *name; int port; uint64_t expiry_ms; } gamely_ttl_entry_t;
+typedef struct { char name[8]; int port; uint64_t expiry_ms; } gamely_ttl_entry_t;
 
 static gamely_ttl_entry_t *g_ttl     = NULL;
 static int                 g_ttl_cnt = 0;
@@ -115,7 +117,7 @@ static int                 g_ttl_cap = 0;
 static void ttl_upsert(const char *name, int port, uint64_t expiry_ms)
 {
     for (int i = 0; i < g_ttl_cnt; i++) {
-        if (g_ttl[i].name == name && g_ttl[i].port == port) {
+        if (g_ttl[i].port == port && strcmp(g_ttl[i].name, name) == 0) {
             g_ttl[i].expiry_ms = expiry_ms;
             return;
         }
@@ -127,13 +129,17 @@ static void ttl_upsert(const char *name, int port, uint64_t expiry_ms)
         g_ttl     = nt;
         g_ttl_cap = nc;
     }
-    g_ttl[g_ttl_cnt++] = (gamely_ttl_entry_t){name, port, expiry_ms};
+    strncpy(g_ttl[g_ttl_cnt].name, name, 7);
+    g_ttl[g_ttl_cnt].name[7] = '\0';
+    g_ttl[g_ttl_cnt].port = port;
+    g_ttl[g_ttl_cnt].expiry_ms = expiry_ms;
+    g_ttl_cnt++;
 }
 
 static void ttl_remove(const char *name, int port)
 {
     for (int i = 0; i < g_ttl_cnt; i++) {
-        if (g_ttl[i].name == name && g_ttl[i].port == port) {
+        if (g_ttl[i].port == port && strcmp(g_ttl[i].name, name) == 0) {
             g_ttl[i] = g_ttl[--g_ttl_cnt];
             return;
         }

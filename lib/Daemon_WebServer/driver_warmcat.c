@@ -336,7 +336,21 @@ static int callback_http(struct lws *wsi,
         /* rota HTTP normal */
         r = resolve_route(find_route(path, ROUTE_HTTP));
         if (r && r->http_cb) {
-            gly_http_req_t req = { .id = s->req_id, .path = path };
+            const char *method = "GET";
+            char *p_uri;
+            int l_uri;
+            int m = lws_http_get_uri_and_method(wsi, &p_uri, &l_uri);
+            switch (m) {
+                case LWSHUMETH_GET:     method = "GET";     break;
+                case LWSHUMETH_POST:    method = "POST";    break;
+                case LWSHUMETH_PUT:     method = "PUT";     break;
+                case LWSHUMETH_DELETE:  method = "DELETE";  break;
+                case LWSHUMETH_PATCH:   method = "PATCH";   break;
+                case LWSHUMETH_OPTIONS: method = "OPTIONS"; break;
+                case LWSHUMETH_HEAD:    method = "HEAD";    break;
+                case LWSHUMETH_CONNECT: method = "CONNECT"; break;
+            }
+            gly_http_req_t req = { .id = s->req_id, .path = path, .method = method };
             r->http_cb(&req);
         } else {
             s->status   = 404;
