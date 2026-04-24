@@ -49,6 +49,8 @@ typedef struct
 
 static metrics_state_t state = {0};
 
+void gecnd_profile_ip_tick();
+
 void gecnd_metrics_setup(uint32_t flags)
 {
     state.flags = flags;
@@ -163,6 +165,7 @@ void gecnd_metrics_update(void)
 {
     if (!state.flags) return;
     gecnd_metrics_print();
+    gecnd_profile_ip_tick();
 
     uint64_t now = gecnd_get_cur_time();
     state.frame_count++;

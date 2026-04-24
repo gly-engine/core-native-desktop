@@ -10,10 +10,24 @@
 #define L_FLAVOR "PUC"
 #endif
 
-#define FMT_FPS  "FPS: %3d avg | %3d cur | %3d low (1%%) | %3d drops"
+#define FMT_FPS  "FPS: %3d avg | %3d cur | %3d low (1%%) | %3d drops | " FMT_TEMP
 #define FMT_LUA  "Lua %s (%s %db) | %9s cur | %9s avg | %9s peak"
 #define FMT_PERF "Perf: I/O %4dms | Loop %4dms | Draw %4dms | Post %4dms | Wait %4dms"
-#define FMT_SYS  "Sys: IP %15s | Temp: %3d\xc2\xb0""C"
+#define FMT_TEMP "Temp: %3d\xc2\xb0""C"
+
+int gecnd_profile_get_ip_count(void);
+const char *gecnd_profile_get_ip_at(int i);
+
+static void format_ips(char *out, size_t sz)
+{
+    int n = gecnd_profile_get_ip_count();
+    if (n > 4) n = 4;
+    size_t pos = 0;
+    for (int i = 0; i < n && pos < sz - 2; i++)
+        pos += (size_t)snprintf(out + pos, sz - pos,
+            "%s%s", i ? " " : "", gecnd_profile_get_ip_at(i));
+    if (pos == 0) snprintf(out, sz, "0.0.0.0");
+}
 
 static void format_memory(uint64_t bytes, char *out, size_t size)
 {
@@ -36,8 +50,8 @@ void gecnd_metrics_render(gecnd_t *gly)
     uint32_t flags = gecnd_metrics_get_flags();
     if (!(flags & GECND_METRICS_DRAW) || !gly) return;
 
-    const int16_t box_x = 8;
-    const int16_t box_y = 8;
+    const int16_t box_x = 40;
+    const int16_t box_y = 32;
     const int16_t box_w = 380;
     const int16_t line_h = 16;
     const int16_t padding = 8;
@@ -68,12 +82,12 @@ void gecnd_metrics_render(gecnd_t *gly)
         ty += line_h;
     }
 
-    snprintf(buf, sizeof(buf), FMT_FPS, 
-             gecnd_metrics_get_fps_avg(), gecnd_metrics_get_fps_immediate(), 
-             gecnd_metrics_get_fps_worst(), gecnd_metrics_get_fps_drops());
+    snprintf(buf, sizeof(buf), FMT_FPS,
+             gecnd_metrics_get_fps_avg(), gecnd_metrics_get_fps_immediate(),
+             gecnd_metrics_get_fps_worst(), gecnd_metrics_get_fps_drops(),
+             gecnd_profile_get_temp());
     native_text_print(tx, ty, buf);
     ty += line_h;
-
 
     snprintf(buf, sizeof(buf), FMT_PERF,
              gecnd_metrics_get_input_worst(), gecnd_metrics_get_loop_time(),
@@ -82,8 +96,11 @@ void gecnd_metrics_render(gecnd_t *gly)
     native_text_print(tx, ty, buf);
     ty += line_h;
 
-    snprintf(buf, sizeof(buf), FMT_SYS,
-             gecnd_profile_get_local_ip(), gecnd_profile_get_temp());
+    {
+        char ips[128];
+        format_ips(ips, sizeof(ips));
+        snprintf(buf, sizeof(buf), "IP: %s", ips);
+    }
     native_text_print(tx, ty, buf);
 }
 
@@ -115,13 +132,17 @@ void gecnd_metrics_print(void)
     if (gly->L) {
         printf("  " FMT_LUA "\n", LUA_RELEASE, L_FLAVOR, (int)(sizeof(lua_Number) * 8), s1, s2, s3);
     }
-    printf("  " FMT_FPS "\n", 
-           gecnd_metrics_get_fps_avg(), gecnd_metrics_get_fps_immediate(), 
-           gecnd_metrics_get_fps_worst(), gecnd_metrics_get_fps_drops());
+    printf("  " FMT_FPS "\n",
+           gecnd_metrics_get_fps_avg(), gecnd_metrics_get_fps_immediate(),
+           gecnd_metrics_get_fps_worst(), gecnd_metrics_get_fps_drops(),
+           gecnd_profile_get_temp());
     printf("  " FMT_PERF "\n",
            gecnd_metrics_get_input_worst(), gecnd_metrics_get_loop_time(),
            gecnd_metrics_get_draw_time(), gecnd_metrics_get_post_time(),
            gecnd_metrics_get_wait_time());
-    printf("  " FMT_SYS "\n",
-           gecnd_profile_get_local_ip(), gecnd_profile_get_temp());
+    {
+        char ips[128];
+        format_ips(ips, sizeof(ips));
+        printf("  IP: %s\n", ips);
+    }
 }

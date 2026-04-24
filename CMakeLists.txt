@@ -695,6 +695,16 @@ if(GECND_USE_PLUGIN_CHROMIUM)
     )
 endif()
 
+if(GECND_USE_PLUGIN_WPA)
+    add_library(wpa_gecnd SHARED "${CMAKE_CURRENT_LIST_DIR}/plugins/wpa/main.c")
+    target_link_libraries(wpa_gecnd PRIVATE gecnd_header)
+    set_target_properties(wpa_gecnd PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+    )
+endif()
+
 if(GECND_USE_PLUGIN_LIBRETRO)
     if(NOT EXISTS "${LIBRETRO_DIR}/libretro.h")
         file(DOWNLOAD "${LIBRETRO_DOWNLOAD}" "${LIBRETRO_DIR}/libretro.h")

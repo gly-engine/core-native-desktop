@@ -47,7 +47,7 @@ typedef struct {
     int            has_response;
     int            status;
     char           content_type[64];
-    unsigned char  body[MSG_BUF];
+    unsigned char *body;
     size_t         body_len;
     /* stream-only */
     int            is_stream;
@@ -290,6 +290,19 @@ static int callback_http(struct lws *wsi,
 
         const char *path = in ? (const char *)in : "/";
 
+        /* append query string — LWS splits URI and args into separate tokens */
+        char full_path[512];
+        {
+            int qlen = lws_hdr_total_length(wsi, WSI_TOKEN_HTTP_URI_ARGS);
+            if (qlen > 0) {
+                char qbuf[384] = {0};
+                lws_hdr_copy(wsi, qbuf, sizeof(qbuf), WSI_TOKEN_HTTP_URI_ARGS);
+                snprintf(full_path, sizeof(full_path), "%s?%s", path, qbuf);
+            } else {
+                snprintf(full_path, sizeof(full_path), "%s", path);
+            }
+        }
+
         /* verifica rota stream */
         route_t *r = find_route(path, ROUTE_STREAM);
         if (r) {
@@ -350,13 +363,17 @@ static int callback_http(struct lws *wsi,
                 case LWSHUMETH_HEAD:    method = "HEAD";    break;
                 case LWSHUMETH_CONNECT: method = "CONNECT"; break;
             }
-            gly_http_req_t req = { .id = s->req_id, .path = path, .method = method };
+            gly_http_req_t req = { .id = s->req_id, .path = full_path, .method = method };
             r->http_cb(&req);
         } else {
-            s->status   = 404;
+            s->status = 404;
             strncpy(s->content_type, "text/plain", sizeof(s->content_type) - 1);
-            memcpy(s->body, "Not Found", 9);
-            s->body_len     = 9;
+            static const char not_found[] = "Not Found";
+            s->body = malloc(sizeof(not_found) - 1);
+            if (s->body) {
+                memcpy(s->body, not_found, sizeof(not_found) - 1);
+                s->body_len = sizeof(not_found) - 1;
+            }
             s->has_response = 1;
         }
         lws_callback_on_writable(wsi);
@@ -432,11 +449,21 @@ static int callback_http(struct lws *wsi,
             lws_finalize_http_header(wsi, &p, end))
             return -1;
 
-        if (lws_write(wsi, hdr, (size_t)(p - hdr), LWS_WRITE_HTTP_HEADERS) < 0 ||
-            lws_write(wsi, s->body, s->body_len, LWS_WRITE_HTTP_FINAL) < 0)
+        if (lws_write(wsi, hdr, (size_t)(p - hdr), LWS_WRITE_HTTP_HEADERS) < 0)
             return -1;
+        if (s->body && s->body_len) {
+            if (lws_write(wsi, s->body, s->body_len, LWS_WRITE_HTTP_FINAL) < 0)
+                return -1;
+        } else {
+            unsigned char empty[LWS_PRE + 1] = {0};
+            if (lws_write(wsi, empty + LWS_PRE, 0, LWS_WRITE_HTTP_FINAL) < 0)
+                return -1;
+        }
 
         s->has_response = 0;
+        free(s->body);
+        s->body = NULL;
+        s->body_len = 0;
         conn_remove(s->conn_id);
         lws_http_transaction_completed(wsi);
         return -1;
@@ -444,6 +471,8 @@ static int callback_http(struct lws *wsi,
 
     case LWS_CALLBACK_CLOSED_HTTP:
         if (!s || !s->conn_id) break;
+        free(s->body);
+        s->body = NULL;
         if (s->is_stream) {
             for (int i = 0; i < g.stream_count; i++) {
                 if (g.stream_ids[i] != s->conn_id) continue;
@@ -664,9 +693,16 @@ void driver_http_send(uint32_t conn_id, int status, const char *content_type,
     s->status = status;
     strncpy(s->content_type, content_type ? content_type : "text/plain",
             sizeof(s->content_type) - 1);
-    size_t n = body_len < (MSG_BUF - 1) ? body_len : (MSG_BUF - 1);
-    if (body && n) memcpy(s->body, body, n);
-    s->body_len     = n;
+    free(s->body);
+    s->body     = NULL;
+    s->body_len = 0;
+    if (body && body_len) {
+        s->body = malloc(body_len);
+        if (s->body) {
+            memcpy(s->body, body, body_len);
+            s->body_len = body_len;
+        }
+    }
     s->has_response = 1;
     lws_callback_on_writable(wsi);
 }
