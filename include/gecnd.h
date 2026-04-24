@@ -19,6 +19,7 @@
 #define GECND_INTERNAL_WANT_EXIT        (4u)
 #define GECND_INTERNAL_BROWSER          (8u)
 #define GECND_INTERNAL_HW_GL_READY      (16u)
+#define GECND_INTERNAL_HW_GL_NO_FINSH   (32u)
 #endif
 
 // alias:

@@ -8,13 +8,17 @@
 #include "geopengl.h"
 
 void native_draw_start(void) {
+    gecnd_t *gly = gecnd_get_root();
+    if (!(gly->internal & GECND_INTERNAL_HW_GL_NO_FINSH) &&
+        !(gly->internal & GECND_INTERNAL_BROWSER)) {
+        glFinish();
+    }
     ge_pipeline_start();
     native_draw_background_video();
 }
 
 void native_draw_flush() {
     ge_pipeline_flush();
-    glFinish();
     platform_swap_buffers();
 }
 

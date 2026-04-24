@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #include <lauxlib.h>
 #include <lua.h>
@@ -7,81 +8,152 @@
 
 #include "gecnd.h"
 
-#define DEVTOOLS_RETRY       2000
+#define DEVTOOLS_RETRY     500
+#define DEVTOOLS_RETRY_MAX 5
+#define DEVTOOLS_HOST      "127.0.0.1"
+#define DEVTOOLS_PORT      9222
+
+typedef struct { const char *engine; const char *cdp_key; const char *cdp_code; int vk; } key_entry_t;
+
+static const key_entry_t key_map[] = {
+    { "a",     "Enter",      "Enter",      13 },
+    { "down",  "ArrowDown",  "ArrowDown",  40 },
+    { "left",  "ArrowLeft",  "ArrowLeft",  37 },
+    { "menu",  "Backspace",  "Backspace",   8 },
+    { "right", "ArrowRight", "ArrowRight", 39 },
+    { "up",    "ArrowUp",    "ArrowUp",    38 },
+};
+
+static int key_map_cmp(const void *key, const void *entry) {
+    return strcmp((const char *)key, ((const key_entry_t *)entry)->engine);
+}
 
 static uv_process_t         proc;
 static uv_process_options_t proc_opts;
 static uv_timer_t           retry_timer;
 static bool                 timer_active  = false;
+static bool                 http_pending  = false;
+static bool                 ws_connecting = false;
 static gly_req_id_t         ws_id         = 0;
-static char                 http_body[4096];
-static size_t               http_body_len = 0;
+static char                 http_buf[4096];
+static size_t               http_buf_len  = 0;
+static uint32_t             cdp_msg_id    = 0;
+static char                 ws_path[256]  = {0};
+static int                  ws_fail_count = 0;
 
 static void on_handle_close(uv_handle_t *handle) { (void)handle; }
+static void try_connect_devtools(uv_timer_t *t);
 
-static void on_ws_open (gly_req_id_t id, void *user) { 
-    ws_id = id;
+static void on_ws_open(gly_req_id_t id, void *user) {
+    ws_id         = id;
+    ws_connecting = false;
+    ws_fail_count = 0;
     uv_timer_stop(&retry_timer);
 }
 
-static void on_ws_msg  (gly_req_id_t id, const char *data, size_t len, void *user) {
-
+static void on_ws_msg(gly_req_id_t id, const char *data, size_t len, void *user) {
+    (void)id; (void)data; (void)len; (void)user;
 }
-static void on_ws_close(gly_req_id_t id, void *user) { 
+
+static void on_ws_close(gly_req_id_t id, void *user) {
+    ws_id         = 0;
+    ws_connecting = false;
+    if (timer_active)
+        uv_timer_start(&retry_timer, try_connect_devtools, DEVTOOLS_RETRY, DEVTOOLS_RETRY);
+}
+
+static void on_ws_error(gly_req_id_t id, const char *msg, void *user) {
+    ws_connecting = false;
+    if (ws_id != id) return;
     ws_id = 0;
+    if (++ws_fail_count >= DEVTOOLS_RETRY_MAX) {
+        ws_path[0]    = '\0';
+        ws_fail_count = 0;
+    }
+    if (timer_active)
+        uv_timer_start(&retry_timer, try_connect_devtools, DEVTOOLS_RETRY, DEVTOOLS_RETRY);
 }
 
-static void on_ws_error(gly_req_id_t id, const char *msg,  void *user) {
+static void on_key(const char *name, bool pressed, int port, void *usr) {
+    (void)port; (void)usr;
+    if (!ws_id) return;
 
+    const key_entry_t *e = bsearch(name, key_map,
+        sizeof(key_map)/sizeof(key_map[0]), sizeof(key_map[0]), key_map_cmp);
+    if (!e) return;
+
+    char buf[256];
+    int  len = snprintf(buf, sizeof(buf),
+        "{\"id\":%u,\"method\":\"Input.dispatchKeyEvent\","
+        "\"params\":{\"type\":\"%s\",\"key\":\"%s\","
+        "\"code\":\"%s\",\"windowsVirtualKeyCode\":%d,"
+        "\"nativeVirtualKeyCode\":%d}}",
+        ++cdp_msg_id,
+        pressed ? "rawKeyDown" : "keyUp",
+        e->cdp_key, e->cdp_code, e->vk, e->vk);
+
+    gamely_daemon_webclient_ws_send(ws_id, buf, (size_t)len);
 }
 
 static void on_http_done(gly_req_id_t id, void *user) {
-    const char *p = strstr(http_body, "webSocketDebuggerUrl");
+    http_pending = false;
+
+    const char *p = strstr(http_buf, "webSocketDebuggerUrl");
     if (!p) return;
     p = strstr(p, "ws://");
+    if (!p) return;
+    p = strchr(p + 5, '/');
     if (!p) return;
     const char *end = strchr(p, '"');
     if (!end) return;
 
-    char ws_url[256];
     size_t len = (size_t)(end - p);
-    if (len >= sizeof(ws_url)) return;
-    memcpy(ws_url, p, len);
-    ws_url[len] = '\0';
-
-    gamely_daemon_webclient_ws_connect(ws_url, NULL,
-        on_ws_open, on_ws_msg, on_ws_close, on_ws_error, NULL);
+    if (len >= sizeof(ws_path)) return;
+    memcpy(ws_path, p, len);
+    ws_path[len] = '\0';
 }
 
 static void on_http_data(gly_req_id_t id, const char *data, size_t len, void *user) {
-    if (http_body_len + len < sizeof(http_body)) {
-        memcpy(http_body + http_body_len, data, len);
-        http_body_len += len;
-        http_body[http_body_len] = '\0';
+    if (http_buf_len + len < sizeof(http_buf)) {
+        memcpy(http_buf + http_buf_len, data, len);
+        http_buf_len += len;
+        http_buf[http_buf_len] = '\0';
     }
 }
 
 static void on_http_status(gly_req_id_t id, int status, void *user) {
-    http_body_len = 0;
+    http_buf_len = 0;
 }
 
-static void on_http_error (gly_req_id_t id, const char *msg, void *user) {
-
+static void on_http_error(gly_req_id_t id, const char *msg, void *user) {
+    http_pending = false;
 }
 
 static void try_connect_devtools(uv_timer_t *t) {
-    if (ws_id) return;
-    http_body_len = 0;
-    gly_http_req_t req = {0};
-    
-    const char *devtools_url = getenv("chromium_url");
-    
-    if (!devtools_url) {
-        devtools_url = "http://127.0.0.1:9222/json";
+    if (ws_id || ws_connecting) return;
+
+    if (ws_path[0] != '\0') {
+        char ws_url[320];
+        snprintf(ws_url, sizeof(ws_url),
+            "ws://" DEVTOOLS_HOST ":%d%s", DEVTOOLS_PORT, ws_path);
+        ws_connecting = true;
+        if (!gamely_daemon_webclient_ws_connect(ws_url, NULL,
+                on_ws_open, on_ws_msg, on_ws_close, on_ws_error, NULL))
+            ws_connecting = false;
+        return;
     }
 
-    gamely_daemon_webclient_http(devtools_url, &req,
-        on_http_status, on_http_data, on_http_done, on_http_error, NULL);
+    if (http_pending) return;
+
+    const char *url = getenv("chromium_url");
+    if (!url) url = "http://" DEVTOOLS_HOST ":9222/json";
+
+    http_pending  = true;
+    http_buf_len  = 0;
+    gly_http_req_t req = {0};
+    if (!gamely_daemon_webclient_http(url, &req,
+            on_http_status, on_http_data, on_http_done, on_http_error, NULL))
+        http_pending = false;
 }
 
 static void on_browser_exit(uv_process_t *p, int64_t status, int signal) {
@@ -99,6 +171,11 @@ static void on_browser_exit(uv_process_t *p, int64_t status, int signal) {
         timer_active = false;
     }
 
+    ws_path[0]    = '\0';
+    http_pending  = false;
+    ws_connecting = false;
+    ws_fail_count = 0;
+
     uv_close((uv_handle_t *)p, on_handle_close);
 }
 
@@ -115,7 +192,7 @@ static void native_browser_url(const char *url) {
     if (!gly || (gly->internal & GECND_INTERNAL_BROWSER) || !url) return;
 
     const char *cmd = getenv("chromium");
-    if (!cmd) cmd   = default_chromium;
+    if (!cmd) cmd = default_chromium;
 
     const char *placeholder = strstr(cmd, "%s");
     if (!placeholder) return;
@@ -128,10 +205,10 @@ static void native_browser_url(const char *url) {
     for (const char *p = cmd; *p; p++)
         if (*p == ' ') slots++;
 
-    char **args    = malloc((slots + 1) * sizeof(char *));
+    char **args = malloc((slots + 1) * sizeof(char *));
     if (!args) return;
 
-    char  *expanded = malloc(prefix_len + url_len + suffix_len + 1);
+    char *expanded = malloc(prefix_len + url_len + suffix_len + 1);
     if (!expanded) { free(args); return; }
 
     memcpy(expanded,                        cmd,             prefix_len);
@@ -163,6 +240,10 @@ static void native_browser_url(const char *url) {
     if (spawned != 0) return;
 
     gly->internal |= GECND_INTERNAL_BROWSER;
+    ws_path[0]    = '\0';
+    http_pending  = false;
+    ws_connecting = false;
+    ws_id         = 0;
 
     uv_timer_init(loop, &retry_timer);
     uv_timer_start(&retry_timer, try_connect_devtools, DEVTOOLS_RETRY, DEVTOOLS_RETRY);
@@ -190,11 +271,9 @@ int luaopen_chromium_gecnd(lua_State *L) {
 
     for (int i = 0; api[i].name; i++) {
         lua_register(L, api[i].name, api[i].func);
-    }
-
     return 0;
 }
 
 void coreopen_chromium_gecnd(void) {
-
+    gamely_daemon_input_subscribe(on_key, NULL);
 }

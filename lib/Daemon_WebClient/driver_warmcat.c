@@ -371,7 +371,7 @@ gly_req_id_t gamely_daemon_webclient_ws_connect(
     ccinfo.path           = path;
     ccinfo.host           = host;
     ccinfo.origin         = host;
-    ccinfo.protocol       = protocol ? protocol : "ws";
+    ccinfo.protocol       = protocol; /* NULL = no Sec-WebSocket-Protocol header */
     ccinfo.ssl_connection = ssl_flags;
     ccinfo.userdata       = c;
 
