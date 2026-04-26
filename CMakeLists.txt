@@ -16,6 +16,8 @@ set(CMAKE_SKIP_INSTALL_RULES ON CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
 
 option(GECND_EXPORTS "allow rdynamic" OFF)
@@ -261,6 +263,13 @@ set(WARMCAT_DOWNLOAD "https://github.com/warmcat/libwebsockets/archive/refs/tags
 set(WARMCAT_DIR "${CMAKE_SOURCE_DIR}/vendor/warmcat")
 set(WARMCAT_BIN "${CMAKE_BINARY_DIR}/warmcat")
 option(GECND_USE_WARMCAT "use warmcat to http/webosocket client/server" ON)
+
+# MbedTLS
+set(MBEDTLS_VERSION "mbedtls-3.6.4")
+set(MBEDTLS_REPO "https://github.com/Mbed-TLS/mbedtls.git")
+set(MBEDTLS_DIR "${CMAKE_SOURCE_DIR}/vendor/web/mbedtls")
+set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+option(GECND_USE_MBEDTLS "use mbedtls backend for ssl" OFF)
 
 # Plugins
 option(GECND_USE_PLUGIN_ALSA "build plugin alsa for core native" OFF)
@@ -574,6 +583,11 @@ if(GECND_USE_OPENGL AND NOT EXISTS "${FONTSTASH_DIR}")
     FetchContent_Populate(fontstash URL "${FONTSTASH_DOWNLOAD}" SOURCE_DIR ${FONTSTASH_DIR})
 endif()
 
+if((GECND_USE_WARMCAT) AND GECND_USE_MBEDTLS)
+    FetchContent_Declare(mbedtls GIT_REPOSITORY ${MBEDTLS_REPO} GIT_TAG ${MBEDTLS_VERSION} SOURCE_DIR "${MBEDTLS_DIR}")
+    FetchContent_MakeAvailable(mbedtls)
+endif()
+
 if(GECND_USE_WARMCAT)
     if(NOT EXISTS ${WARMCAT_DIR})
         FetchContent_Populate(libwebsockets_dep URL "${WARMCAT_DOWNLOAD}" SOURCE_DIR "${WARMCAT_DIR}")            
@@ -592,8 +606,13 @@ if(GECND_USE_WARMCAT)
             -DLWS_ROLE_MQTT=OFF
             -DLWS_ROLE_RAW_FILE=OFF
             -DLWS_ROLE_RAW_PROXY=OFF
-            -DLWS_WITH_SSL=OFF
-            -DLWS_WITH_MBEDTLS=OFF
+            -DLWS_WITH_SSL=${GECND_USE_MBEDTLS}
+            -DLWS_WITH_MBEDTLS=${GECND_USE_MBEDTLS}
+            -DLWS_HAVE_MBEDTLS_NET_SOCKETS=ON
+            -DLWS_HAVE_MBEDTLS_SSL_NEW_SESSION_TICKET=ON
+            -DLWS_HAVE_mbedtls_md_setup=ON
+            -DLWS_WITH_OPENSSL=OFF
+            -DLWS_WITH_WOLFSSL=OFF
             -DLWS_WITH_MINIMAL_EXAMPLES=OFF
             -DLWS_WITHOUT_TESTAPPS=ON
             -DLWS_WITHOUT_TEST_SERVER=ON
@@ -632,6 +651,7 @@ if(GECND_USE_WARMCAT)
             -DZLIB_INCLUDE_DIR=${ZLIB_INCLUDE_DIR}
             -DZLIB_FOUND=TRUE
             -DLIBUV_INCLUDE_DIRS=${LIBUV_DIR}/include
+            -DLWS_MBEDTLS_INCLUDE_DIRS=${MBEDTLS_DIR}/include
         UPDATE_COMMAND ""
         INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install
     )
@@ -645,6 +665,10 @@ if(GECND_USE_WARMCAT)
     target_link_libraries(${PROJECT_NAME} PRIVATE libwebsockets)
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_WebServer/driver_warmcat.c")
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_WebClient/driver_warmcat.c")
+endif()
+
+if((GECND_USE_WARMCAT) AND GECND_USE_MBEDTLS)
+    target_link_libraries(${PROJECT_NAME} PRIVATE mbedtls mbedx509 mbedcrypto)
 endif()
 
 # todo: lirc only linux
