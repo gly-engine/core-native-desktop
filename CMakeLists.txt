@@ -540,6 +540,8 @@ if(GECND_USE_FFMPEG)
     endif()
     target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${FFMPEG_DIR})
     target_sources(${PROJECT_NAME} PRIVATE "${gecnd_ffmpeg_files}")
+else()
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Media/driver_av_stub.c")
 endif()
 
 if (GECND_USE_LIBUV)
@@ -578,7 +580,7 @@ if(GECND_USE_WARMCAT)
     endif()
     file(MAKE_DIRECTORY ${WARMCAT_BIN}/include)
     ExternalProject_Add(libwebsockets_proj
-        SOURCE_DIR ${WARMCAT_DIR}
+        SOURCE_DIR ${WARMCAT_DIR}/libwebsockets
         CMAKE_ARGS
             -DCMAKE_INSTALL_PREFIX=${WARMCAT_BIN}
             -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
@@ -623,6 +625,7 @@ if(GECND_USE_WARMCAT)
             -DLWS_WITH_LIBEV=OFF
             -DLWS_WITH_GLIB=OFF
             -DLWS_WITH_ZLIB=ON
+            -DLWS_WITH_BUNDLED_ZLIB=OFF
             -DLWS_WITHOUT_EXTENSIONS=ON
             -DZLIB_ROOT=${ZLIB_DIR}
             -DZLIB_LIBRARY=${ZLIB_LIBRARY}
@@ -634,7 +637,7 @@ if(GECND_USE_WARMCAT)
     )
     add_library(libwebsockets STATIC IMPORTED)
     set_target_properties(libwebsockets PROPERTIES
-        IMPORTED_LOCATION ${WARMCAT_BIN}/lib/libwebsockets.a
+        IMPORTED_LOCATION ${WARMCAT_BIN}/lib/libwebsockets_static.a
         INTERFACE_INCLUDE_DIRECTORIES ${WARMCAT_BIN}/include
     )
     add_dependencies(libwebsockets libwebsockets_proj)

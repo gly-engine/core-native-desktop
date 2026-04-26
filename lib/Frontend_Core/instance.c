@@ -34,6 +34,7 @@ extern const luaL_Reg frontend_api_system[];
 static gecnd_t *instance;
 
 void gecnd_global_signal_init();
+void gly_hook_luaopen_http(lua_State *L);
 
 gecnd_t *gecnd_new(lua_State* L) {
     gecnd_t *gly = NULL;
@@ -82,12 +83,6 @@ gecnd_t *gecnd_new(lua_State* L) {
         }
         for (int i = 0; frontend_api_system[i].name != NULL; i++) {
             lua_register(L, frontend_api_system[i].name, frontend_api_system[i].func);
-        }
-
-        gly_hook_keyboard_has_media(&native_keyboard_has_media);
-        if (native_keyboard_has_media) {
-            lua_pushboolean(L, true);
-            lua_setglobal(L, "native_keyboard_has_media");
         }
 
         gly_hook_luaopen_http(L);

@@ -14,6 +14,10 @@ void gecnd_hypervisor(void* loop)
     (void) loop;
     gamely_daemon_media_init();
 
+/**
+ * @todo microslop??
+ */
+#if !defined(_WIN32)
     gamely_daemon_media_register_player(""      , &gamely_player_ffmpeg, NULL);
     gamely_daemon_media_register_player("file"  , &gamely_player_ffmpeg, NULL);
     gamely_daemon_media_register_player("http"  , &gamely_player_ffmpeg, NULL);
@@ -27,6 +31,7 @@ void gecnd_hypervisor(void* loop)
     gamely_daemon_media_register_player("ffmpeg+rtsp"  , &gamely_player_ffmpeg, NULL);
     gamely_daemon_media_register_player("ffmpeg+rtmp"  , &gamely_player_ffmpeg, NULL);
     gamely_daemon_media_register_player("ffmpeg+udp"   , &gamely_player_ffmpeg, NULL);
+#endif
 }
 
 void gecnd_input_key_cb(const char *name, bool pressed, int port, void *usr)

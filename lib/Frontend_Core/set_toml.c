@@ -2,6 +2,10 @@
 #include <string.h>
 #include <stdlib.h>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 #include <tomlc17.h>
 #include <ketopt.h>
 
@@ -65,8 +69,13 @@ void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts)
     if (envs.type == TOML_TABLE) {
         for (int i = 0; i < envs.u.tab.size; i++) {
             toml_datum_t val = envs.u.tab.value[i];
-            if (val.type == TOML_STRING)
+            if (val.type == TOML_STRING) {
+#if defined(_WIN32)
+                SetEnvironmentVariable(envs.u.tab.key[i], val.u.str.ptr);
+#else
                 setenv(envs.u.tab.key[i], val.u.str.ptr, 1);
+#endif
+            }
         }
     }
 

@@ -25,11 +25,6 @@ static const struct {
 
 static bool old_state[KEYMAP_COUNT];
 
-void gly_hook_keyboard_has_media(bool *enable)
-{
-    *enable = true;
-}
-
 void gly_hook_input_keyboard(uint8_t index, char** key, bool* press)
 {
     if (index >= KEYMAP_COUNT) {
