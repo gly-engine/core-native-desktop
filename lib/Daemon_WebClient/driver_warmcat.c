@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
 
 #include <libwebsockets.h>
 #include <uv.h>
@@ -234,11 +235,30 @@ void gamely_daemon_webclient_start(void *loop)
 
     uv_loop_t *uv_loop = (uv_loop_t *)loop;
 
+#if defined(GECND_HAS_SSL)
+    /**
+     * @todo dynamic config
+     */
+    static const char *ca_bundles[] = {
+        "/etc/ssl/certs/ca-certificates.crt",
+        "/etc/pki/tls/certs/ca-bundle.crt",
+        "/etc/ssl/ca-bundle.pem",
+        NULL
+    };
+    const char *ca_path = NULL;
+    for (int i = 0; ca_bundles[i]; i++)
+        if (access(ca_bundles[i], R_OK) == 0) { ca_path = ca_bundles[i]; break; }
+#endif
     struct lws_context_creation_info info = {0};
-    info.port          = CONTEXT_PORT_NO_LISTEN;
-    info.protocols     = protocols;
-    info.foreign_loops = (void **)&uv_loop;
-    info.options       = LWS_SERVER_OPTION_LIBUV;
+    info.port                  = CONTEXT_PORT_NO_LISTEN;
+    info.protocols             = protocols;
+    info.foreign_loops         = (void **)&uv_loop;
+#if defined(GECND_HAS_SSL)
+    info.options               = LWS_SERVER_OPTION_LIBUV | LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+    info.client_ssl_ca_filepath = ca_path;
+#else
+    info.options               = LWS_SERVER_OPTION_LIBUV;
+#endif
 
     g.ctx = lws_create_context(&info);
     if (!g.ctx) {
@@ -302,9 +322,7 @@ gly_req_id_t gamely_daemon_webclient_http(
     int  port, use_ssl;
     parse_url(url, host, sizeof(host), path, sizeof(path), &port, &use_ssl);
 
-    int ssl_flags = use_ssl
-        ? (LCCSCF_USE_SSL | LCCSCF_ALLOW_SELFSIGNED | LCCSCF_SKIP_SERVER_CERT_HOSTNAME_CHECK)
-        : 0;
+    int ssl_flags = use_ssl ? (LCCSCF_USE_SSL | LCCSCF_ALLOW_SELFSIGNED) : 0;
 
     struct lws_client_connect_info ccinfo = {0};
     ccinfo.context        = g.ctx;
@@ -360,9 +378,7 @@ gly_req_id_t gamely_daemon_webclient_ws_connect(
     int  port, use_ssl;
     parse_url(url, host, sizeof(host), path, sizeof(path), &port, &use_ssl);
 
-    int ssl_flags = use_ssl
-        ? (LCCSCF_USE_SSL | LCCSCF_ALLOW_SELFSIGNED | LCCSCF_SKIP_SERVER_CERT_HOSTNAME_CHECK)
-        : 0;
+    int ssl_flags = use_ssl ? (LCCSCF_USE_SSL | LCCSCF_ALLOW_SELFSIGNED) : 0;
 
     struct lws_client_connect_info ccinfo = {0};
     ccinfo.context        = g.ctx;

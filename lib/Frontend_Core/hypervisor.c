@@ -50,6 +50,8 @@ void gecnd_hypervisor_daemons(gecnd_t *gly)
     gamely_daemon_db_start();
     gamely_daemon_img_start(gly->loop);
     gly_hook_daemon_img_backend_register();
+    gamely_daemon_img_register_decoder("jpeg", "rgba", true, gamely_driver_decoder_stb);
+    gamely_daemon_img_register_decoder("jpg", "rgba", true, gamely_driver_decoder_stb);
     gamely_daemon_img_register_decoder("bmp", "rgba", true, gamely_driver_decoder_stb);
     gamely_daemon_img_register_decoder("gif", "rgba", true, gamely_driver_decoder_stb);
     gamely_daemon_img_register_decoder("png", "rgba", true, gamely_driver_decoder_spng);

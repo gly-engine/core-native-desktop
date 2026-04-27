@@ -594,7 +594,7 @@ if(GECND_USE_WARMCAT)
     endif()
     file(MAKE_DIRECTORY ${WARMCAT_BIN}/include)
     ExternalProject_Add(libwebsockets_proj
-        SOURCE_DIR ${WARMCAT_DIR}/libwebsockets
+        SOURCE_DIR ${WARMCAT_DIR}
         CMAKE_ARGS
             -DCMAKE_INSTALL_PREFIX=${WARMCAT_BIN}
             -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
@@ -657,7 +657,7 @@ if(GECND_USE_WARMCAT)
     )
     add_library(libwebsockets STATIC IMPORTED)
     set_target_properties(libwebsockets PROPERTIES
-        IMPORTED_LOCATION ${WARMCAT_BIN}/lib/libwebsockets_static.a
+        IMPORTED_LOCATION ${WARMCAT_BIN}/lib/libwebsockets.a
         INTERFACE_INCLUDE_DIRECTORIES ${WARMCAT_BIN}/include
     )
     add_dependencies(libwebsockets libwebsockets_proj)
@@ -669,6 +669,8 @@ endif()
 
 if((GECND_USE_WARMCAT) AND GECND_USE_MBEDTLS)
     target_link_libraries(${PROJECT_NAME} PRIVATE mbedtls mbedx509 mbedcrypto)
+    set_source_files_properties(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_WebServer/driver_warmcat.c" PROPERTIES COMPILE_DEFINITIONS "GECND_HAS_SSL=1")
+    set_source_files_properties(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_WebClient/driver_warmcat.c" PROPERTIES COMPILE_DEFINITIONS "GECND_HAS_SSL=1")
 endif()
 
 # todo: lirc only linux

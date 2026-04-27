@@ -327,5 +327,3 @@ void gamely_daemon_img_unload_all(void) {
     for (int i = 0; i < IMG_CAP; i++)
         if (s_imgs[i].active) entry_free(&s_imgs[i]);
 }
-
-void gamely_daemon_img_tick(void) {}
