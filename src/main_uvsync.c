@@ -15,6 +15,7 @@ int main(int argc, char* argv[]) {
     uv_loop_init(&loop);
     gecnd_hypervisor(&loop);
     gecnd_set_loop(gly, (void*) &loop);
+    gecnd_hypervisor_daemons(gly); /** <-- @todo move*/
     gecnd_set_args(gly, argc, argv);
 
     do {
