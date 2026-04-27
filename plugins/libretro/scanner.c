@@ -5,19 +5,25 @@
 #endif
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include "gecnd.h"
 
-#define PATH_CAP 512
+#define PATH_CAP 1024
 
 static const char *s_core_dirs[] = {
     "/mnt/*/*/libretro",
+    "/usr/lib/libretro",
+    "/usr/local/lib/libretro",
+    ".var/app/org.libretro.RetroArch/config/retroarch/cores",
+    ".config/retroarch/cores",
 };
 
 static const char *s_rom_dirs[] = {
     "/mnt/*/*/roms",
     "/mnt/*/*/libretro/roms",
+    "RetroArch/downloads",
 };
 
 static char s_found[PATH_CAP];
@@ -114,12 +120,17 @@ const char *scanner_resolve_core(const char *name) {
     snprintf(v2, PATH_CAP, "lib%s_libretro.so", name);
     const char *variants[] = { name, v1, v2 };
 
-    char cwd[PATH_CAP], exedir[PATH_CAP];
+    char cwd[PATH_CAP], exedir[PATH_CAP], homedir[PATH_CAP];
     gecnd_utils_get_cwd(cwd, PATH_CAP);
     gecnd_utils_get_exe_cwd(exedir, PATH_CAP);
-    const char *bases[] = { cwd, exedir };
+    
+    const char *home = getenv("HOME");
+    if (home) strncpy(homedir, home, PATH_CAP - 1);
+    else homedir[0] = '\0';
 
-    for (size_t d = 0; d < 2; d++) {
+    const char *bases[] = { cwd, exedir, homedir };
+
+    for (size_t d = 0; d < 3; d++) {
         if (!bases[d][0]) continue;
         for (size_t v = 0; v < 3; v++) {
             snprintf(s_found, PATH_CAP, "%s/%s", bases[d], variants[v]);
@@ -127,11 +138,21 @@ const char *scanner_resolve_core(const char *name) {
         }
     }
 
-    for (size_t i = 0; i < sizeof(s_core_dirs) / sizeof(*s_core_dirs); i++)
-        for (size_t v = 0; v < 3; v++) {
-            const char *f = glob_find(s_core_dirs[i], variants[v]);
-            if (f) return f;
+    for (size_t i = 0; i < sizeof(s_core_dirs) / sizeof(*s_core_dirs); i++) {
+        if (s_core_dirs[i][0] == '/') {
+            for (size_t v = 0; v < 3; v++) {
+                const char *f = glob_find(s_core_dirs[i], variants[v]);
+                if (f) return f;
+            }
+        } else if (home) {
+            char pattern[PATH_CAP];
+            snprintf(pattern, PATH_CAP, "%s/%s", home, s_core_dirs[i]);
+            for (size_t v = 0; v < 3; v++) {
+                const char *f = glob_find(pattern, variants[v]);
+                if (f) return f;
+            }
         }
+    }
 
     return NULL;
 }
@@ -141,20 +162,32 @@ const char *scanner_resolve_rom(const char *name) {
     if ((name[0] == '/' || (name[0] && name[1] == ':')) && file_exists(name))
         return name;
 
-    char cwd[PATH_CAP], exedir[PATH_CAP];
+    char cwd[PATH_CAP], exedir[PATH_CAP], homedir[PATH_CAP];
     gecnd_utils_get_cwd(cwd, PATH_CAP);
     gecnd_utils_get_exe_cwd(exedir, PATH_CAP);
-    const char *bases[] = { cwd, exedir };
+    
+    const char *home = getenv("HOME");
+    if (home) strncpy(homedir, home, PATH_CAP - 1);
+    else homedir[0] = '\0';
 
-    for (size_t d = 0; d < 2; d++) {
+    const char *bases[] = { cwd, exedir, homedir };
+
+    for (size_t d = 0; d < 3; d++) {
         if (!bases[d][0]) continue;
         snprintf(s_found, PATH_CAP, "%s/%s", bases[d], name);
         if (file_exists(s_found)) return s_found;
     }
 
     for (size_t i = 0; i < sizeof(s_rom_dirs) / sizeof(*s_rom_dirs); i++) {
-        const char *f = glob_find(s_rom_dirs[i], name);
-        if (f) return f;
+        if (s_rom_dirs[i][0] == '/') {
+            const char *f = glob_find(s_rom_dirs[i], name);
+            if (f) return f;
+        } else if (home) {
+            char pattern[PATH_CAP];
+            snprintf(pattern, PATH_CAP, "%s/%s", home, s_rom_dirs[i]);
+            const char *f = glob_find(pattern, name);
+            if (f) return f;
+        }
     }
 
     return NULL;
