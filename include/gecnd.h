@@ -339,7 +339,7 @@ void gecnd_hypervisor_close_daemons(void);
 typedef void (*gamely_input_key_cb)(const char *name, bool pressed, int port, void *usr);
 
 typedef struct {
-    bool (*open)(int port, const char *device);
+    bool (*open)(int port, const char *searchparams);
     void (*close)(int port);
 } gamely_input_driver_t;
 

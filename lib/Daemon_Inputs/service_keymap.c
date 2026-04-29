@@ -69,7 +69,7 @@ typedef struct {
 typedef struct {
     char                         proto[16];
     char                         classname[32];
-    char                         device[256];
+    char                        *searchparams;
     int                          port;
     int                          debug;
     const gamely_input_driver_t *driver;
@@ -234,16 +234,11 @@ void gamely_daemon_input_add_source(const char *uri)
     src->classname[clen] = '\0';
 
     if (qmark) {
+        src->searchparams = strdup(qmark + 1);
         const char *p = qmark + 1;
         while (p && *p) {
             const char *amp = strchr(p, '&');
-            size_t seg = amp ? (size_t)(amp - p) : strlen(p);
-            if (strncmp(p, "device=", 7) == 0) {
-                size_t vlen = seg - 7;
-                if (vlen >= sizeof(src->device)) vlen = sizeof(src->device) - 1;
-                memcpy(src->device, p + 7, vlen);
-                src->device[vlen] = '\0';
-            } else if (strncmp(p, "debug=", 6) == 0) {
+            if (strncmp(p, "debug=", 6) == 0) {
                 src->debug = (p[6] == '1');
             } else if (strncmp(p, "port=", 5) == 0) {
                 src->port = (int)strtol(p + 5, NULL, 10);
@@ -283,10 +278,14 @@ bool gamely_daemon_input_open(void)
             }
         }
 
-        if (!src->driver->open(src->port, src->device[0] ? src->device : NULL)) {
+        if (!src->driver->open(src->port, src->searchparams)) {
             fprintf(stderr, "[core:input] driver open failed: %s\n", src->proto);
+            free(src->searchparams);
+            src->searchparams = NULL;
             return false;
         }
+        free(src->searchparams);
+        src->searchparams = NULL;
     }
 
     if (!any_debug) {
@@ -315,6 +314,8 @@ void gamely_daemon_input_close(void)
     for (int i = 0; i < g_reg.source_count; i++) {
         if (g_reg.sources[i].driver)
             g_reg.sources[i].driver->close(g_reg.sources[i].port);
+        free(g_reg.sources[i].searchparams);
+        g_reg.sources[i].searchparams = NULL;
     }
 
     for (int i = 0; i < g_reg.count; i++) {

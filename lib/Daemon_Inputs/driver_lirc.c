@@ -3,11 +3,11 @@
 
 /* @todo implement LIRC device reading and call gamely_daemon_input_push() */
 
-static bool lirc_open(int port, const char *device)
+static bool lirc_open(int port, const char *searchparams)
 {
     (void)port;
-    if (!device) { fprintf(stderr, "[core:input:lirc] device required\n"); return false; }
-    fprintf(stderr, "[core:input:lirc] not yet implemented (device=%s)\n", device);
+    if (!searchparams) { fprintf(stderr, "[core:input:lirc] searchparams required\n"); return false; }
+    fprintf(stderr, "[core:input:lirc] not yet implemented (%s)\n", searchparams);
     return false;
 }
 

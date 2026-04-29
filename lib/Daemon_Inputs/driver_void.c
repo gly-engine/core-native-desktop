@@ -1,8 +1,8 @@
 #include "gecnd.h"
 
-static bool void_open(int port, const char *device)
+static bool void_open(int port, const char *searchparams)
 {
-    (void)port; (void)device;
+    (void)port; (void)searchparams;
     return true;
 }
 

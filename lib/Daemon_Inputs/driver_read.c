@@ -3,11 +3,11 @@
 #include "gecnd.h"
 /* @todo implement generic device file reading and call gamely_daemon_input_push() */
 
-static bool read_open(int port, const char *device)
+static bool read_open(int port, const char *searchparams)
 {
     (void)port;
-    if (!device) { fprintf(stderr, "[core:input:read] device required\n"); return false; }
-    fprintf(stderr, "[core:input:read] not yet implemented (device=%s)\n", device);
+    if (!searchparams) { fprintf(stderr, "[core:input:read] file= required\n"); return false; }
+    fprintf(stderr, "[core:input:read] not yet implemented (%s)\n", searchparams);
     return false;
 }
 
