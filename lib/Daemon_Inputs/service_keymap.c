@@ -107,7 +107,16 @@ static const int k_driver_count = (int)(sizeof(k_drivers) / sizeof(k_drivers[0])
 
 void gamely_daemon_input_add_class(const char *name)
 {
-    if (!name || strlen(name) >= 32 || g_reg.count >= MAX_CLASSES) return;
+    if (!name || strlen(name) >= 32) return;
+
+    for (int i = 0; i < g_reg.count; i++) {
+        if (g_reg.classes[i] && strcmp(g_reg.classes[i]->name, name) == 0) {
+            g_reg.current = g_reg.classes[i];
+            return;
+        }
+    }
+
+    if (g_reg.count >= MAX_CLASSES) return;
 
     gamely_keymap_t *km = calloc(1, sizeof(gamely_keymap_t));
     if (!km) return;
