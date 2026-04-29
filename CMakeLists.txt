@@ -489,6 +489,9 @@ if(GECND_USE_OPENGL)
         target_include_directories(glad_gl SYSTEM PRIVATE "${GLAD_DIR}/include")
         list(REMOVE_ITEM gecnd_bakend_files "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_OpenGL/window/egl.c")
         set_source_files_properties(${gecnd_bakend_files} PROPERTIES COMPILE_DEFINITIONS "GECND_OPENGLES=0")
+        set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/service_keymap.c"
+            PROPERTIES COMPILE_DEFINITIONS "GLFW_DEFAULT_INPUT_CLASS=\"void://glfw\""
+        )
     endif()
 
     file(GLOB_RECURSE BACKEND_SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_OpenGL/*/*.c")

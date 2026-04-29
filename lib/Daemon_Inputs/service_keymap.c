@@ -22,6 +22,10 @@
 
 #include "gecnd.h"
 
+#ifndef GLFW_DEFAULT_INPUT_CLASS
+#define GLFW_DEFAULT_INPUT_CLASS "void://0"
+#endif
+
 typedef struct {
     char (*pool)[8];
     int   count;
@@ -256,7 +260,7 @@ void gamely_daemon_input_add_source(const char *uri)
 bool gamely_daemon_input_open(void)
 {
     if (g_reg.source_count == 0)
-        gamely_daemon_input_add_source("void://0");
+        gamely_daemon_input_add_source(GLFW_DEFAULT_INPUT_CLASS);
 
     int any_debug = 0;
     for (int i = 0; i < g_reg.source_count; i++)
