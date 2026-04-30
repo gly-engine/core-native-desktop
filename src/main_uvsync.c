@@ -5,6 +5,8 @@
 
 #include "gecnd.h"
 
+void gecnd_hypervisor_daemons(gecnd_t *gly);
+
 int main(int argc, char* argv[]) {
     static uv_loop_t loop;
     lua_State *L = luaL_newstate();

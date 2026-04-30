@@ -531,9 +531,21 @@ static int callback_ws(struct lws *wsi,
             return -1;
         }
 
+        /* extrair query string — LWS separa URI e args em tokens distintos */
+        char qbuf[384] = {0};
+        int  qlen      = lws_hdr_total_length(wsi, WSI_TOKEN_HTTP_URI_ARGS);
+        if (qlen > 0)
+            lws_hdr_copy(wsi, qbuf, sizeof(qbuf), WSI_TOKEN_HTTP_URI_ARGS);
+
         route_t *real = resolve_route(s->route);
         if (real && real->ws_cb) {
-            gly_ws_req_t req = { .id=s->req_id, .event=GLY_WS_OPEN, .usr=&s->usr };
+            gly_ws_req_t req = {
+                .id    = s->req_id,
+                .event = GLY_WS_OPEN,
+                .data  = (qlen > 0) ? qbuf : NULL,
+                .len   = (qlen > 0) ? strlen(qbuf) : 0,
+                .usr   = &s->usr
+            };
             real->ws_cb(&req);
         }
         break;
