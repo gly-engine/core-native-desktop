@@ -149,17 +149,25 @@ static int callback_wc(struct lws *wsi,
             c->on_data(c->id, (const char *)in, len, c->user);
         break;
 
-    case LWS_CALLBACK_COMPLETED_CLIENT_HTTP:
-        if (!c) break;
-        if (c->on_done) c->on_done(c->id, c->user);
-        conn_free(c);
-        break;
-
-    case LWS_CALLBACK_CLOSED_CLIENT_HTTP:
+    case LWS_CALLBACK_COMPLETED_CLIENT_HTTP: {
         if (!c || !c->active) break;
-        if (c->on_error) c->on_error(c->id, "connection closed", c->user);
+        gly_wc_done_cb  cb  = c->on_done;
+        gly_req_id_t    cid = c->id;
+        void           *usr = c->user;
         conn_free(c);
+        if (cb) cb(cid, usr);
         break;
+    }
+
+    case LWS_CALLBACK_CLOSED_CLIENT_HTTP: {
+        if (!c || !c->active) break;
+        gly_wc_error_cb cb  = c->on_error;
+        gly_req_id_t    cid = c->id;
+        void           *usr = c->user;
+        conn_free(c);
+        if (cb) cb(cid, "connection closed", usr);
+        break;
+    }
 
     case LWS_CALLBACK_CLIENT_APPEND_HANDSHAKE_HEADER: {
         if (!c || !c->http_body_len) break;
@@ -204,18 +212,26 @@ static int callback_wc(struct lws *wsi,
         break;
 
     case LWS_CALLBACK_CLIENT_CONNECTION_ERROR: {
-        if (!c) break;
-        const char *msg = in ? (const char *)in : "connection error";
-        if (c->on_error) c->on_error(c->id, msg, c->user);
+        if (!c || !c->active) break;
+        const char     *msg = in ? (const char *)in : "connection error";
+        gly_wc_error_cb cb  = c->on_error;
+        gly_req_id_t    cid = c->id;
+        void           *usr = c->user;
         conn_free(c);
+        if (cb) cb(cid, msg, usr);
         break;
     }
 
-    case LWS_CALLBACK_CLIENT_CLOSED:
+    case LWS_CALLBACK_CLIENT_CLOSED: {
         if (!c || !c->active) break;
-        if (c->type == CONN_WS && c->on_ws_close) c->on_ws_close(c->id, c->user);
+        gly_wc_ws_close_cb cb  = c->on_ws_close;
+        gly_req_id_t       cid = c->id;
+        void              *usr = c->user;
+        int                ws  = c->type == CONN_WS;
         conn_free(c);
+        if (ws && cb) cb(cid, usr);
         break;
+    }
 
     default:
         break;

@@ -188,7 +188,10 @@ static int lua_native_http_handler(lua_State *L)
 
     req_ctx_t *ctx = malloc(sizeof(req_ctx_t));
     if (!ctx) { cb_error_immediate(L, "out of memory"); return 0; }
-    ctx->L         = L;
+    lua_rawgeti(L, LUA_REGISTRYINDEX, GLY_REGISTRYINDEX);
+    gecnd_t *gly   = lua_touserdata(L, -1);
+    lua_pop(L, 1);
+    ctx->L         = gly->L;
     ctx->req_id    = req_id;
     ctx->wc_id     = 0;
     ctx->is_ws     = is_ws;
