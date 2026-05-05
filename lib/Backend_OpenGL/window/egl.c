@@ -35,26 +35,51 @@ static void (*glad_gles2_loader(const char *name))(void) {
 typedef EGLBoolean (EGLAPIENTRYP PFNEGLSWAPINTERVALPROC)(EGLDisplay dpy, EGLint interval);
 
 int platform_init(uint16_t width, uint16_t height) {
-    if (!gladLoaderLoadEGL(EGL_DEFAULT_DISPLAY)) return -1;
+    if (!gladLoaderLoadEGL(EGL_DEFAULT_DISPLAY)) {
+        fprintf(stderr, "[egl] gladLoaderLoadEGL failed: could not load EGL symbols\n");
+        return -1;
+    }
+
     GLBackendState *state = geogl_get_state();
     state->window_width = width; state->window_height = height;
     egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    if (egl_display == EGL_NO_DISPLAY) return -1;
-    if (!eglInitialize(egl_display, NULL, NULL)) return -1;
+    if (egl_display == EGL_NO_DISPLAY) {
+        fprintf(stderr, "[egl] eglGetDisplay failed: no default display (eglError=0x%x)\n", eglGetError());
+        return -1;
+    }
+    EGLint egl_major = 0, egl_minor = 0;
+    if (!eglInitialize(egl_display, &egl_major, &egl_minor)) {
+        fprintf(stderr, "[egl] eglInitialize failed (eglError=0x%x)\n", eglGetError());
+        return -1;
+    }
     const EGLint attribs[] = {
         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
         EGL_BLUE_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_RED_SIZE, 8, EGL_ALPHA_SIZE, 8, EGL_DEPTH_SIZE, 16, EGL_NONE
     };
-    EGLConfig config; EGLint num_config;
-    if (!eglChooseConfig(egl_display, attribs, &config, 1, &num_config)) return -1;
+    EGLConfig config; EGLint num_config = 0;
+    if (!eglChooseConfig(egl_display, attribs, &config, 1, &num_config) || num_config < 1) {
+        fprintf(stderr, "[egl] eglChooseConfig failed: no matching framebuffer config (num_config=%d, eglError=0x%x)\n", num_config, eglGetError());
+        return -1;
+    }
     egl_surface = eglCreateWindowSurface(egl_display, config, (EGLNativeWindowType)0, NULL);
+    if (egl_surface == EGL_NO_SURFACE) {
+        fprintf(stderr, "[egl] eglCreateWindowSurface failed (eglError=0x%x)\n", eglGetError());
+        return -1;
+    }
     const EGLint context_attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
     egl_context = eglCreateContext(egl_display, config, EGL_NO_CONTEXT, context_attribs);
-    if (!eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context)) return -1;
-    
+    if (egl_context == EGL_NO_CONTEXT) {
+        fprintf(stderr, "[egl] eglCreateContext failed: could not create GLES2 context (eglError=0x%x)\n", eglGetError());
+        return -1;
+    }
+    if (!eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context)) {
+        fprintf(stderr, "[egl] eglMakeCurrent failed (eglError=0x%x)\n", eglGetError());
+        return -1;
+    }
+
     PFNEGLSWAPINTERVALPROC eglSwapIntervalPtr = (PFNEGLSWAPINTERVALPROC)eglGetProcAddress("eglSwapInterval");
     if (eglSwapIntervalPtr) eglSwapIntervalPtr(egl_display, 0);
-    
+
     return 0;
 }
 
@@ -84,8 +109,14 @@ double platform_get_time(void) {
 
 void gly_hook_display_init(uint16_t width, uint16_t height) {
     GLBackendState *s = geogl_get_state();
-    if (platform_init(width, height) != 0) exit(1);
-    if (!gladLoadGLES2((GLADloadfunc)glad_gles2_loader)) exit(1);
+    if (platform_init(width, height) != 0) {
+        fprintf(stderr, "[egl] platform_init failed: unable to bring up EGL context (%ux%u)\n", width, height);
+        exit(1);
+    }
+    if (!gladLoadGLES2((GLADloadfunc)glad_gles2_loader)) {
+        fprintf(stderr, "[egl] gladLoadGLES2 failed: could not load GLES2 symbols (libGLESv2 missing or context not current)\n");
+        exit(1);
+    }
     s->is_gles = true;
     kv_init(s->textures);
     init_all_shaders(true);
@@ -116,8 +147,4 @@ void gly_hook_display_close(void) {
     gamely_daemon_media_shutdown();
     native_text_terminate();
     platform_terminate();
-}
-
-void gly_hook_daemon_img_backend_register(void) {
-    gamely_daemon_img_opengl_register();
 }

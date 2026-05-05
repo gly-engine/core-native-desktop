@@ -60,9 +60,7 @@ static void on_error(gly_req_id_t id, const char *msg, void *usr) {
     free(ctx);
 }
 
-/* ── schema callback ──────────────────────────────────────────────── */
-
-static void http_schema_cb(const char *url, void *schema_usr,
+void gamely_resolver_image_http(const char *url, void *schema_usr,
                             gamely_img_on_fetch_cb img_on_done,
                             void *img_on_done_usr) {
     (void)schema_usr;
@@ -85,11 +83,4 @@ static void http_schema_cb(const char *url, void *schema_usr,
     }
 
     gamely_daemon_webclient_http(url, NULL, on_status, on_data, on_done, on_error, ctx);
-}
-
-/* ── public ───────────────────────────────────────────────────────── */
-
-void gamely_daemon_webclient_img_register(void) {
-    gamely_daemon_img_register_schema("https://", http_schema_cb, NULL);
-    gamely_daemon_img_register_schema("http://",  http_schema_cb, NULL);
 }

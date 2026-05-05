@@ -15,7 +15,6 @@ static int lua_native_media_bootstrap(lua_State *L) {
 static int lua_native_media_source(lua_State *L) {
     uint8_t channel = (uint8_t)luaL_checkinteger(L, 1);
     const char *url = luaL_checkstring(L, 2);
-    if (channel == 0) gamely_daemon_media_playback_stop(channel);
     gamely_daemon_media_playback_source(channel, url);
     lua_settop(L, 0);
     return 0;

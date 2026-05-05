@@ -90,6 +90,9 @@ typedef struct {
 } gamely_keymap_registry_t;
 
 static gamely_keymap_registry_t g_reg;
+static int                      g_initialized = 0;
+
+bool gamely_daemon_input_do_init(void);
 
 /* -- driver table -- */
 
@@ -252,8 +255,10 @@ void gamely_daemon_input_add_source(const char *uri)
 
 /* -- activate -- */
 
-bool gamely_daemon_input_open(void)
+bool gamely_daemon_input_do_init(void)
 {
+    if (g_initialized) return true;
+
     if (g_reg.source_count == 0)
         gamely_daemon_input_add_source(GLFW_DEFAULT_INPUT_CLASS);
 
@@ -306,6 +311,7 @@ bool gamely_daemon_input_open(void)
         g_reg.count = w;
     }
 
+    g_initialized = 1;
     return true;
 }
 
@@ -326,11 +332,13 @@ void gamely_daemon_input_close(void)
     }
     free(g_reg.bucket.pool);
     memset(&g_reg, 0, sizeof(g_reg));
+    g_initialized = 0;
 }
 
 void gamely_daemon_input_init_keys(gamely_input_key_cb cb, void *usr)
 {
     if (!cb) return;
+    if (!gamely_daemon_input_do_init()) return;
     for (int s = 0; s < g_reg.source_count; s++) {
         gamely_keymap_t *km = g_reg.sources[s].active;
         if (!km) continue;

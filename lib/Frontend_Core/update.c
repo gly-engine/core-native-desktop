@@ -8,10 +8,7 @@
 #include "gecnd.h"
 #include "gemetrics.h"
 
-
-
 void gecnd_hypervisor_daemons(gecnd_t *gly);
-void gecnd_input_key_cb(const char *name, bool pressed, int port, void *usr);
 
 typedef struct {
     FILE *fp;
@@ -129,22 +126,28 @@ static void callback_init(gecnd_t *gly) {
 
         /* fire initial unpressed state for all mapped keys */
         if (gecnd_is_root(gly))
-            gamely_daemon_input_init_keys(gecnd_input_key_cb, gly);
+            gamely_daemon_input_init_keys(gecnd_dispatch_key_event, gly);
     }
     while (0);
 }
 
-void gecnd_dispatch_key_event(gecnd_t *gly, const char *name, bool pressed, int port)
+void gecnd_dispatch_key_event(const char *name, bool pressed, int port, void *usr)
 {
-    if (!gly || !name || port != 0) return;
+    if (!usr || !name || port != 0) return;
 
+    gecnd_t *gly = (gecnd_t*) usr;
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_keyboard);
     lua_pushstring(gly->L, name);
     lua_pushboolean(gly->L, pressed);
-    if (lua_pcall(gly->L, 2, 0, 0))
+    lua_pushnumber(gly->L, port);
+    if (lua_pcall(gly->L, 3, 0, 0)) {
         gly->error_string = luaL_checkstring(gly->L, -1);
+    }
 }
 
+/**
+ * @todo delete this
+ */
 static void callback_keyboard(gecnd_t *gly) {
     uint8_t index = 0;
     do {
@@ -154,7 +157,7 @@ static void callback_keyboard(gecnd_t *gly) {
         if (!key && !pressed) break;
         index++;
         if (key) {
-            gecnd_dispatch_key_event(gly, key, pressed, 0);
+            gecnd_dispatch_key_event(key, pressed, 0, gly);
             if (gly->error_string) break;
         }
     }

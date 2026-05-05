@@ -39,6 +39,7 @@ const char      *gamely_keymap_lookup_debug(uint32_t code, const char **out_clas
 gamely_keymap_t *gamely_keymap_get_active(void);
 int              gamely_keymap_get_debug(void);
 int              gamely_keymap_get_port(void);
+bool             gamely_daemon_input_do_init(void);
 
 /* -- time -- */
 
@@ -165,6 +166,8 @@ static void fire(const char *name, bool pressed, int port)
 
 void gamely_daemon_input_push(uint32_t code, bool pressed, uint32_t ttl_ms)
 {
+    if (!gamely_daemon_input_do_init()) return;
+
     gamely_keymap_t *km   = gamely_keymap_get_active();
     const char      *name = gamely_keymap_lookup(km, code);
     int              port = gamely_keymap_get_port();
@@ -192,6 +195,7 @@ void gamely_daemon_input_push(uint32_t code, bool pressed, uint32_t ttl_ms)
 void gamely_daemon_input_push_name(const char *name, bool pressed, int port, uint32_t ttl_ms)
 {
     if (!name) return;
+    if (!gamely_daemon_input_do_init()) return;
 
     if (ttl_ms > 0 && pressed)
         ttl_upsert(name, port, now_ms() + ttl_ms);

@@ -35,7 +35,7 @@ static void on_found(const char *path, void *usr) {
     }
 }
 
-static void fs_schema_cb(const char *url, void *schema_usr,
+void gamely_resolver_image_file(const char *url, void *schema_usr,
                           gamely_img_on_fetch_cb on_done, void *on_done_usr) {
     (void)schema_usr;
 
@@ -72,11 +72,4 @@ static void fs_schema_cb(const char *url, void *schema_usr,
     printf("[io-resolver] not found '%s' (cwd=%s)\n", path, cwd);
     on_done(NULL, 0, NULL, on_done_usr);
     free(ctx);
-}
-
-/* ── public ───────────────────────────────────────────────────────── */
-
-void gamely_daemon_io_resolver_start(void) {
-    gamely_daemon_img_register_schema("file://", fs_schema_cb, NULL);
-    gamely_daemon_img_register_schema("",        fs_schema_cb, NULL);
 }

@@ -96,7 +96,7 @@ bool gecnd_has_errors(gecnd_t *gly);
 const char* gecnd_get_errors(gecnd_t *gly);
 // tick
 bool gecnd_update(gecnd_t *gly);
-void gecnd_dispatch_key_event(gecnd_t *gly, const char *name, bool pressed, int port);
+void gecnd_dispatch_key_event(const char *name, bool pressed, int port, void *usr);
 // utils
 uint32_t gecnd_get_delta_ms(void);
 uint64_t gecnd_get_cur_time(void);
@@ -350,8 +350,7 @@ void gamely_daemon_input_add_keycode(const char *key_name, uint32_t hex);
 /* register sources — called once per --input before open() */
 void gamely_daemon_input_add_source(const char *uri);
 
-/* activate all registered sources; falls back to void://0 if none */
-bool gamely_daemon_input_open (void);
+/* drivers are opened lazily on first push/init_keys; falls back to void://0 if none */
 void gamely_daemon_input_close(void);
 
 /* inject from driver threads; port from open(); ttl_ms=0 = no TTL */

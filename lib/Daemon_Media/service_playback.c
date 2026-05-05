@@ -152,6 +152,9 @@ void gamely_daemon_media_playback_source(uint8_t channel, const char *url) {
     if (channel >= CHANNEL_CAP) return;
     channel_t *ch = &s_channels[channel];
 
+    if (url && ch->url && ch->state != CH_IDLE && strcmp(ch->url, url) == 0)
+        return;
+
     channel_stop(ch, channel);
     if (!url) return;
 
