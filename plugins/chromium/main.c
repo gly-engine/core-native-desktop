@@ -12,6 +12,7 @@
 #define DEVTOOLS_RETRY_MAX 5
 #define DEVTOOLS_HOST      "127.0.0.1"
 #define DEVTOOLS_PORT      9222
+#define DEVTOOLS_WS_PATH   "/api/dev-tools"
 
 typedef struct { const char *engine; const char *cdp_key; const char *cdp_code; int vk; } key_entry_t;
 
@@ -52,7 +53,13 @@ static void on_ws_open(gly_req_id_t id, void *user) {
 }
 
 static void on_ws_msg(gly_req_id_t id, const char *data, size_t len, void *user) {
-    (void)id; (void)data; (void)len; (void)user;
+    (void)id; (void)user;
+    gamely_daemon_webserver_ws_send_all(DEVTOOLS_WS_PATH, data, len, 0);
+}
+
+static void ws_dev_tools(const gly_ws_req_t *req) {
+    if (req->event != GLY_WS_MESSAGE || !ws_id) return;
+    gamely_daemon_webclient_ws_send(ws_id, req->data, req->len);
 }
 
 static void on_ws_close(gly_req_id_t id, void *user) {
@@ -271,9 +278,12 @@ int luaopen_chromium_gecnd(lua_State *L) {
 
     for (int i = 0; api[i].name; i++) {
         lua_register(L, api[i].name, api[i].func);
+    }
+    
     return 0;
 }
 
 void coreopen_chromium_gecnd(void) {
     gamely_daemon_input_subscribe(on_key, NULL);
+    gamely_daemon_webloop_route_ws(DEVTOOLS_WS_PATH, ws_dev_tools);
 }
