@@ -87,6 +87,9 @@ static void parse_libretro_url(const char *url,
 static void libretro_file_start(uint8_t channel, const char *url, void *usr) {
     (void)channel; (void)usr;
 
+    /* re-entrant: tears down any previously loaded core before loading the new one */
+    native_libretro_exit();
+
     char core_name[64], path[512], query[256];
     parse_libretro_url(url, core_name, sizeof(core_name),
                        NULL, 0,
@@ -196,6 +199,8 @@ static void libretro_http_on_error(gly_req_id_t id, const char *msg, void *user)
 
 static void libretro_http_start(uint8_t channel, const char *url, void *usr) {
     (void)usr;
+
+    native_libretro_exit();
 
     char core_name[64], transport[8], path[512], query[256];
     parse_libretro_url(url,

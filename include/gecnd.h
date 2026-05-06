@@ -407,6 +407,7 @@ void gamely_daemon_media_playback_position(uint8_t channel,
                                             int16_t x, int16_t y,
                                             int16_t w, int16_t h);
 void gamely_daemon_media_playback_tick    (void);
+bool gamely_daemon_media_playback_active  (void);
 
 typedef void (*gamely_transmit_cb_t)(const uint8_t *buf, int size, int64_t pts);
 

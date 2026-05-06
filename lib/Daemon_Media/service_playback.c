@@ -155,14 +155,30 @@ void gamely_daemon_media_playback_source(uint8_t channel, const char *url) {
     if (url && ch->url && ch->state != CH_IDLE && strcmp(ch->url, url) == 0)
         return;
 
-    channel_stop(ch, channel);
-    if (!url) return;
+    if (!url) {
+        channel_stop(ch, channel);
+        return;
+    }
 
     player_reg_t *p = select_player(url);
     if (!p) {
         fprintf(stderr, "[media] no player for '%s'\n", url);
+        channel_stop(ch, channel);
         return;
     }
+
+    /* Soft switch: same player handles old → new source without a hard stop.
+       Driver's start() must be re-entrant and reuse what it can internally. */
+    if (ch->state != CH_IDLE && ch->player == p) {
+        free(ch->url);
+        ch->url   = strdup(url);
+        ch->state = CH_LOADING;
+        if (p->cbs.start) p->cbs.start(channel, url, p->usr);
+        if (ch->state == CH_LOADING) ch->state = CH_PLAYING;
+        return;
+    }
+
+    channel_stop(ch, channel);
 
     ch->player = p;
     ch->url    = strdup(url);
@@ -205,4 +221,10 @@ void gamely_daemon_media_playback_tick(void) {
         if (ch->state == CH_PLAYING && ch->player && ch->player->cbs.tick)
             ch->player->cbs.tick((uint8_t)i, ch->player->usr);
     }
+}
+
+bool gamely_daemon_media_playback_active(void) {
+    for (int i = 0; i < CHANNEL_CAP; i++)
+        if (s_channels[i].state != CH_IDLE) return true;
+    return false;
 }
