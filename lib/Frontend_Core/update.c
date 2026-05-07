@@ -8,6 +8,14 @@
 #include "gecnd.h"
 #include "gemetrics.h"
 
+#if defined(GECND_USE_VENDOR_ENGINE)
+#include "engine_bytecode_lua.h"
+#endif
+
+#if defined(GECND_USE_VENDOR_GAME)
+#include "game_bytecode_lua.h"
+#endif
+
 void gecnd_hypervisor_daemons(gecnd_t *gly);
 
 typedef struct {
@@ -83,8 +91,16 @@ static void callback_init(gecnd_t *gly) {
         gly->error_string = gecnd_plugins_open_lua(gly->L);
         if (gly->error_string) break;
 
+/** @todo move it */
+#if defined(GECND_USE_VENDOR_ENGINE)
+        luaL_loadbuffer(gly->L, engine_bytecode_lua, engine_bytecode_lua_len, "E");
+	    if(lua_pcall(gly->L, 0, 0, 0)) {
+            gly->error_string = luaL_checkstring(gly->L, -1);
+        }
+#else
         gly->error_string = open_script(gly, gly->lua_engine_code, "main", 0);
         if (gly->error_string) break;
+#endif
 
         lua_getglobal(gly->L, "native_callback_init");
         if (lua_type(gly->L, -1) != LUA_TFUNCTION) {

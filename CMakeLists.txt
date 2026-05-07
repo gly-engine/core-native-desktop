@@ -61,9 +61,16 @@ if(NOT gecnd_cc_options)
     set(gecnd_cc_options "")
 endif()
 
+# Gly Engine
+set(GLY_VERSION "0.3.13")
+set(GLY_DIR "${CMAKE_SOURCE_DIR}/vendor/lua/gly-engine")
+set(GLY_CLI "${GLY_DIR}/source/cli/main.lua")
+set(GLY_DOWNLOAD "https://github.com/gamelly/gly-engine/archive/refs/tags/${GLY_VERSION}.tar.gz")
+
 # Lua 5.4
 set(LUA54_VERSION "5.4.7")
 set(LUA54_DIR "${CMAKE_SOURCE_DIR}/vendor/lua/lua54")
+set(LUA54_HOST_DIR "${CMAKE_SOURCE_DIR}/vendor/lua/lua54_host")
 set(LUA54_DOWNLOAD "https://github.com/lua/lua/archive/refs/tags/v${LUA54_VERSION}.tar.gz")
 set(LUA54_OPTMIZE FALSE)
 option(GECND_USE_LUA32BITS "lua uses float instead double" OFF)
@@ -276,6 +283,26 @@ option(GECND_USE_PLUGIN_ALSA "build plugin alsa for core native" OFF)
 option(GECND_USE_PLUGIN_SHIM "build plugin shim for core native" OFF)
 option(GECND_USE_PLUGIN_CHROMIUM "build plugin chromium for core native" OFF)
 option(GECND_USE_PLUGIN_LIBRETRO "build plugin libretro for core native" OFF)
+
+# Lua Host + GLY CLI
+if(NOT (EXISTS "${CMAKE_BINARY_DIR}/lua" OR EXISTS "${CMAKE_BINARY_DIR}/lua.exe"))
+    FetchContent_Populate(lua54-host URL "${LUA54_DOWNLOAD}" SOURCE_DIR ${LUA54_HOST_DIR})
+    if(TARGET)
+        execute_process(
+            COMMAND ${ZIG_DIR}/zig-cc-host -DMAKE_LUA onelua.c -o ${CMAKE_BINARY_DIR}/lua -lm
+            WORKING_DIRECTORY ${LUA54_HOST_DIR}
+        )
+    else()
+        execute_process(
+            COMMAND ${CMAKE_C_COMPILER} -DMAKE_LUA onelua.c -o ${CMAKE_BINARY_DIR}/lua -lm
+            WORKING_DIRECTORY ${LUA54_HOST_DIR}
+        )
+    endif()
+endif()
+if(NOT EXISTS "${GLY_CLI}")
+    FetchContent_Populate(dep_gly-engine URL ${GLY_DOWNLOAD} SOURCE_DIR ${GLY_DIR})
+endif()
+find_program(LUA_BIN NAMES lua PATHS ${CMAKE_BINARY_DIR} NO_DEFAULT_PATH REQUIRED)
 
 if(GECND_USE_LUA51)
     FetchContent_Populate(lua51-static URL "${LUA51_DOWNLOAD}" SOURCE_DIR ${LUA51_DIR})
@@ -749,6 +776,19 @@ if(GECND_USE_PLUGIN_LIBRETRO)
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
         ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+    )
+endif()
+
+# TODO: use custom command with output
+if(DEFINED ENGINE)
+    execute_process(
+        WORKING_DIRECTORY ${GLY_DIR}
+        COMMAND ${LUA_BIN} ${GLY_CLI} fs-xxd-i ${ENGINE} --const --name engine_bytecode_lua
+            ${CMAKE_BINARY_DIR}/include/engine_bytecode_lua.h
+        COMMAND_ERROR_IS_FATAL ANY
+    )
+    set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/lib/Frontend_Core/update.c"
+        PROPERTIES COMPILE_DEFINITIONS "GECND_USE_VENDOR_ENGINE=1"
     )
 endif()
 
