@@ -39,7 +39,7 @@ static int lua_native_draw_rect(lua_State *L) {
     int16_t y = (int16_t) luaL_checknumber(L, 3);
     int16_t w = (int16_t) luaL_checknumber(L, 4);
     int16_t h = (int16_t) luaL_checknumber(L, 5);
-    bool radius = !((gecnd_t *)lua_touserdata(L, -1))->disable_radius;
+    bool radius = !gecnd_get_display()->disable_radius;
     float float_r = (float) ((radius && lua_gettop(L) >= 6 && !lua_isnil(L, 6))? luaL_checknumber(L, 6): 0);
     int16_t int_r = (int16_t) (int32_t) (float_r);
     native_draw_rect(mode, x, y, w, h, int_r);

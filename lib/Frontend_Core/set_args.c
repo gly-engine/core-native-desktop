@@ -19,6 +19,7 @@ static ko_longopt_t longopts[] = {
     { "game",           ko_required_argument, 1305 },
     { "engine",         ko_required_argument, 1306 },
     { "play",           ko_required_argument, 1307 },
+    { "game+engine",    ko_required_argument, 1308 },
     { "disable-radius", ko_no_argument,       1309 },
     { "port",           ko_required_argument, 1310 },
     { "filter-aa",      ko_required_argument, 1401 },
@@ -57,7 +58,7 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
 
 void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
 {
-    if (c == 1300 && sscanf(opt.arg, "%hdx%hd", &gly->window_width, &gly->window_height) != 2) {
+    if (c == 1300 && sscanf(opt.arg, "%hdx%hd", &gecnd_get_display()->window_width, &gecnd_get_display()->window_height) != 2) {
         gly->error_string = "invalid window size!";
     }
     if (c == 1301 && sscanf(opt.arg, "%hdx%hd", &gly->width, &gly->height) != 2) {
@@ -73,11 +74,31 @@ void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
         gly->error_string = "invalid frameskip!";
     }
     if (c == 1305) {
-        if (strncmp(opt.arg, "http://", 7) == 0 || strncmp(opt.arg, "https://", 8) == 0)
+        if (strncmp(opt.arg, "http://", 7) == 0 || strncmp(opt.arg, "https://", 8) == 0) {
             gly->game_source.kind = GECND_LUA_SOURCE_HTTP;
-        else
+            char *d = gecnd_get_display()->game_base_url;
+            strncpy(d, opt.arg, 511); d[511] = '\0';
+            char *s = strrchr(d, '/'), *p = strstr(d, "://");
+            if (s && p && s > p + 3) s[1] = '\0'; else d[0] = '\0';
+        } else {
             gly->game_source.kind = GECND_LUA_SOURCE_FILE;
+        }
         gly->game_source.uri = opt.arg;
+    }
+    if (c == 1308) {
+        bool is_http = strncmp(opt.arg, "http://", 7) == 0 || strncmp(opt.arg, "https://", 8) == 0;
+        size_t n = strlen(opt.arg);
+        int    sl = opt.arg[n - 1] == '/';
+        char  *eng = malloc(n + 12), *gam = malloc(n + 9);
+        if (!eng || !gam) { free(eng); free(gam); return; }
+        sprintf(eng, "%s%sengine.lua", opt.arg, sl ? "" : "/");
+        sprintf(gam, "%s%sgame.lua",   opt.arg, sl ? "" : "/");
+        gly->engine_source.kind = is_http ? GECND_LUA_SOURCE_HTTP : GECND_LUA_SOURCE_FILE;
+        gly->engine_source.uri  = eng;
+        gly->game_source.kind   = is_http ? GECND_LUA_SOURCE_HTTP : GECND_LUA_SOURCE_FILE;
+        gly->game_source.uri    = gam;
+        if (is_http)
+            snprintf(gecnd_get_display()->game_base_url, 512, "%s%s", opt.arg, sl ? "" : "/");
     }
     if (c == 1306) {
         if (strncmp(opt.arg, "http://", 7) == 0 || strncmp(opt.arg, "https://", 8) == 0)
@@ -91,9 +112,9 @@ void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
         gamely_daemon_media_playback_play(0);
     }
     if (c == 1309) {
-        gly->disable_radius = true;
+        gecnd_get_display()->disable_radius = true;
     }
-    if (c == 1310 && (sscanf(opt.arg, "%hu", &gly->port) != 1)) {
+    if (c == 1310 && (sscanf(opt.arg, "%hu", &gecnd_get_display()->port) != 1)) {
         gly->error_string = "invalid port!";
     }
     if (c == 1402) {

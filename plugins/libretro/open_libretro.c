@@ -324,7 +324,7 @@ bool native_libretro_game(const char *path) {
         gamely_daemon_media_background_claim();
         core_initialized = true;
         gecnd_t *gly = gecnd_get_root();
-        if (gly) gly->internal |= GECND_INTERNAL_HW_GL_NO_FINSH;
+        if (gly) gecnd_set_state(gly, GECND_FSM_RUNNING_PERFORMANCE);
         return true;
     }
     return false;
@@ -369,7 +369,7 @@ bool native_libretro_game_from_buffer(const uint8_t *data, size_t size) {
         gamely_daemon_media_background_claim();
         core_initialized = true;
         gecnd_t *gly = gecnd_get_root();
-        if (gly) gly->internal |= GECND_INTERNAL_HW_GL_NO_FINSH;
+        if (gly) gecnd_set_state(gly, GECND_FSM_RUNNING_PERFORMANCE);
     }
     return ok;
 }
@@ -380,7 +380,7 @@ void native_libretro_exit(void) {
 
 static void libretro_deinit_core(void) {
     gecnd_t *gly = gecnd_get_root();
-    if (gly) gly->internal &= ~GECND_INTERNAL_HW_GL_NO_FINSH;
+    if (gly) gecnd_set_state(gly, GECND_FSM_RUNNING);
     if (core_initialized) {
         if (p_retro_unload_game) p_retro_unload_game();
     }

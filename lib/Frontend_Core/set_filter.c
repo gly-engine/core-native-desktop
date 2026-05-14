@@ -12,10 +12,9 @@ gecnd_filter_t *gecnd_filter_get_config() {
     return &instance;
 }
 
-static void project_v(gecnd_t *gly, float *x, float *y) {
-    if (!gly) return;
-    *x = (*x * 2.0f / (float)gly->window_width) - 1.0f;
-    *y = (*y * -2.0f / (float)gly->window_height) + 1.0f;
+static void project_v(float *x, float *y) {
+    *x = (*x * 2.0f / (float)gecnd_get_display()->window_width) - 1.0f;
+    *y = (*y * -2.0f / (float)gecnd_get_display()->window_height) + 1.0f;
 }
 
 static void update_video_vertices(gecnd_filter_t *filter, float x, float y, float w, float h) {
@@ -24,16 +23,15 @@ static void update_video_vertices(gecnd_filter_t *filter, float x, float y, floa
     filter->video_size_raw.x = w;
     filter->video_size_raw.y = h;
 
-    gecnd_t *gly = gecnd_get_root();
     float x1 = x, y1 = y;         // TL
     float x2 = x + w, y2 = y;     // TR
     float x3 = x + w, y3 = y + h; // BR
     float x4 = x, y4 = y + h;     // BL
 
-    project_v(gly, &x1, &y1);
-    project_v(gly, &x2, &y2);
-    project_v(gly, &x3, &y3);
-    project_v(gly, &x4, &y4);
+    project_v(&x1, &y1);
+    project_v(&x2, &y2);
+    project_v(&x3, &y3);
+    project_v(&x4, &y4);
 
     // 2 Triangles (6 vertices) forming a quad: (TL, TR, BR) and (TL, BR, BL)
     float v[] = {
@@ -54,11 +52,10 @@ static void update_corner_vertices(gecnd_filter_t *filter, float x1, float y1, f
     filter->corners_raw[2].x = x3; filter->corners_raw[2].y = y3;
     filter->corners_raw[3].x = x4; filter->corners_raw[3].y = y4;
 
-    gecnd_t *gly = gecnd_get_root();
-    project_v(gly, &x1, &y1);
-    project_v(gly, &x2, &y2);
-    project_v(gly, &x3, &y3);
-    project_v(gly, &x4, &y4);
+    project_v(&x1, &y1);
+    project_v(&x2, &y2);
+    project_v(&x3, &y3);
+    project_v(&x4, &y4);
 
     float v[] = {
         x1, y1, 0.0f, 0.0f,
@@ -156,21 +153,15 @@ void gecnd_filter_reset_effects() {
 }
 
 void gecnd_filter_reset_corners() {
-    gecnd_t *gly = gecnd_get_root();
-    if (gly) {
-        float width = (float) gly->window_width;
-        float height = (float) gly->window_height;
-        gecnd_filter_set_corners(0, 0, width, 0, width, height, 0, height);
-    }
+    float width  = (float)gecnd_get_display()->window_width;
+    float height = (float)gecnd_get_display()->window_height;
+    gecnd_filter_set_corners(0, 0, width, 0, width, height, 0, height);
 }
 
 void gecnd_filter_reset_video_pos() {
-    gecnd_t *gly = gecnd_get_root();
-    if (gly) {
-        float width = (float) gly->window_width;
-        float height = (float) gly->window_height;
-        gecnd_filter_set_video_pos(0, 0, width, height);
-    }
+    float width  = (float)gecnd_get_display()->window_width;
+    float height = (float)gecnd_get_display()->window_height;
+    gecnd_filter_set_video_pos(0, 0, width, height);
 }
 
 bool gencd_filter_is_zero_corners() {

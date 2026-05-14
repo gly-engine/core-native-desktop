@@ -64,7 +64,6 @@ gecnd_t *gecnd_new(lua_State* L) {
         gly->height = GECND_DEFAULT_HEIGHT;
         gly->target_fps = GECND_DEFAULT_FPS;
         gly->frameskip = GECND_DEFAULT_FRAMESKIP;
-        gly->scale_factor = 1.0f;
         gly->flags = GECND_FLAG_TIMER_PREFER_BACKEND;
 
         for (int i = 0; frontend_api_log[i].name != NULL; i++) {
@@ -103,9 +102,21 @@ gecnd_t *gecnd_new(lua_State* L) {
 
 void gecnd_destroy(gecnd_t *gly) {
     if (gly) {
+        if (gecnd_is_root(gly))
+            gamely_hypervisor_exit();
+        free(gly->engine_source.fetch.buf);
+        free(gly->game_source.fetch.buf);
         gly_hook_luaclose_storage(gly->L);
         free(gly);
     }
+}
+
+void gecnd_set_state(gecnd_t *gly, gecnd_fsm_t new_state) {
+    if (!gly) return;
+    bool cur_ok = gly->state >= GECND_FSM_RUNNING && gly->state <= GECND_FSM_RUNNING_STANDBY;
+    bool new_ok = new_state >= GECND_FSM_RUNNING && new_state <= GECND_FSM_RUNNING_STANDBY;
+    if (cur_ok && new_ok)
+        gly->state = new_state;
 }
 
 bool gecnd_is_root(gecnd_t *gly) {

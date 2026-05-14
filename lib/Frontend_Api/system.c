@@ -16,7 +16,7 @@ static int lua_native_system_exit(lua_State *L) {
     lua_rawgeti(L, LUA_REGISTRYINDEX, GLY_REGISTRYINDEX);
     gecnd_t *gly = lua_touserdata(L, -1);
     lua_settop(L, 0);
-    gly->internal |= GECND_INTERNAL_WANT_EXIT;
+    gly->state = GECND_FSM_EXITING;
     return 0;
 }
 

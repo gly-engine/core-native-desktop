@@ -14,19 +14,14 @@
 #define GECND_FLAG_TIMER_PREFER_BACKEND (3u)
 
 #ifndef DOXYGEN
-#define GECND_INTERNAL_MALLOC           (1u)
-#define GECND_INTERNAL_WANT_EXIT        (4u)
-#define GECND_INTERNAL_BROWSER          (8u)
 #define GECND_INTERNAL_HW_GL_READY      (16u)
-#define GECND_INTERNAL_HW_GL_NO_FINSH   (32u)
 #endif
 
 typedef enum {
     GECND_FSM_BOOT = 0,
     GECND_FSM_ARGS_PARSED,
     GECND_FSM_DAEMONS_UP,
-    GECND_FSM_FETCHING_HTTP_ENGINE,
-    GECND_FSM_FETCHING_HTTP_GAME,
+    GECND_FSM_FETCHING,
     GECND_FSM_ENGINE_LOADED,
     GECND_FSM_GAME_LOADED,
     GECND_FSM_RUNNING,
@@ -57,9 +52,19 @@ typedef enum {
 
 typedef struct {
     gecnd_lua_source_kind_t kind;
-    const char             *uri;          /* path ou URL; NULL pra VENDOR */
-    const uint8_t          *embedded;     /* só VENDOR */
-    size_t                  embedded_len;
+    const char             *uri;
+    union {
+        struct {
+            const uint8_t *buf;
+            size_t         len;
+        } embedded;                  /* kind == GECND_LUA_SOURCE_VENDOR */
+        struct {
+            uint8_t *buf;
+            size_t   len;
+            bool     done;
+            bool     error;
+        } fetch;                     /* kind == GECND_LUA_SOURCE_HTTP   */
+    };
 } gecnd_lua_source_t;
 
 // alias:
@@ -86,42 +91,45 @@ typedef struct {
 typedef struct lua_State lua_State;
 
 typedef struct {
-    lua_State *L;
-    void* loop;
-    uint8_t target_fps;
-    uint8_t frameskip;
-    uint8_t frameskip_count;
-    uint8_t flags;
-    uint8_t internal;
+    lua_State  *L;
+    void       *loop;
+    uint8_t     target_fps;
+    uint8_t     frameskip;
+    uint8_t     frameskip_count;
+    uint8_t     flags;
+    uint8_t     internal;       /* GECND_INTERNAL_HW_GL_READY */
     gecnd_fsm_t state;
-    int16_t width;
-    int16_t height;
-    int16_t window_width;
-    int16_t window_height;
-    int16_t delta_time;
-    uint16_t port;
-    float scale_factor;
-    int ref_native_callback_init;
-    int ref_native_callback_loop;
-    int ref_native_callback_draw;
-    int ref_native_callback_keyboard;
-    bool want_blit;
-    bool disable_radius;
-    gecnd_lua_source_t game_source;
+    int16_t     width;
+    int16_t     height;
+    int16_t     delta_time;
+    int         ref_native_callback_loop;
+    int         ref_native_callback_draw;
+    int         ref_native_callback_keyboard;
+    bool        want_blit;
     gecnd_lua_source_t engine_source;
-    char *browser_bin;
-    const char* error_string;
+    gecnd_lua_source_t game_source;
+    const char *error_string;
 } gecnd_t;
+
+typedef struct {
+    int16_t  window_width;
+    int16_t  window_height;
+    uint16_t port;
+    bool     disable_radius;
+    char     game_base_url[512];
+} gecnd_display_t;
 
 // plugins
 bool gecnd_plugin_load(gecnd_t *gly, const char *path);
 const char *gecnd_plugins_open_lua(lua_State *L);
 
 // instance
-gecnd_t *gecnd_new(lua_State* L);
-gecnd_t *gecnd_get_root();
-bool gecnd_is_root(gecnd_t *gly);
-void gecnd_destroy(gecnd_t *gly);
+gecnd_t         *gecnd_new(lua_State* L);
+gecnd_t         *gecnd_get_root(void);
+bool             gecnd_is_root(gecnd_t *gly);
+void             gecnd_destroy(gecnd_t *gly);
+gecnd_display_t *gecnd_get_display(void);
+void             gecnd_set_state(gecnd_t *gly, gecnd_fsm_t new_state);
 
 // configure
 void gecnd_set_loop(gecnd_t *gly, void* loop);
@@ -373,8 +381,9 @@ void gamely_daemon_img_opengl_register(void);
 
 /* ---- Hypervisor ---- */
 
-void gecnd_hypervisor              (void *loop);
-void gecnd_hypervisor_close_daemons(void);
+void gamely_hypervisor_init(gecnd_t *gly);
+void gamely_hypervisor_tick(void);
+void gamely_hypervisor_exit(void);
 
 /* ---- Daemon_Input ---- */
 

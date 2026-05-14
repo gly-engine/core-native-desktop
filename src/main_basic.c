@@ -11,7 +11,6 @@ int main(int argc, char* argv[]) {
     int exit_code = 0;
 
     luaL_openlibs(L);
-    gecnd_hypervisor(NULL);
     gecnd_set_args(gly, argc, argv);
 
     while(gecnd_update(gly)) {

@@ -1,6 +1,6 @@
 # Design: gecnd — State Machine + Lua Sources
 
-Revisão 6 — 2026-05-13
+Revisão 7 — 2026-05-13
 
 ---
 
@@ -491,6 +491,176 @@ char *lua_engine_code;     /* idem */
 | `plugins/libretro/*`, `plugins/chromium/*` | implementar `state()` no `gamely_media_player_t` exportado (obrigatório; load_game do libretro mapeia naturalmente pra LOADING→PLAYING) |
 | `CMakeLists.txt` | bloco `if(DEFINED GAME)` simétrico ao de `ENGINE` |
 | `src/main_*.c` | sem mudança (a transição é interna ao `gecnd_update`) |
+
+---
+
+## Revisão 7 — Limpeza do `gecnd_t` e `gecnd_lua_source_t`
+
+### Motivação
+
+Ao implementar os estados de fetch HTTP, ficou evidente que `gecnd_t` acumula
+campos que não pertencem ao objeto de jogo: config do hypervisor, campos mortos
+e flags de hardware que deveriam ser dirigidas pelo FSM. Esta revisão formaliza
+o corte.
+
+---
+
+### Campos removidos de `gecnd_t`
+
+| Campo | Motivo | Destino |
+|---|---|---|
+| `browser_bin` | Nunca usado em nenhum `.c` fora do header | Removido |
+| `ref_native_callback_init` | `native_callback_init` é chamado uma vez; ref nunca lida | Removido |
+| `scale_factor` | Só inicializado (`1.0f`), nunca lido em nenhum `.c` | Removido |
+| `port` | Config do webserver — pertence ao hypervisor | `gecnd_display_t` |
+| `window_width` / `window_height` | Dimensões do display — não são resolução do jogo | `gecnd_display_t` |
+| `disable_radius` | Config de render global, não é estado do jogo | `gecnd_display_t` |
+| `want_blit` | **Fica em `gecnd_t`** — é estado por instância (set antes de `callback_draw`, limpo pela Lua via `native_blit`) | — |
+
+---
+
+### Flags internas eliminadas (viram estado FSM)
+
+| Flag (bitset antigo) | Substituto |
+|---|---|
+| `GECND_INTERNAL_MALLOC (1)` | Removido — morto desde a migração para malloc puro |
+| `GECND_INTERNAL_WANT_EXIT (4)` | `GECND_FSM_EXITING` — `system.c` seta `gly->state` diretamente |
+| `GECND_INTERNAL_BROWSER (8)` | `GECND_FSM_RUNNING_BACKGROUND` — chromium plugin chama `gecnd_set_state()` |
+| `GECND_INTERNAL_HW_GL_NO_FINSH (32)` | `GECND_FSM_RUNNING_PERFORMANCE` — libretro chama `gecnd_set_state()` ao carregar qualquer core (não só HW render — libretro sempre dispensa `glFinish`); `draw.c` lê o estado |
+
+**Flag que permanece** como bitset (capacidade de hardware, ortogonal ao FSM):
+
+| Flag | Motivo |
+|---|---|
+| `GECND_INTERNAL_HW_GL_READY (16)` | Sinalizado pelo backend (egl/glfw) quando o contexto GL está pronto; lido por libretro antes de habilitar HW rendering. Não é estado do jogo — é capacidade do backend. |
+
+---
+
+### `gecnd_lua_source_t` — union `embedded` / `fetch`
+
+`embedded` (VENDOR) e `fetch` (HTTP) são mutuamente exclusivos pelo `kind`:
+uma fonte ou veio compilada no binário ou precisa ser baixada, nunca os dois.
+Usar uma union economiza memória e torna o contrato óbvio no código.
+
+```c
+typedef struct {
+    gecnd_lua_source_kind_t  kind;
+    const char              *uri;    /* path local ou URL; NULL pra VENDOR */
+    union {
+        struct {
+            const uint8_t *buf;
+            size_t         len;
+        } embedded;                  /* kind == GECND_LUA_SOURCE_VENDOR */
+        struct {
+            uint8_t *buf;
+            size_t   len;
+            bool     done;
+            bool     error;
+        } fetch;                     /* kind == GECND_LUA_SOURCE_HTTP */
+    };
+} gecnd_lua_source_t;
+```
+
+Os callbacks HTTP recebem `gecnd_lua_source_t *src` como `user` e escrevem
+direto em `src->fetch.*`. O `gecnd_update()` lê de `gly->engine_source` ou
+`gly->game_source` conforme o estado atual.
+
+---
+
+### `gecnd_display_t` — struct global de display/hypervisor
+
+Campos que são globais ao processo (display, webserver, render flags) saem
+do `gecnd_t` e ficam em uma struct singleton acessível via `gecnd_get_display()`.
+
+```c
+typedef struct {
+    int16_t  window_width;
+    int16_t  window_height;
+    uint16_t port;
+    bool     want_blit;
+    bool     disable_radius;
+} gecnd_display_t;
+
+gecnd_display_t *gecnd_get_display(void);
+```
+
+Implementada como `static gecnd_display_t g_display` em `hypervisor.c`.
+`gecnd_get_display()` retorna `&g_display` — singleton do processo.
+
+**Ciclo de inicialização:**
+1. `set_args.c` escreve em `gecnd_get_display()->port`, `->window_width/height`,
+   `->disable_radius` conforme os args CLI.
+2. `state_boot()` chama `gecnd_hypervisor_daemons(gly)` (só no root).
+3. Dentro de `gecnd_hypervisor_daemons()`, se `g_display.window_width == 0`,
+   copia `gly->width/height` como fallback (comportamento atual preservado).
+4. A partir daí, `set_filter.c` e `draw.c` lêem de `gecnd_get_display()`.
+
+---
+
+### `gecnd_set_state()` — API pública para transições externas
+
+```c
+/* Permite transições dentro do grupo RUNNING_*
+ * (RUNNING ↔ RUNNING_PERFORMANCE ↔ RUNNING_BACKGROUND ↔ RUNNING_STANDBY).
+ * RUNNING_NOGAME é exclusivo. Transições para ERROR/EXITING não passam aqui. */
+void gecnd_set_state(gecnd_t *gly, gecnd_fsm_t new_state);
+```
+
+Implementação em `instance.c`. Usada por:
+- **chromium plugin**: `gecnd_set_state(gly, GECND_FSM_RUNNING_BACKGROUND)` ao lançar o browser; `gecnd_set_state(gly, GECND_FSM_RUNNING)` ao fechar.
+- **libretro plugin**: `gecnd_set_state(gly, GECND_FSM_RUNNING_PERFORMANCE)` quando `RETRO_HW_RENDER`; `gecnd_set_state(gly, GECND_FSM_RUNNING)` ao descarregar.
+
+`draw.c` lê `gly->state` diretamente para decidir se chama `glFinish` e se
+suprime o draw.
+
+---
+
+### `gecnd_t` — struct final após limpeza
+
+```c
+typedef struct {
+    lua_State          *L;
+    void               *loop;
+    uint8_t             target_fps;
+    uint8_t             frameskip;
+    uint8_t             frameskip_count;
+    uint8_t             flags;
+    uint8_t             internal;   /* apenas HW_GL_READY */
+    gecnd_fsm_t         state;
+    int16_t             width;      /* resolução do jogo (render target) */
+    int16_t             height;
+    int16_t             delta_time;
+    int                 ref_native_callback_loop;
+    int                 ref_native_callback_draw;
+    int                 ref_native_callback_keyboard;
+    gecnd_lua_source_t  game_source;
+    gecnd_lua_source_t  engine_source;
+    const char         *error_string;
+} gecnd_t;
+```
+
+`window_width/height`, `port`, `want_blit`, `disable_radius` → `gecnd_display_t`.
+`scale_factor` → removido (dead field).
+`internal` fica só com `GECND_INTERNAL_HW_GL_READY` — o `HW_GL_NO_FINSH`
+virou `GECND_FSM_RUNNING_PERFORMANCE`.
+
+---
+
+### Impacto adicional por arquivo (Rev 7)
+
+| Arquivo | Mudança |
+|---|---|
+| `include/gecnd.h` | Remove macros mortos (`INTERNAL_MALLOC/WANT_EXIT/BROWSER/HW_GL_NO_FINSH`); union `embedded`/`fetch` em `gecnd_lua_source_t`; remove campos de `gecnd_t`; adiciona `gecnd_display_t` + `gecnd_get_display()`; declara `gecnd_set_state` |
+| `lib/Frontend_Core/instance.c` | `gecnd_destroy` libera `engine_source.fetch.buf` e `game_source.fetch.buf`; implementa `gecnd_set_state` com validação RUNNING_* |
+| `lib/Frontend_Core/set_args.c` | `gly->port/window_width/window_height/disable_radius` → `gecnd_get_display()->...` |
+| `lib/Frontend_Core/hypervisor.c` | `static gecnd_display_t g_display`; implementa `gecnd_get_display()`; usa `g_display.port` em `gamely_daemon_webserver_start` |
+| `lib/Frontend_Core/set_filter.c` | `gly->window_width/height` → `gecnd_get_display()->window_width/height` |
+| `lib/Frontend_Core/update.c` | Rewrite: dispatcher de estados; handlers `state_boot … state_game_loaded`; remove `callback_init` monolítico; `want_blit` permanece em `gly` |
+| `lib/Frontend_Api/system.c` | `gly->internal \|= GECND_INTERNAL_WANT_EXIT` → `gly->state = GECND_FSM_EXITING` |
+| `lib/Frontend_Api/draw.c` | `gly->disable_radius` → `gecnd_get_display()->disable_radius`; `want_blit` permanece em `gly` |
+| `lib/Backend_OpenGL/render/draw.c` | `GECND_INTERNAL_BROWSER` → `state == GECND_FSM_RUNNING_BACKGROUND`; `GECND_INTERNAL_HW_GL_NO_FINSH` → `state == GECND_FSM_RUNNING_PERFORMANCE` |
+| `plugins/chromium/main.c` | `GECND_INTERNAL_BROWSER` set/clear → `gecnd_set_state(gly, GECND_FSM_RUNNING_BACKGROUND/RUNNING)` |
+| `plugins/libretro/open_libretro.c` | `GECND_INTERNAL_HW_GL_NO_FINSH` set/clear → `gecnd_set_state(gly, GECND_FSM_RUNNING_PERFORMANCE/RUNNING)` — ocorre no `coreopen`/`coreclose`, não no RETRO_HW_RENDER |
 
 ---
 

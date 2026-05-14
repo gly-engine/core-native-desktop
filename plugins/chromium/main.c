@@ -165,7 +165,7 @@ static void try_connect_devtools(uv_timer_t *t) {
 
 static void on_browser_exit(uv_process_t *p, int64_t status, int signal) {
     gecnd_t *gly = gecnd_get_root();
-    if (gly) gly->internal &= ~GECND_INTERNAL_BROWSER;
+    if (gly) gecnd_set_state(gly, GECND_FSM_RUNNING);
 
     if (ws_id) {
         gamely_daemon_webclient_ws_close(ws_id);
@@ -188,7 +188,7 @@ static void on_browser_exit(uv_process_t *p, int64_t status, int signal) {
 
 static void native_browser_exit(void) {
     gecnd_t *gly = gecnd_get_root();
-    if (!gly || !(gly->internal & GECND_INTERNAL_BROWSER)) return;
+    if (!gly || gly->state != GECND_FSM_RUNNING_BACKGROUND) return;
     uv_process_kill(&proc, SIGTERM);
 }
 
@@ -196,7 +196,7 @@ static const char default_chromium[] = "chromium %s --remote-debugging-port=9222
 
 static void native_browser_url(const char *url) {
     gecnd_t *gly = gecnd_get_root();
-    if (!gly || (gly->internal & GECND_INTERNAL_BROWSER) || !url) return;
+    if (!gly || gly->state == GECND_FSM_RUNNING_BACKGROUND || !url) return;
 
     const char *cmd = getenv("chromium");
     if (!cmd) cmd = default_chromium;
@@ -246,7 +246,7 @@ static void native_browser_url(const char *url) {
     free(args);
     if (spawned != 0) return;
 
-    gly->internal |= GECND_INTERNAL_BROWSER;
+    gecnd_set_state(gly, GECND_FSM_RUNNING_BACKGROUND);
     ws_path[0]    = '\0';
     http_pending  = false;
     ws_connecting = false;

@@ -5,17 +5,14 @@
 
 #include "gecnd.h"
 
-void gecnd_hypervisor_daemons(gecnd_t *gly);
-
 int main(int argc, char* argv[]) {
     static uv_loop_t loop;
     lua_State *L = luaL_newstate();
     gecnd_t *gly = gecnd_new(L);
     int exit_code = 0;
-    
+
     luaL_openlibs(L);
     uv_loop_init(&loop);
-    gecnd_hypervisor(&loop);
     gecnd_set_loop(gly, (void*) &loop);
     gecnd_set_args(gly, argc, argv);
 

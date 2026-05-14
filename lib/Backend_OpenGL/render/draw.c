@@ -9,8 +9,8 @@
 
 void native_draw_start(void) {
     gecnd_t *gly = gecnd_get_root();
-    if (!(gly->internal & GECND_INTERNAL_HW_GL_NO_FINSH) &&
-        !(gly->internal & GECND_INTERNAL_BROWSER)) {
+    if (gly->state != GECND_FSM_RUNNING_PERFORMANCE &&
+        gly->state != GECND_FSM_RUNNING_BACKGROUND) {
         glFinish();
     }
     ge_pipeline_start();
