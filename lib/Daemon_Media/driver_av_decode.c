@@ -43,6 +43,7 @@ static void threadworker(void *arg) {
 
     if (AV.avformat_open_input(&s->fmt, s->url, NULL, &opts) < 0) {
         fprintf(stderr, "[media] error opening: %s\n", s->url);
+        atomic_store(&s->state, GDMSP_FSM_ERROR);
         atomic_store(&s->running, 0);
         AV.av_dict_free(&opts);
         return;
@@ -52,12 +53,14 @@ static void threadworker(void *arg) {
     s->fmt->max_analyze_duration = 0;
     if (AV.avformat_find_stream_info(s->fmt, NULL) < 0) {
         fprintf(stderr, "[media] failed to find stream info: %s\n", s->url);
+        atomic_store(&s->state, GDMSP_FSM_ERROR);
         goto cleanup_format;
     }
 
     s->video_index = AV.av_find_best_stream(s->fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
     if (s->video_index < 0) {
         fprintf(stderr, "[media] no video stream\n");
+        atomic_store(&s->state, GDMSP_FSM_ERROR);
         goto cleanup_pkt_frame;
     }
 
@@ -65,11 +68,15 @@ static void threadworker(void *arg) {
     const AVCodec *vdec = AV.avcodec_find_decoder(s->video->codecpar->codec_id);
     if (!vdec) {
         fprintf(stderr, "[media] no decoder for codec %d\n", s->video->codecpar->codec_id);
+        atomic_store(&s->state, GDMSP_FSM_ERROR);
         goto cleanup_pkt_frame;
     }
 
     s->vcodec = AV.avcodec_alloc_context3(vdec);
-    if (!s->vcodec) goto cleanup_format;
+    if (!s->vcodec) {
+        atomic_store(&s->state, GDMSP_FSM_ERROR);
+        goto cleanup_format;
+    }
     AV.avcodec_parameters_to_context(s->vcodec, s->video->codecpar);
 
     if (s->vcodec->pix_fmt == AV_PIX_FMT_NONE)
@@ -78,6 +85,7 @@ static void threadworker(void *arg) {
 
     if (AV.avcodec_open2(s->vcodec, vdec, NULL) < 0) {
         fprintf(stderr, "[media] error opening codec\n");
+        atomic_store(&s->state, GDMSP_FSM_ERROR);
         goto cleanup_codec;
     }
 
@@ -102,6 +110,7 @@ static void threadworker(void *arg) {
                 while (AV.avcodec_receive_frame(s->vcodec, vfrm) == 0) {
                     if (!initialized) {
                         initialized = true;
+                        atomic_store(&s->state, GDMSP_FSM_PLAYING);
                         int64_t pts_first = vfrm->pts;
                         if (pts_first == AV_NOPTS_VALUE) pts_first = vfrm->best_effort_timestamp;
                         if (pts_first != AV_NOPTS_VALUE)
@@ -154,6 +163,7 @@ VideoStream *stream_create(const char *url) {
     normalize_url(s->url);
     atomic_store(&s->running, 1);
     atomic_store(&s->paused, 0);
+    atomic_store(&s->state, GDMSP_FSM_LOADING);
     if (uv_thread_create(&s->thread, threadworker, s) != 0) {
         free(s->url); free(s); return NULL;
     }
@@ -162,6 +172,7 @@ VideoStream *stream_create(const char *url) {
 
 void stream_destroy(VideoStream *s) {
     if (!s) return;
+    atomic_store(&s->state, GDMSP_FSM_STOPPING);
     atomic_store(&s->running, 0);
     uv_thread_join(&s->thread);
     free(s->url); free(s);
@@ -195,10 +206,17 @@ static void av_stop(uint8_t channel, void *usr) {
     gamely_daemon_media_background_release();
 }
 
+static gdmsp_fsm_t av_state(uint8_t channel, void *usr) {
+    (void)usr;
+    if (channel >= 4 || !s_streams[channel]) return GDMSP_FSM_IDLE;
+    return (gdmsp_fsm_t) atomic_load(&s_streams[channel]->state);
+}
+
 gamely_media_player_t gamely_player_ffmpeg = {
     .start = av_start,
     .stop  = av_stop,
     .tick  = NULL,
     .pause = NULL,
     .play  = NULL,
+    .state = av_state,
 };

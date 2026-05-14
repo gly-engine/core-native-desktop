@@ -59,6 +59,7 @@ gecnd_t *gecnd_new(lua_State* L) {
         lua_rawseti(L, LUA_REGISTRYINDEX, GLY_REGISTRYINDEX);
 
         gly->L = L;
+        gly->state = GECND_FSM_BOOT;
         gly->width = GECND_DEFAULT_WIDTH;
         gly->height = GECND_DEFAULT_HEIGHT;
         gly->target_fps = GECND_DEFAULT_FPS;
@@ -113,4 +114,8 @@ bool gecnd_is_root(gecnd_t *gly) {
 
 gecnd_t *gecnd_get_root() {
     return instance;
+}
+
+gecnd_fsm_t gecnd_get_state(gecnd_t *gly) {
+    return gly ? gly->state : GECND_FSM_ERROR;
 }

@@ -15,12 +15,52 @@
 
 #ifndef DOXYGEN
 #define GECND_INTERNAL_MALLOC           (1u)
-#define GECND_INTERNAL_RUNNING          (2u)
 #define GECND_INTERNAL_WANT_EXIT        (4u)
 #define GECND_INTERNAL_BROWSER          (8u)
 #define GECND_INTERNAL_HW_GL_READY      (16u)
 #define GECND_INTERNAL_HW_GL_NO_FINSH   (32u)
 #endif
+
+typedef enum {
+    GECND_FSM_BOOT = 0,
+    GECND_FSM_ARGS_PARSED,
+    GECND_FSM_DAEMONS_UP,
+    GECND_FSM_FETCHING_HTTP_ENGINE,
+    GECND_FSM_FETCHING_HTTP_GAME,
+    GECND_FSM_ENGINE_LOADED,
+    GECND_FSM_GAME_LOADED,
+    GECND_FSM_RUNNING,
+    GECND_FSM_RUNNING_PERFORMANCE,
+    GECND_FSM_RUNNING_BACKGROUND,
+    GECND_FSM_RUNNING_STANDBY,
+    GECND_FSM_RUNNING_NOGAME,
+    GECND_FSM_ERROR,
+    GECND_FSM_EXITING,
+    GECND_FSM_EXITING_FORCE,
+} gecnd_fsm_t;
+
+typedef enum {
+    GDMSP_FSM_IDLE = 0,
+    GDMSP_FSM_LOADING,
+    GDMSP_FSM_PLAYING,
+    GDMSP_FSM_PAUSED,
+    GDMSP_FSM_STOPPING,
+    GDMSP_FSM_ERROR,
+} gdmsp_fsm_t;
+
+typedef enum {
+    GECND_LUA_SOURCE_NONE = 0,    /* nada definido — usa fallback FS */
+    GECND_LUA_SOURCE_FILE,
+    GECND_LUA_SOURCE_HTTP,
+    GECND_LUA_SOURCE_VENDOR,
+} gecnd_lua_source_kind_t;
+
+typedef struct {
+    gecnd_lua_source_kind_t kind;
+    const char             *uri;          /* path ou URL; NULL pra VENDOR */
+    const uint8_t          *embedded;     /* só VENDOR */
+    size_t                  embedded_len;
+} gecnd_lua_source_t;
 
 // alias:
 #define gecnd_add_flags(gly)  gecnd_set_flags(gly, gecnd_get_flags(gly) | FLAG_A)
@@ -53,6 +93,7 @@ typedef struct {
     uint8_t frameskip_count;
     uint8_t flags;
     uint8_t internal;
+    gecnd_fsm_t state;
     int16_t width;
     int16_t height;
     int16_t window_width;
@@ -66,8 +107,8 @@ typedef struct {
     int ref_native_callback_keyboard;
     bool want_blit;
     bool disable_radius;
-    char *lua_game_code;
-    char *lua_engine_code;
+    gecnd_lua_source_t game_source;
+    gecnd_lua_source_t engine_source;
     char *browser_bin;
     const char* error_string;
 } gecnd_t;
@@ -91,6 +132,7 @@ void gecnd_set_screensize(gecnd_t *gly, int16_t width, int16_t height);
 // status
 uint32_t gecnd_get_flags(gecnd_t *gly);
 uint32_t gecnd_get_sleep(gecnd_t *gly);
+gecnd_fsm_t gecnd_get_state(gecnd_t *gly);
 // error
 bool gecnd_has_errors(gecnd_t *gly);
 const char* gecnd_get_errors(gecnd_t *gly);
@@ -393,6 +435,9 @@ typedef struct {
     void (*tick) (uint8_t channel, void *usr);   /* NULL = own thread */
     void (*pause)(uint8_t channel, void *usr);   /* NULL = ignored    */
     void (*play) (uint8_t channel, void *usr);   /* NULL = ignored    */
+    /* lock-free snapshot of the driver's lifecycle. Must return quickly
+     * (atomic load only). Required — no NULL. */
+    gdmsp_fsm_t (*state)(uint8_t channel, void *usr);
 } gamely_media_player_t;
 
 void gamely_daemon_media_register_player(const char                  *schema,

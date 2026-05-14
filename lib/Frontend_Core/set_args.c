@@ -73,10 +73,18 @@ void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
         gly->error_string = "invalid frameskip!";
     }
     if (c == 1305) {
-        gly->lua_game_code = opt.arg;
+        if (strncmp(opt.arg, "http://", 7) == 0 || strncmp(opt.arg, "https://", 8) == 0)
+            gly->game_source.kind = GECND_LUA_SOURCE_HTTP;
+        else
+            gly->game_source.kind = GECND_LUA_SOURCE_FILE;
+        gly->game_source.uri = opt.arg;
     }
     if (c == 1306) {
-        gly->lua_engine_code = opt.arg;
+        if (strncmp(opt.arg, "http://", 7) == 0 || strncmp(opt.arg, "https://", 8) == 0)
+            gly->engine_source.kind = GECND_LUA_SOURCE_HTTP;
+        else
+            gly->engine_source.kind = GECND_LUA_SOURCE_FILE;
+        gly->engine_source.uri = opt.arg;
     }
     if (c == 1307) {
         gamely_daemon_media_playback_source(0, opt.arg);

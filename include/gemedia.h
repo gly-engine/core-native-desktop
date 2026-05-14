@@ -23,6 +23,7 @@ typedef struct {
     uv_thread_t thread;
     atomic_int running;
     atomic_int paused;
+    atomic_int state;        /* gdmsp_fsm_t — lock-free snapshot */
     double clock_start;
     int64_t start_pts;
     char *url;

@@ -33,26 +33,14 @@ static const char *reader(lua_State *L, void *ud, size_t *size) {
     return n ? data->buf : NULL;
 }
 
-/**
- * @todo rewrite this bullshit code!
- */
-static const char *open_script(gecnd_t *gly, const char *lua_code, const char *lua_name, int lua_ret)
-{
+typedef enum { LOAD_OK, LOAD_NOT_FOUND, LOAD_PARSE_ERROR } load_status_t;
+
+static load_status_t load_file_path(gecnd_t *gly, const char *path,
+                                     const char *lua_name, int lua_ret,
+                                     const char **err_out) {
     gecnd_buffer_t data;
-    char path[512];
-
-    if (!lua_code) {
-        size_t len = gecnd_utils_get_exe_cwd(path, sizeof(path));
-        snprintf(path + len, sizeof(path) - len, "/%s.lua", lua_name);
-        printf("[%s]\n", path);
-        lua_code = path;
-    }
-
-    data.fp = fopen(lua_code, "rb");
-    if (!data.fp) {
-        snprintf(path, sizeof(path), "file not found: %s.lua", lua_name);
-        return strdup(path);
-    }
+    data.fp = fopen(path, "rb");
+    if (!data.fp) return LOAD_NOT_FOUND;
 
 #if LUA_VERSION_NUM >= 502
     if (lua_load(gly->L, reader, &data, lua_name, "t"))
@@ -61,14 +49,45 @@ static const char *open_script(gecnd_t *gly, const char *lua_code, const char *l
 #endif
     {
         fclose(data.fp);
-        return luaL_checkstring(gly->L, -1);
+        *err_out = luaL_checkstring(gly->L, -1);
+        return LOAD_PARSE_ERROR;
     }
     fclose(data.fp);
 
-    if (lua_pcall(gly->L, 0, lua_ret, 0))
-        return luaL_checkstring(gly->L, -1);
+    if (lua_pcall(gly->L, 0, lua_ret, 0)) {
+        *err_out = luaL_checkstring(gly->L, -1);
+        return LOAD_PARSE_ERROR;
+    }
+    return LOAD_OK;
+}
 
-    return NULL;
+static const char *load_via_resolver(gecnd_t *gly, const gecnd_lua_source_t *src,
+                                      const char *lua_name, int lua_ret) {
+    const char *err = NULL;
+
+    /* fonte primária */
+    if (src && src->kind == GECND_LUA_SOURCE_FILE && src->uri) {
+        load_status_t s = load_file_path(gly, src->uri, lua_name, lua_ret, &err);
+        if (s == LOAD_OK) return NULL;
+        if (s == LOAD_PARSE_ERROR) return err;
+        /* NOT_FOUND → cai pro fallback FS */
+    } else if (src && src->kind == GECND_LUA_SOURCE_HTTP) {
+        return "HTTP lua source not yet supported";
+    } else if (src && src->kind == GECND_LUA_SOURCE_VENDOR) {
+        return "VENDOR lua source not yet supported";
+    }
+
+    /* fallback: {exe_cwd}/{lua_name}.lua */
+    char path[512];
+    size_t len = gecnd_utils_get_exe_cwd(path, sizeof(path));
+    snprintf(path + len, sizeof(path) - len, "/%s.lua", lua_name);
+    load_status_t s = load_file_path(gly, path, lua_name, lua_ret, &err);
+    if (s == LOAD_OK) return NULL;
+    if (s == LOAD_PARSE_ERROR) return err;
+
+    static char nf[128];
+    snprintf(nf, sizeof(nf), "file not found: %s.lua", lua_name);
+    return nf;
 }
 
 static void callback_init(gecnd_t *gly) {
@@ -98,7 +117,7 @@ static void callback_init(gecnd_t *gly) {
             gly->error_string = luaL_checkstring(gly->L, -1);
         }
 #else
-        gly->error_string = open_script(gly, gly->lua_engine_code, "main", 0);
+        gly->error_string = load_via_resolver(gly, &gly->engine_source, "main", 0);
         if (gly->error_string) break;
 #endif
 
@@ -111,7 +130,7 @@ static void callback_init(gecnd_t *gly) {
         lua_pushnumber(gly->L, gly->width);
         lua_pushnumber(gly->L, gly->height);
 
-        gly->error_string = open_script(gly, gly->lua_game_code, "game", 1);
+        gly->error_string = load_via_resolver(gly, &gly->game_source, "game", 1);
         if (gly->error_string) break;
 
         if (lua_pcall(gly->L, 3, 0, 0)) {
@@ -215,11 +234,11 @@ bool gecnd_update(gecnd_t *gly)
     do {
         if (!(gly && !gly->error_string)) break;
 
-        if (!(GECND_INTERNAL_RUNNING & gly->internal))
+        if (gly->state == GECND_FSM_BOOT) {
             callback_init(gly);
-        if (gly->error_string) break;
-
-        gly->internal |= GECND_INTERNAL_RUNNING;
+            if (gly->error_string) break;
+            gly->state = GECND_FSM_RUNNING;
+        }
         gecnd_metrics_finish_wait();
 
         gamely_daemon_media_playback_tick();
@@ -275,6 +294,14 @@ bool gecnd_update(gecnd_t *gly)
         should_close = gecnd_signal != 0;
     }
     while (0);
+
+    if (gly && gly->error_string) {
+        gly->state = GECND_FSM_ERROR;
+    } else if (gly && should_close) {
+        gly->state = GECND_FSM_EXITING;
+        if (gamely_daemon_media_playback_active())
+            should_close = false;
+    }
 
     return !should_close;
 }

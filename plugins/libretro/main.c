@@ -1,11 +1,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdatomic.h>
 
 #include <lauxlib.h>
 #include <lua.h>
 
 #include "gecnd.h"
+
+static atomic_bool s_http_loading = false;
 
 #include "uri_query.h"
 
@@ -129,12 +132,18 @@ static void libretro_file_tick(uint8_t channel, void *usr) {
     libretro_run_frame();
 }
 
+static gdmsp_fsm_t libretro_file_state(uint8_t channel, void *usr) {
+    (void)channel; (void)usr;
+    return libretro_is_running() ? GDMSP_FSM_PLAYING : GDMSP_FSM_IDLE;
+}
+
 static gamely_media_player_t libretro_file_player = {
     .start = libretro_file_start,
     .stop  = libretro_file_stop,
     .tick  = libretro_file_tick,
     .pause = NULL,
     .play  = NULL,
+    .state = libretro_file_state,
 };
 
 /* ── player: libretro+http+? / libretro+https+? (fetch + buffer) ─── */
@@ -185,6 +194,7 @@ static void libretro_http_on_done(gly_req_id_t id, void *user) {
         fprintf(stderr, "[libretro+http] failed to load game from buffer\n");
 
 cleanup:
+    atomic_store(&s_http_loading, false);
     free(ctx->buf);
     free(ctx);
 }
@@ -193,6 +203,7 @@ static void libretro_http_on_error(gly_req_id_t id, const char *msg, void *user)
     (void)id;
     libretro_http_ctx_t *ctx = user;
     fprintf(stderr, "[libretro+http] fetch error: %s\n", msg ? msg : "");
+    atomic_store(&s_http_loading, false);
     free(ctx->buf);
     free(ctx);
 }
@@ -225,6 +236,8 @@ static void libretro_http_start(uint8_t channel, const char *url, void *usr) {
     ctx->channel = channel;
     strncpy(ctx->core_name, core_name, sizeof(ctx->core_name) - 1);
 
+    atomic_store(&s_http_loading, true);
+
     gly_http_req_t req = {0};
     gamely_daemon_webclient_http(fetch_url, &req,
         libretro_http_on_status, libretro_http_on_data,
@@ -245,12 +258,19 @@ static void libretro_http_tick(uint8_t channel, void *usr) {
     libretro_run_frame();
 }
 
+static gdmsp_fsm_t libretro_http_state(uint8_t channel, void *usr) {
+    (void)channel; (void)usr;
+    if (atomic_load(&s_http_loading)) return GDMSP_FSM_LOADING;
+    return libretro_is_running() ? GDMSP_FSM_PLAYING : GDMSP_FSM_IDLE;
+}
+
 static gamely_media_player_t libretro_http_player = {
     .start = libretro_http_start,
     .stop  = libretro_http_stop,
     .tick  = libretro_http_tick,
     .pause = NULL,
     .play  = NULL,
+    .state = libretro_http_state,
 };
 
 /* ── Lua API ──────────────────────────────────────────────────────── */
