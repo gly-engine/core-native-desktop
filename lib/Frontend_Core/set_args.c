@@ -38,11 +38,8 @@ static ko_longopt_t longopts[] = {
 };
 
 static void check_range(gecnd_t *gly, float val, float min, float max, const char *name) {
-    if (val < min || val > max) {
-        char buf[128];
-        snprintf(buf, sizeof(buf), "argument %s out of range [%.1f, %.1f]: %.2f", name, min, max, val);
-        gly->error_string = strdup(buf);
-    }
+    if (val < min || val > max)
+        gecnd_add_error(gly, "argument %s out of range [%.1f, %.1f]: %.2f", name, min, max, val);
 }
 
 void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
@@ -58,21 +55,17 @@ void gecnd_set_args(gecnd_t *gly, int argc, char* argv[]) {
 
 void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
 {
-    if (c == 1300 && sscanf(opt.arg, "%hdx%hd", &gecnd_get_display()->window_width, &gecnd_get_display()->window_height) != 2) {
-        gly->error_string = "invalid window size!";
-    }
-    if (c == 1301 && sscanf(opt.arg, "%hdx%hd", &gly->width, &gly->height) != 2) {
-        gly->error_string = "invalid screen size!";
-    }
-    if (c == 1302 && (sscanf(opt.arg, "%hhi", &gly->target_fps) != 1 || gly->target_fps > 100)) {
-        gly->error_string = "invalid fps!";
-    }
+    if (c == 1300 && sscanf(opt.arg, "%hdx%hd", &gecnd_get_display()->window_width, &gecnd_get_display()->window_height) != 2)
+        gecnd_add_error(gly, "invalid window size!");
+    if (c == 1301 && sscanf(opt.arg, "%hdx%hd", &gly->width, &gly->height) != 2)
+        gecnd_add_error(gly, "invalid screen size!");
+    if (c == 1302 && (sscanf(opt.arg, "%hhi", &gly->target_fps) != 1 || gly->target_fps > 100))
+        gecnd_add_error(gly, "invalid fps!");
     if (c == 1303) {
         gecnd_metrics_setup((uint32_t)atoi(opt.arg));
     }
-    if (c == 1304 && (sscanf(opt.arg, "%hhi", &gly->frameskip) != 1 || gly->frameskip > 10)) {
-        gly->error_string = "invalid frameskip!";
-    }
+    if (c == 1304 && (sscanf(opt.arg, "%hhi", &gly->frameskip) != 1 || gly->frameskip > 10))
+        gecnd_add_error(gly, "invalid frameskip!");
     if (c == 1305) {
         if (strncmp(opt.arg, "http://", 7) == 0 || strncmp(opt.arg, "https://", 8) == 0) {
             gly->game_source.kind = GECND_LUA_SOURCE_HTTP;
@@ -114,9 +107,8 @@ void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
     if (c == 1309) {
         gecnd_get_display()->disable_radius = true;
     }
-    if (c == 1310 && (sscanf(opt.arg, "%hu", &gecnd_get_display()->port) != 1)) {
-        gly->error_string = "invalid port!";
-    }
+    if (c == 1310 && (sscanf(opt.arg, "%hu", &gecnd_get_display()->port) != 1))
+        gecnd_add_error(gly, "invalid port!");
     if (c == 1402) {
         float b = 1.0f, cv = 1.0f, s = 1.0f;
         if (sscanf(opt.arg, "%f,%f,%f", &b, &cv, &s) >= 1) {

@@ -166,68 +166,81 @@ static const char *fetch_load(gecnd_t *gly, gecnd_lua_source_t *src,
     return NULL;
 }
 
-/* ── State handlers ──────────────────────────────────────────────── */
+static bool init_check_exit(gecnd_t *gly) {
+    bool close_requested = false;
+    gly_hook_should_close(&close_requested);
+    if (close_requested || gecnd_signal != 0) {
+        gecnd_signal = 0;
+        gly->state = GECND_FSM_EXITING;
+    }
+    return true;
+}
 
-static void state_boot(gecnd_t *gly) {
+static bool state_boot(gecnd_t *gly) {
     gly_hook_display_init(gly->width, gly->height);
     if (gecnd_is_root(gly))
         gamely_hypervisor_init(gly);
     gly_hook_display_fps(gly->loop ? 0 : gly->target_fps);
-    gly->error_string = gecnd_plugins_open_lua(gly->L);
-    if (gly->error_string) return;
+    const char *e = gecnd_plugins_open_lua(gly->L);
+    if (e) { gecnd_add_error(gly, "%s", e); return false; }
     gly->state = GECND_FSM_DAEMONS_UP;
+    return init_check_exit(gly);
 }
 
-static void state_daemons_up(gecnd_t *gly) {
+static bool state_daemons_up(gecnd_t *gly) {
 #if !defined(GECND_USE_VENDOR_GAME)
     if (gly->game_source.kind == GECND_LUA_SOURCE_NONE &&
         gamely_daemon_media_playback_active()) {
         gly->state = GECND_FSM_RUNNING_NOGAME;
-        return;
+        return true;
     }
 #endif
     if (gly->engine_source.kind == GECND_LUA_SOURCE_HTTP) {
         fetch_start(&gly->engine_source);
         gly->state = GECND_FSM_FETCHING;
-        return;
+        return init_check_exit(gly);
     }
     const uint8_t *vbuf = NULL; size_t vlen = 0;
 #if defined(GECND_USE_VENDOR_ENGINE)
     vbuf = engine_bytecode_lua; vlen = engine_bytecode_lua_len;
 #endif
-    gly->error_string = load_via_resolver(gly, &gly->engine_source, "main", 0, vbuf, vlen);
-    if (gly->error_string) return;
+    const char *e = load_via_resolver(gly, &gly->engine_source, "main", 0, vbuf, vlen);
+    if (e) { gecnd_add_error(gly, "%s", e); return false; }
     gly->state = GECND_FSM_ENGINE_LOADED;
+    return init_check_exit(gly);
 }
 
-static void state_fetching(gecnd_t *gly) {
+static bool state_fetching(gecnd_t *gly) {
     if (gly->engine_source.kind == GECND_LUA_SOURCE_HTTP) {
-        if (!gly->engine_source.fetch.done) return;
+        if (!gly->engine_source.fetch.done) return init_check_exit(gly);
         const uint8_t *vbuf = NULL; size_t vlen = 0;
 #if defined(GECND_USE_VENDOR_ENGINE)
         vbuf = engine_bytecode_lua; vlen = engine_bytecode_lua_len;
 #endif
-        gly->error_string = fetch_load(gly, &gly->engine_source, "main", 0, vbuf, vlen);
-        if (gly->error_string) return;
+        const char *e = fetch_load(gly, &gly->engine_source, "main", 0, vbuf, vlen);
+        if (e) { gecnd_add_error(gly, "%s", e); return false; }
         gly->engine_source.kind = GECND_LUA_SOURCE_NONE;
         gly->state = GECND_FSM_ENGINE_LOADED;
-        return;
+        return init_check_exit(gly);
     }
-    if (!gly->game_source.fetch.done) return;
+    if (!gly->game_source.fetch.done) return init_check_exit(gly);
     const uint8_t *vbuf = NULL; size_t vlen = 0;
 #if defined(GECND_USE_VENDOR_GAME)
     vbuf = game_bytecode_lua; vlen = game_bytecode_lua_len;
 #endif
-    gly->error_string = fetch_load(gly, &gly->game_source, "game", 1, vbuf, vlen);
-    if (gly->error_string) return;
+    {
+        const char *e = fetch_load(gly, &gly->game_source, "game", 1, vbuf, vlen);
+        if (e) { gecnd_add_error(gly, "%s", e); return false; }
+    }
     gly->state = GECND_FSM_GAME_LOADED;
+    return init_check_exit(gly);
 }
 
-static void state_engine_loaded(gecnd_t *gly) {
+static bool state_engine_loaded(gecnd_t *gly) {
     lua_getglobal(gly->L, "native_callback_init");
     if (lua_type(gly->L, -1) != LUA_TFUNCTION) {
-        gly->error_string = "missing: native_callback_init";
-        return;
+        gecnd_add_error(gly, "missing: native_callback_init");
+        return false;
     }
     lua_pushnumber(gly->L, gly->width);
     lua_pushnumber(gly->L, gly->height);
@@ -236,43 +249,44 @@ static void state_engine_loaded(gecnd_t *gly) {
     if (gly->game_source.kind == GECND_LUA_SOURCE_HTTP) {
         fetch_start(&gly->game_source);
         gly->state = GECND_FSM_FETCHING;
-        return;
+        return init_check_exit(gly);
     }
     const uint8_t *vbuf = NULL; size_t vlen = 0;
 #if defined(GECND_USE_VENDOR_GAME)
     vbuf = game_bytecode_lua; vlen = game_bytecode_lua_len;
 #endif
-    gly->error_string = load_via_resolver(gly, &gly->game_source, "game", 1, vbuf, vlen);
-    if (gly->error_string) return;
-    /* stack: [native_callback_init, w, h, game_module] */
+    {
+        const char *e = load_via_resolver(gly, &gly->game_source, "game", 1, vbuf, vlen);
+        if (e) { gecnd_add_error(gly, "%s", e); return false; }
+    }
     gly->state = GECND_FSM_GAME_LOADED;
+    return init_check_exit(gly);
 }
 
-static void state_game_loaded(gecnd_t *gly) {
-    /* stack: [native_callback_init, w, h, game_module] */
+static bool state_game_loaded(gecnd_t *gly) {
     if (lua_pcall(gly->L, 3, 0, 0)) {
-        gly->error_string = luaL_checkstring(gly->L, -1);
-        return;
+        gecnd_add_error(gly, "%s", lua_tostring(gly->L, -1));
+        return false;
     }
 
     lua_getglobal(gly->L, "native_callback_draw");
     if (lua_type(gly->L, -1) != LUA_TFUNCTION) {
-        gly->error_string = "missing: native_callback_draw";
-        return;
+        gecnd_add_error(gly, "missing: native_callback_draw");
+        return false;
     }
     gly->ref_native_callback_draw = luaL_ref(gly->L, LUA_REGISTRYINDEX);
 
     lua_getglobal(gly->L, "native_callback_loop");
     if (lua_type(gly->L, -1) != LUA_TFUNCTION) {
-        gly->error_string = "missing: native_callback_loop";
-        return;
+        gecnd_add_error(gly, "missing: native_callback_loop");
+        return false;
     }
     gly->ref_native_callback_loop = luaL_ref(gly->L, LUA_REGISTRYINDEX);
 
     lua_getglobal(gly->L, "native_callback_keyboard");
     if (lua_type(gly->L, -1) != LUA_TFUNCTION) {
-        gly->error_string = "missing: native_callback_keyboard";
-        return;
+        gecnd_add_error(gly, "missing: native_callback_keyboard");
+        return false;
     }
     gly->ref_native_callback_keyboard = luaL_ref(gly->L, LUA_REGISTRYINDEX);
 
@@ -280,6 +294,7 @@ static void state_game_loaded(gecnd_t *gly) {
         gamely_daemon_input_init_keys(gecnd_dispatch_key_event, gly);
 
     gly->state = GECND_FSM_RUNNING;
+    return true;
 }
 
 /* ── Runtime callbacks ───────────────────────────────────────────── */
@@ -293,7 +308,7 @@ void gecnd_dispatch_key_event(const char *name, bool pressed, int port, void *us
     lua_pushboolean(gly->L, pressed);
     lua_pushnumber(gly->L, port);
     if (lua_pcall(gly->L, 3, 0, 0))
-        gly->error_string = luaL_checkstring(gly->L, -1);
+        gecnd_add_error(gly, "%s", lua_tostring(gly->L, -1));
 }
 
 static void callback_loop(gecnd_t *gly) {
@@ -307,7 +322,7 @@ static void callback_loop(gecnd_t *gly) {
         else if (gly->flags & GECND_FLAG_TIMER_INTERNAL)
             delta_time = gecnd_get_sleep(gly);
         else {
-            gly->error_string = "backend not has provider delta time";
+            gecnd_add_error(gly, "backend not has provider delta time");
             return;
         }
     }
@@ -315,115 +330,90 @@ static void callback_loop(gecnd_t *gly) {
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_loop);
     lua_pushnumber(gly->L, delta_time);
     if (lua_pcall(gly->L, 1, 0, 0))
-        gly->error_string = luaL_checkstring(gly->L, -1);
+        gecnd_add_error(gly, "%s", lua_tostring(gly->L, -1));
 }
 
 static void callback_draw(gecnd_t *gly) {
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_draw);
     if (lua_pcall(gly->L, 0, 0, 0))
-        gly->error_string = luaL_checkstring(gly->L, -1);
+        gecnd_add_error(gly, "%s", lua_tostring(gly->L, -1));
 }
 
-/* ── Main update ─────────────────────────────────────────────────── */
+static bool state_running(gecnd_t *gly) {
+    gecnd_metrics_finish_wait();
+    gamely_daemon_media_playback_tick();
+
+    gecnd_metrics_start_input();
+    if (gecnd_is_root(gly)) gamely_hypervisor_tick();
+    gecnd_metrics_finish_input();
+    if (gly->error_len) return false;
+
+    gecnd_metrics_start_loop();
+    if (gly->state != GECND_FSM_RUNNING_NOGAME)
+        callback_loop(gly);
+    gecnd_metrics_finish_loop();
+    if (gly->error_len) return false;
+
+    if (gly->state != GECND_FSM_RUNNING_BACKGROUND &&
+        gly->state != GECND_FSM_RUNNING_STANDBY) {
+        if (gly->frameskip_count++ >= gly->frameskip) {
+            gly->frameskip_count = 0;
+            native_draw_start();
+            gecnd_metrics_start_draw();
+            if (gly->state != GECND_FSM_RUNNING_NOGAME) {
+                gly->want_blit = true;
+                callback_draw(gly);
+                if (gly->want_blit)
+                    gecnd_add_error(gly, "[error] engine want blit!");
+            }
+            gecnd_metrics_finish_draw();
+            gecnd_metrics_render(gly);
+            gecnd_metrics_start_post();
+            native_draw_flush();
+            gecnd_metrics_finish_post();
+        }
+    }
+
+    gecnd_metrics_update();
+    gecnd_metrics_start_wait();
+    if (gly->error_len) return false;
+
+    bool close_requested = false;
+    gly_hook_should_close(&close_requested);
+    if (gly->state == GECND_FSM_RUNNING_NOGAME && !gamely_daemon_media_playback_active()) {
+        gecnd_signal = 0;
+        gly->state = GECND_FSM_EXITING;
+    } else if (close_requested || gecnd_signal != 0) {
+        gecnd_signal = 0;
+        gly->state = GECND_FSM_EXITING;
+    }
+    return true;
+}
+
+static bool state_exiting(gecnd_t *gly) {
+    if (gecnd_signal != 0) {
+        gly->state = GECND_FSM_EXITING_FORCE;
+        return false;
+    }
+    gamely_daemon_media_playback_tick();
+    return gamely_daemon_media_playback_active();
+}
 
 bool gecnd_update(gecnd_t *gly) {
-    bool result = false;
-    do {
-        if (!gly || gly->state == GECND_FSM_ERROR || gly->state == GECND_FSM_EXITING_FORCE) break;
-
-        if (gly->state == GECND_FSM_EXITING) {
-            if (gecnd_signal != 0) {
-                gly->state = GECND_FSM_EXITING_FORCE;
-                break;
-            }
-            gamely_daemon_media_playback_tick();
-            result = gamely_daemon_media_playback_active();
-            break;
-        }
-
-        /* Advance initialization states each tick; stops at FETCHING_* or RUNNING. */
-        gecnd_fsm_t prev;
-        do {
-            prev = gly->state;
-            switch (gly->state) {
-            case GECND_FSM_BOOT:
-            case GECND_FSM_ARGS_PARSED:  state_boot(gly);         break;
-            case GECND_FSM_DAEMONS_UP:   state_daemons_up(gly);   break;
-            case GECND_FSM_FETCHING:     state_fetching(gly);     break;
-            case GECND_FSM_ENGINE_LOADED: state_engine_loaded(gly); break;
-            case GECND_FSM_GAME_LOADED:  state_game_loaded(gly);  break;
-            default: break;
-            }
-            if (gly->error_string) { gly->state = GECND_FSM_ERROR; break; }
-        } while (gly->state != prev && gly->state < GECND_FSM_RUNNING);
-
-        if (gly->state == GECND_FSM_ERROR) break;
-
-        /* Still initializing — check for exit signals even here */
-        if (gly->state < GECND_FSM_RUNNING) {
-            bool close_requested = false;
-            gly_hook_should_close(&close_requested);
-            if (close_requested || gecnd_signal != 0) {
-                gecnd_signal = 0;
-                gly->state = GECND_FSM_EXITING;
-            }
-            result = true;
-            break;
-        }
-
-        /* ── Running ──────────────────────────────────────────────────── */
-
-        gecnd_metrics_finish_wait();
-        gamely_daemon_media_playback_tick();
-
-        gecnd_metrics_start_input();
-        if (gecnd_is_root(gly)) gamely_hypervisor_tick();
-        gecnd_metrics_finish_input();
-        if (gly->error_string) { gly->state = GECND_FSM_ERROR; break; }
-
-        gecnd_metrics_start_loop();
-        if (gly->state != GECND_FSM_RUNNING_NOGAME)
-            callback_loop(gly);
-        gecnd_metrics_finish_loop();
-        if (gly->error_string) { gly->state = GECND_FSM_ERROR; break; }
-
-        if (gly->state != GECND_FSM_RUNNING_BACKGROUND &&
-            gly->state != GECND_FSM_RUNNING_STANDBY) {
-            if (gly->frameskip_count++ >= gly->frameskip) {
-                gly->frameskip_count = 0;
-                native_draw_start();
-                gecnd_metrics_start_draw();
-                if (gly->state != GECND_FSM_RUNNING_NOGAME) {
-                    gly->want_blit = true;
-                    callback_draw(gly);
-                    if (gly->want_blit)
-                        gly->error_string = "[error] engine want blit!\n";
-                }
-                gecnd_metrics_finish_draw();
-                gecnd_metrics_render(gly);
-                gecnd_metrics_start_post();
-                native_draw_flush();
-                gecnd_metrics_finish_post();
-            }
-        }
-
-        gecnd_metrics_update();
-        gecnd_metrics_start_wait();
-        if (gly->error_string) { gly->state = GECND_FSM_ERROR; break; }
-
-        bool close_requested = false;
-        gly_hook_should_close(&close_requested);
-        if (gly->state == GECND_FSM_RUNNING_NOGAME && !gamely_daemon_media_playback_active()) {
-            gecnd_signal = 0;
-            gly->state = GECND_FSM_EXITING;
-        } else if (close_requested || gecnd_signal != 0) {
-            gecnd_signal = 0;
-            gly->state = GECND_FSM_EXITING;
-        }
-
-        result = (gly->state == GECND_FSM_EXITING)
-                 ? gamely_daemon_media_playback_active()
-                 : true;
-    } while (0);
-    return result;
+    if (!gly || gly->error_len || gly->state == GECND_FSM_EXITING_FORCE) return false;
+    switch (gly->state) {
+    case GECND_FSM_BOOT:
+    case GECND_FSM_ARGS_PARSED:    return state_boot(gly);
+    case GECND_FSM_DAEMONS_UP:     return state_daemons_up(gly);
+    case GECND_FSM_FETCHING:       return state_fetching(gly);
+    case GECND_FSM_ENGINE_LOADED:  return state_engine_loaded(gly);
+    case GECND_FSM_GAME_LOADED:    return state_game_loaded(gly);
+    case GECND_FSM_RUNNING:
+    case GECND_FSM_RUNNING_PERFORMANCE:
+    case GECND_FSM_RUNNING_BACKGROUND:
+    case GECND_FSM_RUNNING_STANDBY:
+    case GECND_FSM_RUNNING_NOGAME: return state_running(gly);
+    case GECND_FSM_EXITING:        return state_exiting(gly);
+    default:                       return false;
+    }
 }

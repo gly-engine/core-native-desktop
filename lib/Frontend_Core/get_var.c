@@ -11,9 +11,9 @@ uint32_t gecnd_get_sleep(gecnd_t *gly) {
 }
 
 bool gecnd_has_errors(gecnd_t *gly) {
-    return !!gly->error_string;
+    return gly && gly->error_len > 0;
 }
 
 const char* gecnd_get_errors(gecnd_t *gly) {
-    return gly->error_string;
+    return gly ? gly->error_buf : NULL;
 }

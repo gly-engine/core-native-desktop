@@ -29,7 +29,6 @@ typedef enum {
     GECND_FSM_RUNNING_BACKGROUND,
     GECND_FSM_RUNNING_STANDBY,
     GECND_FSM_RUNNING_NOGAME,
-    GECND_FSM_ERROR,
     GECND_FSM_EXITING,
     GECND_FSM_EXITING_FORCE,
 } gecnd_fsm_t;
@@ -108,7 +107,9 @@ typedef struct {
     bool        want_blit;
     gecnd_lua_source_t engine_source;
     gecnd_lua_source_t game_source;
-    const char *error_string;
+    char       *error_buf;
+    size_t      error_len;
+    size_t      error_cap;
 } gecnd_t;
 
 typedef struct {
@@ -144,6 +145,7 @@ gecnd_fsm_t gecnd_get_state(gecnd_t *gly);
 // error
 bool gecnd_has_errors(gecnd_t *gly);
 const char* gecnd_get_errors(gecnd_t *gly);
+void gecnd_add_error(gecnd_t *gly, const char *fmt, ...);
 // tick
 bool gecnd_update(gecnd_t *gly);
 void gecnd_dispatch_key_event(const char *name, bool pressed, int port, void *usr);

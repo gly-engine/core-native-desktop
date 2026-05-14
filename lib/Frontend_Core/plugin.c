@@ -45,7 +45,7 @@ bool gecnd_plugin_load(gecnd_t *gly, const char *path) {
 #else
         fprintf(stderr, "[plugin] failed to load '%s'\n", path);
 #endif
-        gly->error_string = "failed to load plugin";
+        gecnd_add_error(gly, "failed to load plugin: %s", path);
         return false;
     }
 
@@ -62,7 +62,7 @@ bool gecnd_plugin_load(gecnd_t *gly, const char *path) {
 
     gecnd_plugin_t *node = malloc(sizeof(gecnd_plugin_t));
     if (!node) {
-        gly->error_string = "out of memory";
+        gecnd_add_error(gly, "out of memory");
         return false;
     }
     node->handle = lib;

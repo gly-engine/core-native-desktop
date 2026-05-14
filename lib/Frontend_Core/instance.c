@@ -106,6 +106,7 @@ void gecnd_destroy(gecnd_t *gly) {
             gamely_hypervisor_exit();
         free(gly->engine_source.fetch.buf);
         free(gly->game_source.fetch.buf);
+        free(gly->error_buf);
         gly_hook_luaclose_storage(gly->L);
         free(gly);
     }
@@ -128,5 +129,5 @@ gecnd_t *gecnd_get_root() {
 }
 
 gecnd_fsm_t gecnd_get_state(gecnd_t *gly) {
-    return gly ? gly->state : GECND_FSM_ERROR;
+    return gly ? gly->state : GECND_FSM_EXITING_FORCE;
 }
