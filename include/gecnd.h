@@ -401,6 +401,9 @@ void gamely_daemon_input_add_keycode(const char *key_name, uint32_t hex);
 /* register sources — called once per --input before open() */
 void gamely_daemon_input_add_source(const char *uri);
 
+/* register a no-arg poller called at the start of every gamely_daemon_input_tick() */
+void gamely_daemon_input_add_tick(void (*fn)(void));
+
 /* drivers are opened lazily on first push/init_keys; falls back to void://0 if none */
 void gamely_daemon_input_close(void);
 

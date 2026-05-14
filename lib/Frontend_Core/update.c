@@ -179,6 +179,13 @@ static void state_boot(gecnd_t *gly) {
 }
 
 static void state_daemons_up(gecnd_t *gly) {
+#if !defined(GECND_USE_VENDOR_GAME)
+    if (gly->game_source.kind == GECND_LUA_SOURCE_NONE &&
+        gamely_daemon_media_playback_active()) {
+        gly->state = GECND_FSM_RUNNING_NOGAME;
+        return;
+    }
+#endif
     if (gly->engine_source.kind == GECND_LUA_SOURCE_HTTP) {
         fetch_start(&gly->engine_source);
         gly->state = GECND_FSM_FETCHING;
@@ -280,28 +287,13 @@ static void state_game_loaded(gecnd_t *gly) {
 void gecnd_dispatch_key_event(const char *name, bool pressed, int port, void *usr) {
     if (!usr || !name || port != 0) return;
     gecnd_t *gly = (gecnd_t *)usr;
+    if (gly->ref_native_callback_keyboard <= 0) return;
     lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_keyboard);
     lua_pushstring(gly->L, name);
     lua_pushboolean(gly->L, pressed);
     lua_pushnumber(gly->L, port);
     if (lua_pcall(gly->L, 3, 0, 0))
         gly->error_string = luaL_checkstring(gly->L, -1);
-}
-
-/** @todo delete this */
-static void callback_keyboard(gecnd_t *gly) {
-    uint8_t index = 0;
-    do {
-        char *key     = NULL;
-        bool  pressed = false;
-        gly_hook_input_keyboard(index, &key, &pressed);
-        if (!key && !pressed) break;
-        index++;
-        if (key) {
-            gecnd_dispatch_key_event(key, pressed, 0, gly);
-            if (gly->error_string) break;
-        }
-    } while (index < 100);
 }
 
 static void callback_loop(gecnd_t *gly) {
@@ -340,6 +332,10 @@ bool gecnd_update(gecnd_t *gly) {
         if (!gly || gly->state == GECND_FSM_ERROR || gly->state == GECND_FSM_EXITING_FORCE) break;
 
         if (gly->state == GECND_FSM_EXITING) {
+            if (gecnd_signal != 0) {
+                gly->state = GECND_FSM_EXITING_FORCE;
+                break;
+            }
             gamely_daemon_media_playback_tick();
             result = gamely_daemon_media_playback_active();
             break;
@@ -367,8 +363,10 @@ bool gecnd_update(gecnd_t *gly) {
         if (gly->state < GECND_FSM_RUNNING) {
             bool close_requested = false;
             gly_hook_should_close(&close_requested);
-            if (close_requested || gecnd_signal != 0)
+            if (close_requested || gecnd_signal != 0) {
+                gecnd_signal = 0;
                 gly->state = GECND_FSM_EXITING;
+            }
             result = true;
             break;
         }
@@ -380,12 +378,12 @@ bool gecnd_update(gecnd_t *gly) {
 
         gecnd_metrics_start_input();
         if (gecnd_is_root(gly)) gamely_hypervisor_tick();
-        callback_keyboard(gly);
         gecnd_metrics_finish_input();
         if (gly->error_string) { gly->state = GECND_FSM_ERROR; break; }
 
         gecnd_metrics_start_loop();
-        callback_loop(gly);
+        if (gly->state != GECND_FSM_RUNNING_NOGAME)
+            callback_loop(gly);
         gecnd_metrics_finish_loop();
         if (gly->error_string) { gly->state = GECND_FSM_ERROR; break; }
 
@@ -395,10 +393,12 @@ bool gecnd_update(gecnd_t *gly) {
                 gly->frameskip_count = 0;
                 native_draw_start();
                 gecnd_metrics_start_draw();
-                gly->want_blit = true;
-                callback_draw(gly);
-                if (gly->want_blit)
-                    gly->error_string = "[error] engine want blit!\n";
+                if (gly->state != GECND_FSM_RUNNING_NOGAME) {
+                    gly->want_blit = true;
+                    callback_draw(gly);
+                    if (gly->want_blit)
+                        gly->error_string = "[error] engine want blit!\n";
+                }
                 gecnd_metrics_finish_draw();
                 gecnd_metrics_render(gly);
                 gecnd_metrics_start_post();
@@ -413,8 +413,13 @@ bool gecnd_update(gecnd_t *gly) {
 
         bool close_requested = false;
         gly_hook_should_close(&close_requested);
-        if (close_requested || gecnd_signal != 0)
+        if (gly->state == GECND_FSM_RUNNING_NOGAME && !gamely_daemon_media_playback_active()) {
+            gecnd_signal = 0;
             gly->state = GECND_FSM_EXITING;
+        } else if (close_requested || gecnd_signal != 0) {
+            gecnd_signal = 0;
+            gly->state = GECND_FSM_EXITING;
+        }
 
         result = (gly->state == GECND_FSM_EXITING)
                  ? gamely_daemon_media_playback_active()

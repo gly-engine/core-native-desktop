@@ -147,6 +147,18 @@ static void ttl_remove(const char *name, int port)
     }
 }
 
+/* -- pollers -- */
+
+#define MAX_POLLERS 8
+
+static void (*g_pollers[MAX_POLLERS])(void);
+static int   g_poller_cnt = 0;
+
+void gamely_daemon_input_add_tick(void (*fn)(void)) {
+    if (fn && g_poller_cnt < MAX_POLLERS)
+        g_pollers[g_poller_cnt++] = fn;
+}
+
 /* -- subscribers -- */
 
 #define MAX_SUBS 8
@@ -213,6 +225,9 @@ void gamely_daemon_input_subscribe(gamely_input_key_cb cb, void *usr)
 
 void gamely_daemon_input_tick(void)
 {
+    for (int i = 0; i < g_poller_cnt; i++)
+        g_pollers[i]();
+
     uint64_t now = now_ms();
 
     /* TTL expiry */

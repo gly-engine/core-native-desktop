@@ -117,6 +117,7 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     for (uint8_t i = 0; i < sizeof(keymap)/sizeof(*keymap); i++) {
         gamely_daemon_input_add_keycode(keymap[i].name, keymap[i].key);
     }
+    gamely_daemon_input_add_tick(glfwPollEvents);
 }
 
 void gly_hook_display_dt(int16_t *delta_time) {
@@ -140,7 +141,3 @@ void gly_hook_display_close(void) {
     platform_terminate();
 }
 
-void gly_hook_input_keyboard(uint8_t index, char** key, bool* press) {
-    (void)index; (void)key; (void)press;
-    glfwPollEvents();
-}
