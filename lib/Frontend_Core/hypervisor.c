@@ -5,7 +5,7 @@
 #include <string.h>
 #include "gecnd.h"
 #include "gehook.h"
-
+#include <stdio.h>
 gamely_img_decoded_t gamely_driver_decoder_stb(const uint8_t *data, size_t len);
 gamely_img_decoded_t gamely_driver_decoder_spng(const uint8_t *data, size_t len);
 void gamely_resolver_image_file(const char *url, void *schema_usr, gamely_img_on_fetch_cb on_done, void *usr);
