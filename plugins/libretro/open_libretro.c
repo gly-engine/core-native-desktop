@@ -389,6 +389,13 @@ static void libretro_deinit_core(void) {
         if (p_retro_deinit) p_retro_deinit();
     }
     if (core_handle) close_library(core_handle);
+    if (core_initialized) {
+        static const uint8_t blank[4] = { 0, 0, 0, 0 };
+        if (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888)
+            gamely_daemon_media_background_push_xrgb8888(blank, 1, 1, 4);
+        else
+            gamely_daemon_media_background_push_rgb565(blank, 1, 1, 2);
+    }
     gamely_daemon_media_background_release();
     core_initialized = core_init_done = false;
     core_handle = NULL;

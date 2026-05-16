@@ -2,6 +2,7 @@
  * @file hypervisor.c
  * @todo move all daemon ticks to here
  */
+#include <stdio.h>
 #include <string.h>
 #include "gecnd.h"
 #include "gehook.h"
