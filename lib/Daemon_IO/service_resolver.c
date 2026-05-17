@@ -56,14 +56,30 @@ void gamely_resolver_image_file(const char *url, void *schema_usr,
     strncpy(ctx->hint, hint, sizeof(ctx->hint) - 1);
     ctx->hint[sizeof(ctx->hint) - 1] = '\0';
 
-    /* try direct async read first */
-    if (gamely_daemon_fs_read(path, NULL, NULL, on_fs_read, ctx) == 0) return;
-
-    /* fall back: search under cwd and exe_cwd */
     char cwd[512], exe[512];
     gecnd_utils_get_cwd(cwd, sizeof(cwd));
     gecnd_utils_get_exe_cwd(exe, sizeof(exe));
 
+    /* PNG asked + ETC1 backend available: look for a sibling .etc1 first. */
+    if (strcmp(hint, "png") == 0 && gamely_daemon_img_has_backend("etc1")) {
+        char etc1_path[512];
+        size_t base_len = (size_t)(dot - path);
+        if (base_len + 6 < sizeof(etc1_path)) {
+            memcpy(etc1_path, path, base_len);
+            memcpy(etc1_path + base_len, ".etc1", 6);
+
+            const char *etc1_paths[] = { cwd, exe, NULL };
+            const char *etc1_files[] = { etc1_path, NULL };
+            if (gamely_daemon_fs_search(etc1_paths, etc1_files, NULL,
+                                         GLY_FS_ONE_CB_ASYNC, on_found, ctx) == 0)
+                return;
+        }
+    }
+
+    /* try direct async read first */
+    if (gamely_daemon_fs_read(path, NULL, NULL, on_fs_read, ctx) == 0) return;
+
+    /* fall back: search under cwd and exe_cwd */
     const char *paths[] = { cwd, exe, NULL };
     const char *files[] = { path, NULL };
     if (gamely_daemon_fs_search(paths, files, NULL,

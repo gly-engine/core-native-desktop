@@ -12,6 +12,7 @@
 #include <libavcodec/avcodec.h>
 #include <libswscale/swscale.h>
 #include <libavutil/time.h>
+#include <libavutil/samplefmt.h>
 
 typedef struct {
     AVFormatContext *fmt;
@@ -19,6 +20,23 @@ typedef struct {
     AVStream        *video;
     int video_index;
     struct SwsContext *sws;
+
+    AVCodecContext  *acodec;
+    AVStream        *audio;
+    int audio_index;
+    int16_t *audio_buf;
+    int audio_buf_samples;
+
+    /* audio output: ring buffer of stereo S16 frames + dedicated drain thread */
+    uv_thread_t athread;
+    atomic_int  athread_running;
+    int16_t    *aring;          /* 2 * aring_cap int16_t */
+    size_t      aring_cap;      /* capacity in stereo frames */
+    size_t      aring_head;
+    size_t      aring_tail;
+    uv_mutex_t  aring_mtx;
+    uv_cond_t   aring_cv;
+    int         athread_ready;
 
     uv_thread_t thread;
     atomic_int running;

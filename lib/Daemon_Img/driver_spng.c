@@ -39,6 +39,7 @@ gamely_img_decoded_t gamely_driver_decoder_spng(const uint8_t *data, size_t len)
 
     spng_ctx_free(ctx);
     out.pixels = pixels;
+    out.len    = img_size;
     out.w      = (int16_t)ihdr.width;
     out.h      = (int16_t)ihdr.height;
     return out;

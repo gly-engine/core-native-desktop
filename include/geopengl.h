@@ -33,6 +33,9 @@ typedef struct {
     GLuint id;
     int width;
     int height;
+    int atlas_x;
+    int atlas_y;
+    int live_idx;
     float u, v;
     float u2, v2;
     bool is_opaque;
@@ -40,10 +43,18 @@ typedef struct {
 } GLTexture;
 
 typedef struct {
+    int x, y, w, h;
+} GEAtlasRect;
+
+typedef struct {
     GLuint tex_id;
     int cursor_x;
     int cursor_y;
     int row_height;
+    int reset_cursor_x;
+    int reset_cursor_y;
+    int reset_row_height;
+    kvec_t(GEAtlasRect) free_rects;
 } GEAtlasPage;
 
 static inline void mat4_ortho(float *mat, float left, float right, float bottom, float top, float near, float far) {
@@ -140,6 +151,7 @@ typedef struct {
     int fbo_width, fbo_height;
 
     kvec_t(GEAtlasPage) atlas_pages;
+    bool etc1_supported;
     int active_opaque_page_index;
     int active_transparent_page_index;
     
@@ -187,6 +199,15 @@ void ge_pipeline_start(void);
 void ge_pipeline_flush(void);
 void ge_pipeline_flush_primitives(void);
 void ge_atlas_alloc(int w, int h, int *page_index, int *ox, int *oy);
+void ge_atlas_free (int page_index, int ox, int oy, int w, int h);
+void ge_atlas_reset_images(void);
+
+/* ETC1 images live in their own GL texture (no atlas). The batch dispatcher
+ * uses page_index either as an atlas page index (rgba) or, with this flag
+ * set, as the raw GL texture id (etc1). */
+#define GECND_ATLAS_ETC_PAGE_FLAG 0x10000
+
+bool ge_detect_etc1_support(void);
 
 void ge_batch_add_vertex_tex(int16_t x, int16_t y, float u, float v, uint32_t color, bool opaque, int page_index);
 void ge_batch_add_vertex_shape(int16_t x, int16_t y, int16_t lx, int16_t ly, int16_t radius, uint32_t color, int8_t mode, bool aa);

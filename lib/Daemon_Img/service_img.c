@@ -88,10 +88,6 @@ static decoder_t *find_decoder(const char *from, const char *to) {
     return best;
 }
 
-static backend_t *best_backend(void) {
-    return s_backend_n > 0 ? &s_backends[s_backend_n - 1] : NULL;
-}
-
 static backend_t *find_backend(const char *fmt) {
     for (int i = s_backend_n - 1; i >= 0; i--)
         if (strcmp(s_backends[i].fmt, fmt) == 0)
@@ -145,7 +141,7 @@ static void decode_after_cb(uv_work_t *req, int status) {
         e->w = w->result.w;
         e->h = w->result.h;
         b->cbs.upload(e->id, &e->backend_data,
-                      w->result.pixels, 0, e->w, e->h, release_free);
+                      w->result.pixels, w->result.len, e->w, e->h, release_free);
         set_ready(e);
     } else {
         free(w->result.pixels);
@@ -169,32 +165,32 @@ static void on_fetch(const uint8_t *data, size_t len,
         return;
     }
 
-    backend_t *backend = best_backend();
-    if (!backend) {
+    if (s_backend_n == 0) {
         free((void *)data);
         set_error(e, "no backend registered");
         return;
     }
 
     const char *from = hint ? hint : "";
-    const char *to   = backend->fmt;
-    strncpy(e->fmt, to, sizeof(e->fmt) - 1);
-    e->state = GLY_IMG_DECODING;
 
-    if (strcmp(from, to) == 0) {
-        backend->cbs.upload(e->id, &e->backend_data,
-                            data, len, 0, 0, release_free);
-        set_ready(e);
-        return;
+    /* Pick the backend whose target format has a decoder from `from`.
+     * Iterate latest-first so newer registrations take precedence. */
+    decoder_t *dec     = NULL;
+    backend_t *backend = NULL;
+    for (int i = s_backend_n - 1; i >= 0; i--) {
+        decoder_t *d = find_decoder(from, s_backends[i].fmt);
+        if (d) { dec = d; backend = &s_backends[i]; break; }
     }
-
-    decoder_t *dec = find_decoder(from, to);
-    if (!dec) {
-        printf("[img] no decoder '%s'→'%s' for '%s'\n", from, to, e->url);
+    if (!backend || !dec) {
+        printf("[img] no decoder '%s'→backend for '%s'\n", from, e->url);
         free((void *)data);
         set_error(e, "no decoder for format");
         return;
     }
+
+    const char *to = backend->fmt;
+    strncpy(e->fmt, to, sizeof(e->fmt) - 1);
+    e->state = GLY_IMG_DECODING;
 
     if (dec->use_thread && s_loop) {
         decode_work_t *w = calloc(1, sizeof(*w));
@@ -213,7 +209,7 @@ static void on_fetch(const uint8_t *data, size_t len,
     e->w = result.w;
     e->h = result.h;
     backend->cbs.upload(e->id, &e->backend_data,
-                        result.pixels, 0, e->w, e->h, release_free);
+                        result.pixels, result.len, e->w, e->h, release_free);
     set_ready(e);
 }
 
@@ -326,4 +322,8 @@ void gamely_daemon_img_unload_all(void) {
         if (s_backends[i].cbs.unload_all) s_backends[i].cbs.unload_all();
     for (int i = 0; i < IMG_CAP; i++)
         if (s_imgs[i].active) entry_free(&s_imgs[i]);
+}
+
+bool gamely_daemon_img_has_backend(const char *fmt) {
+    return fmt && find_backend(fmt) != NULL;
 }

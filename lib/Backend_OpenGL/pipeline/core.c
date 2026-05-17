@@ -45,6 +45,10 @@ static void create_atlas_page(GLBackendState *s, int width, int height) {
     page.cursor_x = 0;
     page.cursor_y = 0;
     page.row_height = 0;
+    page.reset_cursor_x = 0;
+    page.reset_cursor_y = 0;
+    page.reset_row_height = 0;
+    kv_init(page.free_rects);
     kv_push(GEAtlasPage, s->atlas_pages, page);
 }
 
@@ -62,6 +66,7 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
     kv_init(s->atlas_pages);
+    s->etc1_supported = ge_detect_etc1_support();
     // Page 0: Font Atlas (Top Half 1024x1024) + System Glyphs/Images (Bottom Half 1024x2048)
     create_atlas_page(s, GE_ATLAS_SIZE, GE_ATLAS_SIZE);
     // Page 1: General Atlas
@@ -143,6 +148,14 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     s->corner_uv[3] = (float)(cy + 64) / (float)GE_ATLAS_SIZE;
     s->corner_page_index = 0;
 
+    /* Snapshot post-init cursors so ge_atlas_reset_images() can restore them */
+    for (int i = 0; i < (int)kv_size(s->atlas_pages); i++) {
+        GEAtlasPage *p = &s->atlas_pages.a[i];
+        p->reset_cursor_x   = p->cursor_x;
+        p->reset_cursor_y   = p->cursor_y;
+        p->reset_row_height = p->row_height;
+    }
+
     // Batches
     init_batch(&s->opaque_batches[GE_PROG_SIMPLE], sizeof(GESimpleShapeVertex));
     init_batch(&s->opaque_batches[GE_PROG_COMPLEX], sizeof(GEDShapeComplexVertex));
@@ -155,6 +168,20 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
 void ge_atlas_alloc(int w, int h, int *page_index, int *ox, int *oy) {
     GLBackendState *s = geogl_get_state();
     int slot_w = w + 1, slot_h = h + 1;
+    /* Prefer recycling a freed slot (first-fit) before bumping the cursor */
+    for (int i = 0; i < (int)kv_size(s->atlas_pages); i++) {
+        GEAtlasPage *p = &s->atlas_pages.a[i];
+        for (int j = 0; j < (int)kv_size(p->free_rects); j++) {
+            GEAtlasRect r = p->free_rects.a[j];
+            if (r.w >= slot_w && r.h >= slot_h) {
+                *page_index = i;
+                *ox = r.x;
+                *oy = r.y;
+                p->free_rects.a[j] = p->free_rects.a[--p->free_rects.n];
+                return;
+            }
+        }
+    }
     for (int i = 0; i < (int)kv_size(s->atlas_pages); i++) {
         GEAtlasPage *p = &s->atlas_pages.a[i];
         if (p->cursor_x + slot_w > GE_ATLAS_SIZE) {
@@ -175,6 +202,36 @@ void ge_atlas_alloc(int w, int h, int *page_index, int *ox, int *oy) {
     *ox = p->cursor_x; *oy = p->cursor_y;
     p->cursor_x += slot_w;
     p->row_height = slot_h;
+}
+
+void ge_atlas_free(int page_index, int ox, int oy, int w, int h) {
+    GLBackendState *s = geogl_get_state();
+    if (page_index < 0 || page_index >= (int)kv_size(s->atlas_pages)) return;
+    GEAtlasPage *p = &s->atlas_pages.a[page_index];
+    GEAtlasRect r = { ox, oy, w + 1, h + 1 };
+    kv_push(GEAtlasRect, p->free_rects, r);
+}
+
+void ge_atlas_reset_images(void) {
+    GLBackendState *s = geogl_get_state();
+    for (int i = 0; i < (int)kv_size(s->atlas_pages); i++) {
+        GEAtlasPage *p = &s->atlas_pages.a[i];
+        p->cursor_x   = p->reset_cursor_x;
+        p->cursor_y   = p->reset_cursor_y;
+        p->row_height = p->reset_row_height;
+        p->free_rects.n = 0;
+    }
+}
+
+bool ge_detect_etc1_support(void) {
+    /* ETC1 only exists on OpenGL ES via GL_OES_compressed_ETC1_RGB8_texture.
+     * Desktop GL has no native ETC1 support, so we skip detection entirely. */
+#if defined(GECND_OPENGLES) && GECND_OPENGLES == 1
+    const char *ext = (const char *)glGetString(GL_EXTENSIONS);
+    return ext && strstr(ext, "GL_OES_compressed_ETC1_RGB8_texture") != NULL;
+#else
+    return false;
+#endif
 }
 
 static void ensure_fbo(GLBackendState *s) {
@@ -252,9 +309,10 @@ void ge_pipeline_terminate(void) {
     
     for (int i = 0; i < (int)kv_size(s->atlas_pages); i++) {
         glDeleteTextures(1, &s->atlas_pages.a[i].tex_id);
+        kv_destroy(s->atlas_pages.a[i].free_rects);
     }
     kv_destroy(s->atlas_pages);
-    
+
     for(int i=0; i<GE_PROG_COUNT; i++) {
         free(s->opaque_batches[i].buffer);
         free(s->transparent_batches[i].buffer);
@@ -310,7 +368,11 @@ static void flush_batch(GEProgramType type, bool transparent) {
         glDisableVertexAttribArray(3); glDisableVertexAttribArray(4);
 
         glActiveTexture(GL_TEXTURE0);
-        if (b->page_index >= 0 && b->page_index < (int)kv_size(s->atlas_pages)) {
+        if (b->page_index & GECND_ATLAS_ETC_PAGE_FLAG) {
+            /* Standalone ETC1 texture id encoded directly in page_index. */
+            GLuint tex = (GLuint)(b->page_index & ~GECND_ATLAS_ETC_PAGE_FLAG);
+            glBindTexture(GL_TEXTURE_2D, tex);
+        } else if (b->page_index >= 0 && b->page_index < (int)kv_size(s->atlas_pages)) {
             glBindTexture(GL_TEXTURE_2D, s->atlas_pages.a[b->page_index].tex_id);
         }
         glUniform1i(p->loc_tex, 0);

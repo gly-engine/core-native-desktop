@@ -255,6 +255,7 @@ typedef enum {
 
 typedef struct {
     uint8_t *pixels;
+    size_t   len;        /* bytes in `pixels` — backend may rely on this */
     int16_t  w, h;
 } gamely_img_decoded_t;
 
@@ -308,6 +309,7 @@ void               gamely_daemon_img_draw       (int32_t id, int16_t x, int16_t 
 void               gamely_daemon_img_unload_id  (int32_t id);
 void               gamely_daemon_img_unload_url (const char *url);
 void               gamely_daemon_img_unload_all (void);
+bool               gamely_daemon_img_has_backend(const char *fmt);
 
 /* ---- Web Daemons ---- */
 
