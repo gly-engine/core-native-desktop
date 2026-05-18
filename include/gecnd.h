@@ -310,6 +310,7 @@ void               gamely_daemon_img_unload_id  (int32_t id);
 void               gamely_daemon_img_unload_url (const char *url);
 void               gamely_daemon_img_unload_all (void);
 bool               gamely_daemon_img_has_backend(const char *fmt);
+int32_t            gamely_daemon_img_loading_count(void);
 
 /* ---- Web Daemons ---- */
 

@@ -66,6 +66,11 @@ static int lua_native_image_unload_all(lua_State *L) {
     return 0;
 }
 
+static int lua_native_image_loading_count(lua_State *L) {
+    lua_pushinteger(L, gamely_daemon_img_loading_count());
+    return 1;
+}
+
 const luaL_Reg frontend_api_image[] = {
     {"native_image_load",       lua_native_image_load},
     {"native_image_exists",     lua_native_image_exists},
@@ -74,5 +79,6 @@ const luaL_Reg frontend_api_image[] = {
     {"native_image_error",      lua_native_image_error},
     {"native_image_unload",     lua_native_image_unload},
     {"native_image_unload_all", lua_native_image_unload_all},
+    {"native_image_loading_count", lua_native_image_loading_count},
     {NULL, NULL}
 };

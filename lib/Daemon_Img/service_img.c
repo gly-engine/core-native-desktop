@@ -327,3 +327,13 @@ void gamely_daemon_img_unload_all(void) {
 bool gamely_daemon_img_has_backend(const char *fmt) {
     return fmt && find_backend(fmt) != NULL;
 }
+
+int32_t gamely_daemon_img_loading_count(void) {
+    int32_t n = 0;
+    for (int i = 0; i < IMG_CAP; i++)
+        if (s_imgs[i].active &&
+            (s_imgs[i].state == GLY_IMG_SEARCHING ||
+             s_imgs[i].state == GLY_IMG_DECODING))
+            n++;
+    return n;
+}
