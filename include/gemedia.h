@@ -47,8 +47,6 @@ typedef struct {
     char *url;
 } VideoStream;
 
-VideoStream* stream_create(const char *url);
-void stream_destroy(VideoStream *stream);
 MediaFrame* stream_get_frame(VideoStream *stream);
 
 #endif // GECND_STREAM_AVLIB_INTERNAL
@@ -91,6 +89,7 @@ typedef struct {
     int (*avcodec_receive_packet)(AVCodecContext *avctx, AVPacket *avpkt);
 
     // libavformat
+    AVFormatContext* (*avformat_alloc_context)(void);
     int (*avformat_open_input)(AVFormatContext **ps, const char *url, const AVInputFormat *fmt, AVDictionary **options);
     int (*avformat_find_stream_info)(AVFormatContext *ic, AVDictionary **options);
     void (*av_dump_format)(AVFormatContext *ic, int index, const char *url, int is_output);

@@ -116,6 +116,7 @@ bool av_load_ffmpeg(void) {
             LOAD_SYM(libavcodec, avcodec_parameters_from_context);
 
             // libavformat
+            LOAD_SYM(libavformat, avformat_alloc_context);
             LOAD_SYM(libavformat, avformat_open_input);
             LOAD_SYM(libavformat, avformat_find_stream_info);
             LOAD_SYM(libavformat, av_dump_format);

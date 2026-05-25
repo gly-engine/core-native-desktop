@@ -31,24 +31,46 @@ static int translate_format(int av_format) {
     return GECND_PIX_FMT_RGBA8888;
 }
 
+/* FFmpeg chama esse callback periodicamente durante I/O blocking.
+ * Retornar !=0 aborta a operação — sem isso, ctrl+c durante
+ * avformat_open_input/av_read_frame pode travar o main thread por segundos. */
+static int interrupt_cb(void *opaque) {
+    VideoStream *s = opaque;
+    return atomic_load(&s->running) ? 0 : 1;
+}
+
 static void threadworker(void *arg) {
     VideoStream *s = arg;
-    AVPacket *pkt  = NULL;
-    AVFrame  *vfrm = NULL;
+    AVPacket *pkt   = NULL;
+    AVFrame  *vfrm  = NULL;
+    bool initialized = false;
+    double pause_at  = 0.0;
+
     AV.avformat_network_init();
+
+    s->fmt = AV.avformat_alloc_context();
+    if (!s->fmt) {
+        atomic_store(&s->state, GDMSP_FSM_ERROR);
+        goto cleanup_done;
+    }
+    s->fmt->interrupt_callback.callback = interrupt_cb;
+    s->fmt->interrupt_callback.opaque   = s;
 
     AVDictionary *opts = NULL;
     AV.av_dict_set(&opts, "timeout", "5000000", 0);
     AV.av_dict_set(&opts, "tls_verify", "0", 0);
 
     if (AV.avformat_open_input(&s->fmt, s->url, NULL, &opts) < 0) {
+        /* avformat_open_input libera o context em caso de falha */
+        s->fmt = NULL;
         fprintf(stderr, "[media] error opening: %s\n", s->url);
         atomic_store(&s->state, GDMSP_FSM_ERROR);
-        atomic_store(&s->running, 0);
         AV.av_dict_free(&opts);
-        return;
+        goto cleanup_done;
     }
     AV.av_dict_free(&opts);
+
+    if (!atomic_load(&s->running)) goto cleanup_format;
 
     s->fmt->max_analyze_duration = 0;
     if (AV.avformat_find_stream_info(s->fmt, NULL) < 0) {
@@ -61,7 +83,7 @@ static void threadworker(void *arg) {
     if (s->video_index < 0) {
         fprintf(stderr, "[media] no video stream\n");
         atomic_store(&s->state, GDMSP_FSM_ERROR);
-        goto cleanup_pkt_frame;
+        goto cleanup_format;
     }
 
     s->video = s->fmt->streams[s->video_index];
@@ -69,7 +91,7 @@ static void threadworker(void *arg) {
     if (!vdec) {
         fprintf(stderr, "[media] no decoder for codec %d\n", s->video->codecpar->codec_id);
         atomic_store(&s->state, GDMSP_FSM_ERROR);
-        goto cleanup_pkt_frame;
+        goto cleanup_format;
     }
 
     s->vcodec = AV.avcodec_alloc_context3(vdec);
@@ -91,14 +113,28 @@ static void threadworker(void *arg) {
 
     pkt  = AV.av_packet_alloc();
     vfrm = AV.av_frame_alloc();
-    bool initialized = false;
     s->clock_start = now_sec();
 
     AV.av_seek_frame(s->fmt, s->video_index, 0, AVSEEK_FLAG_BACKWARD);
     AV.avcodec_flush_buffers(s->vcodec);
 
     while (atomic_load(&s->running)) {
+        /* pause real: bloqueia avanço e empurra clock pra frente ao retornar */
+        if (atomic_load(&s->paused)) {
+            if (pause_at == 0.0) {
+                pause_at = now_sec();
+                atomic_store(&s->state, GDMSP_FSM_PAUSED);
+            }
+            usleep(10000);
+            continue;
+        } else if (pause_at > 0.0) {
+            s->clock_start += now_sec() - pause_at;
+            pause_at = 0.0;
+            atomic_store(&s->state, GDMSP_FSM_PLAYING);
+        }
+
         if (AV.av_read_frame(s->fmt, pkt) < 0) {
+            if (!atomic_load(&s->running)) break;
             AV.av_seek_frame(s->fmt, s->video_index, 0, AVSEEK_FLAG_BACKWARD);
             AV.avcodec_flush_buffers(s->vcodec);
             s->clock_start = now_sec();
@@ -145,17 +181,20 @@ static void threadworker(void *arg) {
         AV.av_packet_unref(pkt);
     }
 
-cleanup_pkt_frame:
     if (vfrm) AV.av_frame_free(&vfrm);
     if (pkt)  AV.av_packet_free(&pkt);
 cleanup_codec:
     if (s->vcodec) AV.avcodec_free_context(&s->vcodec);
 cleanup_format:
     if (s->fmt) AV.avformat_close_input(&s->fmt);
+cleanup_done:
     AV.avformat_network_deinit();
+    /* sinal final pro reaper externo (av_state) — qualquer paths-de-erro
+     * acima já marcou ERROR, mas IDLE atômico aqui é o gatilho do join. */
+    atomic_store(&s->state, GDMSP_FSM_IDLE);
 }
 
-VideoStream *stream_create(const char *url) {
+static VideoStream *stream_create(const char *url) {
     if (!av_load_ffmpeg()) return NULL;
     VideoStream *s = calloc(1, sizeof(VideoStream));
     if (!s) return NULL;
@@ -170,26 +209,36 @@ VideoStream *stream_create(const char *url) {
     return s;
 }
 
-void stream_destroy(VideoStream *s) {
-    if (!s) return;
-    atomic_store(&s->state, GDMSP_FSM_STOPPING);
-    atomic_store(&s->running, 0);
-    uv_thread_join(&s->thread);
-    free(s->url); free(s);
-}
-
 /* ── player callbacks ─────────────────────────────────────────────── */
 
 static VideoStream *s_streams[4] = {0};
 
-static void av_start(uint8_t channel, const char *url, void *usr) {
+static void av_reap(uint8_t channel) {
+    VideoStream *s = s_streams[channel];
+    if (!s) return;
+    uv_thread_join(&s->thread);
+    free(s->url);
+    free(s);
+    s_streams[channel] = NULL;
+    gamely_daemon_media_background_release();
+}
+
+static void av_source(uint8_t channel, const char *url, void *usr) {
     (void)usr;
     if (channel >= 4) return;
+
+    /* canal ocupado: se thread já saiu, faz reap; senão sinaliza stop
+     * e desiste (service reentra no próximo tick). */
     if (s_streams[channel]) {
-        stream_destroy(s_streams[channel]);
-        gamely_daemon_media_background_release();
-        s_streams[channel] = NULL;
+        gdmsp_fsm_t st = (gdmsp_fsm_t) atomic_load(&s_streams[channel]->state);
+        if (st == GDMSP_FSM_IDLE) {
+            av_reap(channel);
+        } else {
+            atomic_store(&s_streams[channel]->running, 0);
+            return;
+        }
     }
+
     if (!gamely_daemon_media_background_claim()) {
         fprintf(stderr, "[media] background buffer in use\n");
         return;
@@ -198,25 +247,49 @@ static void av_start(uint8_t channel, const char *url, void *usr) {
     if (!s_streams[channel]) gamely_daemon_media_background_release();
 }
 
-static void av_stop(uint8_t channel, void *usr) {
+static void av_command(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
     (void)usr;
     if (channel >= 4 || !s_streams[channel]) return;
-    stream_destroy(s_streams[channel]);
-    s_streams[channel] = NULL;
-    gamely_daemon_media_background_release();
+    VideoStream *s = s_streams[channel];
+
+    switch (cmd) {
+        case GDMSP_CMD_PLAY:
+            atomic_store(&s->paused, 0);
+            break;
+        case GDMSP_CMD_PAUSE:
+            atomic_store(&s->paused, 1);
+            break;
+        case GDMSP_CMD_STOP:
+            atomic_store(&s->running, 0);
+            atomic_store(&s->paused, 0);  /* destrava worker preso em pause loop */
+            /* preserva ERROR caso já tenha sido setado; senão marca STOPPING.
+             * o worker eventualmente escreverá IDLE e av_state fará o reap. */
+            {
+                gdmsp_fsm_t st = (gdmsp_fsm_t) atomic_load(&s->state);
+                if (st != GDMSP_FSM_ERROR && st != GDMSP_FSM_IDLE)
+                    atomic_store(&s->state, GDMSP_FSM_STOPPING);
+            }
+            break;
+        case GDMSP_CMD_TICK:
+            /* worker próprio — nada a fazer aqui */
+            break;
+    }
 }
 
 static gdmsp_fsm_t av_state(uint8_t channel, void *usr) {
     (void)usr;
     if (channel >= 4 || !s_streams[channel]) return GDMSP_FSM_IDLE;
-    return (gdmsp_fsm_t) atomic_load(&s_streams[channel]->state);
+    gdmsp_fsm_t st = (gdmsp_fsm_t) atomic_load(&s_streams[channel]->state);
+    /* worker já escreveu IDLE → libera recursos. uv_thread_join não bloqueia
+     * porque o thread já saiu. */
+    if (st == GDMSP_FSM_IDLE) {
+        av_reap(channel);
+    }
+    return st;
 }
 
 gamely_media_player_t gamely_player_ffmpeg = {
-    .start = av_start,
-    .stop  = av_stop,
-    .tick  = NULL,
-    .pause = NULL,
-    .play  = NULL,
-    .state = av_state,
+    .source  = av_source,
+    .command = av_command,
+    .state   = av_state,
 };

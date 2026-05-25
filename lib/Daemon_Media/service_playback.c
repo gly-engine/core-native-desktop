@@ -152,8 +152,8 @@ void gamely_daemon_media_playback_source(uint8_t channel, const char *url) {
     if (!url) {
         free(ch->pending_url);
         ch->pending_url = NULL;
-        if (ch->player && ch->player->cbs.stop)
-            ch->player->cbs.stop(channel, ch->player->usr);
+        if (ch->player)
+            ch->player->cbs.command(channel, GDMSP_CMD_STOP, ch->player->usr);
         return;
     }
 
@@ -181,8 +181,8 @@ void gamely_daemon_media_playback_play(uint8_t channel) {
 
     ch->want_pause_after_load = false;
     gdmsp_fsm_t st = channel_state(ch, channel);
-    if (st == GDMSP_FSM_PAUSED && ch->player->cbs.play)
-        ch->player->cbs.play(channel, ch->player->usr);
+    if (st == GDMSP_FSM_PAUSED)
+        ch->player->cbs.command(channel, GDMSP_CMD_PLAY, ch->player->usr);
 }
 
 void gamely_daemon_media_playback_pause(uint8_t channel) {
@@ -196,8 +196,8 @@ void gamely_daemon_media_playback_pause(uint8_t channel) {
     if (!ch->player) return;
 
     gdmsp_fsm_t st = channel_state(ch, channel);
-    if (st == GDMSP_FSM_PLAYING && ch->player->cbs.pause)
-        ch->player->cbs.pause(channel, ch->player->usr);
+    if (st == GDMSP_FSM_PLAYING)
+        ch->player->cbs.command(channel, GDMSP_CMD_PAUSE, ch->player->usr);
 }
 
 void gamely_daemon_media_playback_stop(uint8_t channel) {
@@ -207,8 +207,8 @@ void gamely_daemon_media_playback_stop(uint8_t channel) {
     free(ch->pending_url);
     ch->pending_url           = NULL;
     ch->want_pause_after_load = false;
-    if (ch->player && ch->player->cbs.stop)
-        ch->player->cbs.stop(channel, ch->player->usr);
+    if (ch->player)
+        ch->player->cbs.command(channel, GDMSP_CMD_STOP, ch->player->usr);
     /* url/player liberados pelo tick quando driver virar IDLE */
 }
 
@@ -235,8 +235,8 @@ void gamely_daemon_media_playback_tick(void) {
             free(ch->pending_url);
             ch->pending_url           = NULL;
             ch->want_pause_after_load = false;
-            if (ch->player && ch->player->cbs.stop)
-                ch->player->cbs.stop((uint8_t)i, ch->player->usr);
+            if (ch->player)
+                ch->player->cbs.command((uint8_t)i, GDMSP_CMD_STOP, ch->player->usr);
         }
         s_exiting_stops_issued = true;
     }
@@ -247,8 +247,8 @@ void gamely_daemon_media_playback_tick(void) {
 
         /* ERROR não é terminal — chama stop, próximo tick vê IDLE */
         if (st == GDMSP_FSM_ERROR) {
-            if (ch->player && ch->player->cbs.stop)
-                ch->player->cbs.stop((uint8_t)i, ch->player->usr);
+            if (ch->player)
+                ch->player->cbs.command((uint8_t)i, GDMSP_CMD_STOP, ch->player->usr);
             continue;
         }
 
@@ -269,19 +269,18 @@ void gamely_daemon_media_playback_tick(void) {
                 ch->pending_url           = NULL;
                 ch->player                = p;
                 ch->want_pause_after_load = !ch->pending_play;
-                if (p->cbs.start) p->cbs.start((uint8_t)i, ch->url, p->usr);
+                p->cbs.source((uint8_t)i, ch->url, p->usr);
                 continue;
             }
             /* canal ocupado — sinaliza stop e espera */
-            if (st != GDMSP_FSM_STOPPING && ch->player->cbs.stop)
-                ch->player->cbs.stop((uint8_t)i, ch->player->usr);
+            if (st != GDMSP_FSM_STOPPING)
+                ch->player->cbs.command((uint8_t)i, GDMSP_CMD_STOP, ch->player->usr);
             continue;
         }
 
         /* aplica pause assim que driver entra em PLAYING */
         if (ch->want_pause_after_load && st == GDMSP_FSM_PLAYING) {
-            if (ch->player->cbs.pause)
-                ch->player->cbs.pause((uint8_t)i, ch->player->usr);
+            ch->player->cbs.command((uint8_t)i, GDMSP_CMD_PAUSE, ch->player->usr);
             ch->want_pause_after_load = false;
         }
 
@@ -293,8 +292,10 @@ void gamely_daemon_media_playback_tick(void) {
             continue;
         }
 
-        if (st == GDMSP_FSM_PLAYING && ch->player && ch->player->cbs.tick)
-            ch->player->cbs.tick((uint8_t)i, ch->player->usr);
+        /* TICK em qualquer estado — drivers usam pra reaping / finalize de load
+         * assíncrono / etc. O que rodar dentro depende de cada driver. */
+        if (ch->player)
+            ch->player->cbs.command((uint8_t)i, GDMSP_CMD_TICK, ch->player->usr);
     }
 }
 

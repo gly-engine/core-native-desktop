@@ -29,6 +29,7 @@ bool av_load_ffmpeg(void) {
     AV.avcodec_parameters_from_context = avcodec_parameters_from_context;
 
     // libavformat
+    AV.avformat_alloc_context = avformat_alloc_context;
     AV.avformat_open_input = avformat_open_input;
     AV.avformat_find_stream_info = avformat_find_stream_info;
     AV.avformat_close_input = avformat_close_input;

@@ -446,14 +446,22 @@ void        gamely_daemon_media_background_push_rgb565  (const uint8_t *data,
 MediaFrame *gamely_daemon_media_background_get_frame   (void);
 bool        gamely_daemon_media_background_check_update(atomic_int *local_counter);
 
+typedef enum {
+    GDMSP_CMD_PLAY = 0,
+    GDMSP_CMD_PAUSE,
+    GDMSP_CMD_STOP,
+    GDMSP_CMD_TICK,
+} gdmsp_cmd_t;
+
 typedef struct {
-    void (*start)(uint8_t channel, const char *url, void *usr);
-    void (*stop) (uint8_t channel, void *usr);
-    void (*tick) (uint8_t channel, void *usr);   /* NULL = own thread */
-    void (*pause)(uint8_t channel, void *usr);   /* NULL = ignored    */
-    void (*play) (uint8_t channel, void *usr);   /* NULL = ignored    */
-    /* lock-free snapshot of the driver's lifecycle. Must return quickly
-     * (atomic load only). Required — no NULL. */
+    /* prepara pipeline a partir do primeiro source dado (loading→playing
+     * por padrão; o service modula via comandos). */
+    void (*source) (uint8_t channel, const char *url, void *usr);
+    /* PLAY, PAUSE, STOP, TICK. STOP deve sinalizar e retornar rápido;
+     * o driver completa cleanup quando state() virar IDLE. */
+    void (*command)(uint8_t channel, gdmsp_cmd_t cmd, void *usr);
+    /* lock-free snapshot of the driver's lifecycle. Must return quickly.
+     * Required — no NULL. */
     gdmsp_fsm_t (*state)(uint8_t channel, void *usr);
 } gamely_media_player_t;
 
