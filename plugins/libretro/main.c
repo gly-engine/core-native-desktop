@@ -2,25 +2,26 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdatomic.h>
+#include <uv.h>
 
 #include <lauxlib.h>
 #include <lua.h>
 
 #include "gecnd.h"
 
-static atomic_bool s_http_loading = false;
-
 #include "uri_query.h"
 
 /* Protótipos de open_libretro.c */
-bool        native_libretro_load            (const char *core_path);
-bool        native_libretro_game            (const char *rom_path);
-bool        native_libretro_game_from_buffer(const uint8_t *data, size_t size);
-bool        native_libretro_url             (const char *url);
-void        native_libretro_exit            (void);
-void        libretro_run_frame              (void);
-bool        libretro_is_running             (void);
-const char *native_libretro_error          (void);
+bool        native_libretro_load               (const char *core_path);
+bool        native_libretro_game               (const char *rom_path);
+bool        native_libretro_game_load_only     (const char *rom_path);
+bool        native_libretro_game_from_buffer   (const uint8_t *data, size_t size);
+void        native_libretro_game_finalize      (void);
+bool        native_libretro_url                (const char *url);
+void        native_libretro_exit               (void);
+void        libretro_run_frame                 (void);
+bool        libretro_is_running                (void);
+const char *native_libretro_error              (void);
 
 /* Protótipos de hw_render.c */
 void libretro_hw_gl_ready(void);
@@ -29,11 +30,73 @@ void libretro_hw_gl_ready(void);
 const char *scanner_resolve_core(const char *name);
 const char *scanner_resolve_rom (const char *name);
 
+/* ── async load infrastructure (compartilhada file + http) ────────── */
+
+typedef enum {
+    LOAD_KIND_FILE = 0,
+    LOAD_KIND_BUFFER,
+} load_kind_t;
+
+static uv_thread_t s_load_thread;
+static atomic_bool s_load_running = false;
+static atomic_bool s_load_done    = false;
+static atomic_bool s_load_ok      = false;
+static atomic_bool s_http_fetching = false;  /* entre source() e on_done() */
+
+static load_kind_t s_load_kind;
+static char        s_load_core_path[1024];
+static char        s_load_rom_path[1024];
+static uint8_t    *s_load_rom_buf = NULL;
+static size_t      s_load_rom_buf_len = 0;
+
+static void load_worker(void *arg) {
+    (void)arg;
+    bool ok = native_libretro_load(s_load_core_path);
+    if (ok) {
+        if (s_load_kind == LOAD_KIND_FILE)
+            ok = native_libretro_game_load_only(s_load_rom_path);
+        else
+            ok = native_libretro_game_from_buffer(s_load_rom_buf, s_load_rom_buf_len);
+    }
+    /* buffer não é mais útil depois que load_game o copia internamente */
+    if (s_load_rom_buf) {
+        free(s_load_rom_buf);
+        s_load_rom_buf     = NULL;
+        s_load_rom_buf_len = 0;
+    }
+    atomic_store(&s_load_ok,   ok);
+    atomic_store(&s_load_done, true);
+}
+
+/* Chamado no main thread (via TICK) — faz join não-bloqueante e dispara
+ * finalize (GL/audio/state) que precisa rodar fora do worker. */
+static void poll_load_completion(void) {
+    if (!atomic_load(&s_load_running)) return;
+    if (!atomic_load(&s_load_done))    return;
+    uv_thread_join(&s_load_thread);
+    atomic_store(&s_load_running, false);
+    if (atomic_load(&s_load_ok)) {
+        native_libretro_game_finalize();
+    } else {
+        fprintf(stderr, "[libretro] background load failed\n");
+        native_libretro_exit();
+    }
+}
+
+static void abort_load_if_running(void) {
+    if (atomic_load(&s_load_running)) {
+        uv_thread_join(&s_load_thread);
+        atomic_store(&s_load_running, false);
+    }
+    if (s_load_rom_buf) {
+        free(s_load_rom_buf);
+        s_load_rom_buf     = NULL;
+        s_load_rom_buf_len = 0;
+    }
+}
+
 /* ── helpers de parsing de URL composta ───────────────────────────── */
 
-/* Preenche core_out com o token que não é "libretro", "http" nem "https".
-   Preenche trans_out com "http" ou "https" se presente.
-   Preenche path_out com o caminho após "://" e query_out com a query string. */
 static void parse_libretro_url(const char *url,
                                 char *core_out,  size_t core_sz,
                                 char *trans_out, size_t trans_sz,
@@ -87,10 +150,11 @@ static void parse_libretro_url(const char *url,
 
 /* ── player: libretro+? (arquivo local via scanner) ──────────────── */
 
-static void libretro_file_start(uint8_t channel, const char *url, void *usr) {
+static void libretro_file_source(uint8_t channel, const char *url, void *usr) {
     (void)channel; (void)usr;
 
-    /* re-entrant: tears down any previously loaded core before loading the new one */
+    /* tears down any previously loaded core + cancela load em curso */
+    abort_load_if_running();
     native_libretro_exit();
 
     char core_name[64], path[512], query[256];
@@ -101,49 +165,67 @@ static void libretro_file_start(uint8_t channel, const char *url, void *usr) {
 
     uri_query_parse(query[0] ? query : NULL);
 
+    /* scanner_resolve_core/rom retornam ponteiro pra buffer estático único —
+     * copia antes da próxima chamada pra não sobrescrever. */
     const char *core_path = scanner_resolve_core(core_name);
     if (!core_path) {
         fprintf(stderr, "[libretro] core not found: %s\n", core_name);
         return;
     }
-    if (!native_libretro_load(core_path)) {
-        fprintf(stderr, "[libretro] failed to load core: %s\n", core_path);
-        return;
-    }
+    strncpy(s_load_core_path, core_path, sizeof(s_load_core_path) - 1);
+    s_load_core_path[sizeof(s_load_core_path) - 1] = '\0';
+
     const char *rom_path = scanner_resolve_rom(path);
     if (!rom_path) {
         fprintf(stderr, "[libretro] rom not found: %s\n", path);
         return;
     }
-    if (!native_libretro_game(rom_path))
-        fprintf(stderr, "[libretro] failed to load rom: %s\n", rom_path);
+    strncpy(s_load_rom_path, rom_path, sizeof(s_load_rom_path) - 1);
+    s_load_rom_path[sizeof(s_load_rom_path) - 1] = '\0';
+
+    s_load_kind = LOAD_KIND_FILE;
+    atomic_store(&s_load_done, false);
+    atomic_store(&s_load_ok,   false);
+    atomic_store(&s_load_running, true);
+    if (uv_thread_create(&s_load_thread, load_worker, NULL) != 0) {
+        atomic_store(&s_load_running, false);
+        fprintf(stderr, "[libretro] failed to spawn load thread\n");
+    }
 }
 
-static void libretro_file_stop(uint8_t channel, void *usr) {
+static void libretro_file_command(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
     (void)channel; (void)usr;
-    native_libretro_exit();
-}
-
-static void libretro_file_tick(uint8_t channel, void *usr) {
-    (void)channel; (void)usr;
-    gecnd_t *gly = gecnd_get_root();
-    if (gly && (gly->internal & GECND_INTERNAL_HW_GL_READY))
-        libretro_hw_gl_ready();
-    libretro_run_frame();
+    switch (cmd) {
+        case GDMSP_CMD_STOP:
+            abort_load_if_running();
+            native_libretro_exit();
+            break;
+        case GDMSP_CMD_TICK: {
+            gecnd_t *gly = gecnd_get_root();
+            if (gly && (gly->internal & GECND_INTERNAL_HW_GL_READY))
+                libretro_hw_gl_ready();
+            poll_load_completion();
+            libretro_run_frame();
+            break;
+        }
+        case GDMSP_CMD_PLAY:
+        case GDMSP_CMD_PAUSE:
+            /* sem suporte a pause real por enquanto */
+            break;
+    }
 }
 
 static gdmsp_fsm_t libretro_file_state(uint8_t channel, void *usr) {
     (void)channel; (void)usr;
+    if (atomic_load(&s_http_fetching) || atomic_load(&s_load_running))
+        return GDMSP_FSM_LOADING;
     return libretro_is_running() ? GDMSP_FSM_PLAYING : GDMSP_FSM_IDLE;
 }
 
 static gamely_media_player_t libretro_file_player = {
-    .start = libretro_file_start,
-    .stop  = libretro_file_stop,
-    .tick  = libretro_file_tick,
-    .pause = NULL,
-    .play  = NULL,
-    .state = libretro_file_state,
+    .source  = libretro_file_source,
+    .command = libretro_file_command,
+    .state   = libretro_file_state,
 };
 
 /* ── player: libretro+http+? / libretro+https+? (fetch + buffer) ─── */
@@ -181,21 +263,33 @@ static void libretro_http_on_done(gly_req_id_t id, void *user) {
     (void)id;
     libretro_http_ctx_t *ctx = user;
 
+    atomic_store(&s_http_fetching, false);
+
     const char *core_path = scanner_resolve_core(ctx->core_name);
     if (!core_path) {
         fprintf(stderr, "[libretro+http] core not found: %s\n", ctx->core_name);
-        goto cleanup;
+        free(ctx->buf);
+        free(ctx);
+        return;
     }
-    if (!native_libretro_load(core_path)) {
-        fprintf(stderr, "[libretro+http] failed to load core: %s\n", core_path);
-        goto cleanup;
-    }
-    if (!native_libretro_game_from_buffer(ctx->buf, ctx->buf_len))
-        fprintf(stderr, "[libretro+http] failed to load game from buffer\n");
 
-cleanup:
-    atomic_store(&s_http_loading, false);
-    free(ctx->buf);
+    /* transfere ownership do buffer pro worker thread */
+    strncpy(s_load_core_path, core_path, sizeof(s_load_core_path) - 1);
+    s_load_core_path[sizeof(s_load_core_path) - 1] = '\0';
+    s_load_rom_buf     = ctx->buf;
+    s_load_rom_buf_len = ctx->buf_len;
+    ctx->buf = NULL;
+
+    s_load_kind = LOAD_KIND_BUFFER;
+    atomic_store(&s_load_done, false);
+    atomic_store(&s_load_ok,   false);
+    atomic_store(&s_load_running, true);
+    if (uv_thread_create(&s_load_thread, load_worker, NULL) != 0) {
+        atomic_store(&s_load_running, false);
+        free(s_load_rom_buf);
+        s_load_rom_buf = NULL;
+        fprintf(stderr, "[libretro+http] failed to spawn load thread\n");
+    }
     free(ctx);
 }
 
@@ -203,14 +297,15 @@ static void libretro_http_on_error(gly_req_id_t id, const char *msg, void *user)
     (void)id;
     libretro_http_ctx_t *ctx = user;
     fprintf(stderr, "[libretro+http] fetch error: %s\n", msg ? msg : "");
-    atomic_store(&s_http_loading, false);
+    atomic_store(&s_http_fetching, false);
     free(ctx->buf);
     free(ctx);
 }
 
-static void libretro_http_start(uint8_t channel, const char *url, void *usr) {
+static void libretro_http_source(uint8_t channel, const char *url, void *usr) {
     (void)usr;
 
+    abort_load_if_running();
     native_libretro_exit();
 
     char core_name[64], transport[8], path[512], query[256];
@@ -236,7 +331,7 @@ static void libretro_http_start(uint8_t channel, const char *url, void *usr) {
     ctx->channel = channel;
     strncpy(ctx->core_name, core_name, sizeof(ctx->core_name) - 1);
 
-    atomic_store(&s_http_loading, true);
+    atomic_store(&s_http_fetching, true);
 
     gly_http_req_t req = {0};
     gamely_daemon_webclient_http(fetch_url, &req,
@@ -245,32 +340,10 @@ static void libretro_http_start(uint8_t channel, const char *url, void *usr) {
         ctx);
 }
 
-static void libretro_http_stop(uint8_t channel, void *usr) {
-    (void)channel; (void)usr;
-    native_libretro_exit();
-}
-
-static void libretro_http_tick(uint8_t channel, void *usr) {
-    (void)channel; (void)usr;
-    gecnd_t *gly = gecnd_get_root();
-    if (gly && (gly->internal & GECND_INTERNAL_HW_GL_READY))
-        libretro_hw_gl_ready();
-    libretro_run_frame();
-}
-
-static gdmsp_fsm_t libretro_http_state(uint8_t channel, void *usr) {
-    (void)channel; (void)usr;
-    if (atomic_load(&s_http_loading)) return GDMSP_FSM_LOADING;
-    return libretro_is_running() ? GDMSP_FSM_PLAYING : GDMSP_FSM_IDLE;
-}
-
 static gamely_media_player_t libretro_http_player = {
-    .start = libretro_http_start,
-    .stop  = libretro_http_stop,
-    .tick  = libretro_http_tick,
-    .pause = NULL,
-    .play  = NULL,
-    .state = libretro_http_state,
+    .source  = libretro_http_source,
+    .command = libretro_file_command,  /* mesmo tick/stop do file */
+    .state   = libretro_file_state,
 };
 
 /* ── Lua API ──────────────────────────────────────────────────────── */

@@ -22,6 +22,11 @@ static LIB_HANDLE core_handle = NULL;
 static char system_dir[1024] = ".";
 static char s_error[256]     = "";
 
+/* Pending finalize state — populated by *_load_only no worker thread,
+ * consumido por native_libretro_game_finalize no main thread. */
+static bool                       s_pending_finalize = false;
+static struct retro_system_av_info s_pending_av_info;
+
 static void (*p_retro_set_environment)(retro_environment_t) = NULL;
 static void (*p_retro_set_video_refresh)(retro_video_refresh_t) = NULL;
 static void (*p_retro_set_audio_sample)(retro_audio_sample_t) = NULL;
@@ -167,7 +172,9 @@ static bool core_environment(unsigned cmd, void *data) {
 
 bool native_libretro_load(const char *path);
 bool native_libretro_game(const char *path);
+bool native_libretro_game_load_only(const char *path);
 bool native_libretro_game_from_buffer(const uint8_t *data, size_t size);
+void native_libretro_game_finalize(void);
 static void libretro_deinit_core(void);
 
 const char *native_libretro_error(void) {
@@ -226,7 +233,15 @@ bool native_libretro_load(const char *path) {
     strncpy(system_dir, exe_dir[0] ? exe_dir : ".", sizeof(system_dir));
 
     core_handle = load_library(path);
-    if (!core_handle) return false;
+    if (!core_handle) {
+#ifndef _WIN32
+        const char *err = dlerror();
+        fprintf(stderr, "[libretro] dlopen('%s') failed: %s\n", path, err ? err : "(no error)");
+#else
+        fprintf(stderr, "[libretro] LoadLibrary('%s') failed: %lu\n", path, (unsigned long)GetLastError());
+#endif
+        return false;
+    }
     printf("Libretro: loaded core from %s\n", path);
 
     LOAD_SYM_MANDATORY(retro_set_environment);
@@ -252,6 +267,12 @@ bool native_libretro_load(const char *path) {
 }
 
 bool native_libretro_game(const char *path) {
+    if (!native_libretro_game_load_only(path)) return false;
+    native_libretro_game_finalize();
+    return true;
+}
+
+bool native_libretro_game_load_only(const char *path) {
     if (!core_handle) return false;
 
     char full_path[1024];
@@ -313,21 +334,34 @@ bool native_libretro_game(const char *path) {
     if (info.data) free((void*)info.data);
 
     if (ok) {
-        struct retro_system_av_info av_info = {0};
-        if (p_retro_get_system_av_info) p_retro_get_system_av_info(&av_info);
-        gamely_daemon_media_audio_configure((unsigned)av_info.timing.sample_rate, 2);
-        if (libretro_hw_is_active()) {
-            int fw = (av_info.geometry.max_width  > 0) ? (int)av_info.geometry.max_width  : (int)av_info.geometry.base_width;
-            int fh = (av_info.geometry.max_height > 0) ? (int)av_info.geometry.max_height : (int)av_info.geometry.base_height;
-            libretro_hw_context_reset(fw, fh);
-        }
-        gamely_daemon_media_background_claim();
-        core_initialized = true;
-        gecnd_t *gly = gecnd_get_root();
-        if (gly) gecnd_set_state(gly, GECND_FSM_RUNNING_PERFORMANCE);
-        return true;
+        memset(&s_pending_av_info, 0, sizeof(s_pending_av_info));
+        if (p_retro_get_system_av_info) p_retro_get_system_av_info(&s_pending_av_info);
+        s_pending_finalize = true;
     }
-    return false;
+    return ok;
+}
+
+/* Roda no main thread após uv_thread_join do worker.
+ * hw_context_reset toca GL, audio_configure toca o ring buffer; nenhum
+ * dos dois é seguro fora do main. */
+void native_libretro_game_finalize(void) {
+    if (!s_pending_finalize) return;
+    s_pending_finalize = false;
+
+    gamely_daemon_media_audio_configure((unsigned)s_pending_av_info.timing.sample_rate, 2);
+    if (libretro_hw_is_active()) {
+        int fw = (s_pending_av_info.geometry.max_width  > 0)
+            ? (int)s_pending_av_info.geometry.max_width
+            : (int)s_pending_av_info.geometry.base_width;
+        int fh = (s_pending_av_info.geometry.max_height > 0)
+            ? (int)s_pending_av_info.geometry.max_height
+            : (int)s_pending_av_info.geometry.base_height;
+        libretro_hw_context_reset(fw, fh);
+    }
+    gamely_daemon_media_background_claim();
+    core_initialized = true;
+    gecnd_t *gly = gecnd_get_root();
+    if (gly) gecnd_set_state(gly, GECND_FSM_RUNNING_PERFORMANCE);
 }
 
 bool native_libretro_game_from_buffer(const uint8_t *data, size_t size) {
@@ -358,18 +392,9 @@ bool native_libretro_game_from_buffer(const uint8_t *data, size_t size) {
 
     bool ok = p_retro_load_game ? p_retro_load_game(&info) : false;
     if (ok) {
-        struct retro_system_av_info av_info = {0};
-        if (p_retro_get_system_av_info) p_retro_get_system_av_info(&av_info);
-        gamely_daemon_media_audio_configure((unsigned)av_info.timing.sample_rate, 2);
-        if (libretro_hw_is_active()) {
-            int fw = av_info.geometry.max_width  > 0 ? (int)av_info.geometry.max_width  : (int)av_info.geometry.base_width;
-            int fh = av_info.geometry.max_height > 0 ? (int)av_info.geometry.max_height : (int)av_info.geometry.base_height;
-            libretro_hw_context_reset(fw, fh);
-        }
-        gamely_daemon_media_background_claim();
-        core_initialized = true;
-        gecnd_t *gly = gecnd_get_root();
-        if (gly) gecnd_set_state(gly, GECND_FSM_RUNNING_PERFORMANCE);
+        memset(&s_pending_av_info, 0, sizeof(s_pending_av_info));
+        if (p_retro_get_system_av_info) p_retro_get_system_av_info(&s_pending_av_info);
+        s_pending_finalize = true;
     }
     return ok;
 }
