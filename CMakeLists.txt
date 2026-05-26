@@ -281,7 +281,6 @@ option(GECND_USE_MBEDTLS "use mbedtls backend for ssl" OFF)
 
 # Plugins
 option(GECND_USE_PLUGIN_ALSA "build plugin alsa for core native" OFF)
-option(GECND_USE_PLUGIN_SHIM "build plugin shim for core native" OFF)
 option(GECND_USE_PLUGIN_CHROMIUM "build plugin chromium for core native" OFF)
 option(GECND_USE_PLUGIN_LIBRETRO "build plugin libretro for core native" OFF)
 
@@ -728,16 +727,6 @@ if(GECND_USE_PLUGIN_ALSA)
     add_library(alsa_gecnd SHARED "${CMAKE_CURRENT_LIST_DIR}/plugins/alsa/main.c")
     target_link_libraries(alsa_gecnd PRIVATE gecnd_header)
     set_target_properties(alsa_gecnd PROPERTIES
-        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-    )
-endif()
-
-if(GECND_USE_PLUGIN_SHIM)
-    add_library(shim_gecnd SHARED "${CMAKE_CURRENT_LIST_DIR}/plugins/shim/main.c")
-    target_link_libraries(shim_gecnd PRIVATE gecnd_header)
-    set_target_properties(shim_gecnd PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
         ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib

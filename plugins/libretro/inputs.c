@@ -1,3 +1,7 @@
+/**
+ * @author RodrigoDornelles
+ * @date 26-05-26
+ */
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
