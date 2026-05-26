@@ -267,13 +267,14 @@ void ge_pipeline_start(void) {
     // glBindFramebuffer(GL_FRAMEBUFFER, s->fbo_id);
 
     glViewport(0, 0, s->window_width, s->window_height);
-    glClearColor(1, 0, 1, 0);
+    glClearColor(0, 0, 0, 0);
     glDepthMask(GL_TRUE);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    
+    glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+                        GL_ONE,       GL_ONE_MINUS_SRC_ALPHA);
+
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
 

@@ -102,7 +102,6 @@ void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
     }
     if (c == 1307) {
         gamely_daemon_media_playback_source(0, opt.arg);
-        gamely_daemon_media_playback_play(0);
     }
     if (c == 1309) {
         gecnd_get_display()->disable_radius = true;

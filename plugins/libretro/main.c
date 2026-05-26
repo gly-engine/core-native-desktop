@@ -327,7 +327,7 @@ static int lua_native_libretro_url(lua_State *L) {
 
 static int lua_native_libretro_exit(lua_State *L) {
     (void)L;
-    gamely_daemon_media_playback_stop(0);
+    gamely_daemon_media_playback_command(0, GDMSP_CMD_STOP);
     return 0;
 }
 

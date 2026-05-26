@@ -493,9 +493,7 @@ void gamely_daemon_media_register_player(const char                  *schema,
                                           void                        *usr);
 
 void gamely_daemon_media_playback_source  (uint8_t channel, const char *url);
-void gamely_daemon_media_playback_play    (uint8_t channel);
-void gamely_daemon_media_playback_pause   (uint8_t channel);
-void gamely_daemon_media_playback_stop    (uint8_t channel);
+void gamely_daemon_media_playback_command (uint8_t channel, gdmsp_cmd_t cmd);
 void gamely_daemon_media_playback_position(uint8_t channel,
                                             int16_t x, int16_t y,
                                             int16_t w, int16_t h);

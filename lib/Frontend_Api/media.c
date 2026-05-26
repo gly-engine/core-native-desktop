@@ -33,21 +33,21 @@ static int lua_native_media_position(lua_State *L) {
 
 static int lua_native_media_play(lua_State *L) {
     uint8_t channel = (uint8_t)luaL_checkinteger(L, 1);
-    gamely_daemon_media_playback_play(channel);
+    gamely_daemon_media_playback_command(channel, GDMSP_CMD_PLAY);
     lua_settop(L, 0);
     return 0;
 }
 
 static int lua_native_media_pause(lua_State *L) {
     uint8_t channel = (uint8_t)luaL_checkinteger(L, 1);
-    gamely_daemon_media_playback_pause(channel);
+    gamely_daemon_media_playback_command(channel, GDMSP_CMD_PAUSE);
     lua_settop(L, 0);
     return 0;
 }
 
 static int lua_native_media_stop(lua_State *L) {
     uint8_t channel = (uint8_t)luaL_checkinteger(L, 1);
-    gamely_daemon_media_playback_stop(channel);
+    gamely_daemon_media_playback_command(channel, GDMSP_CMD_STOP);
     lua_settop(L, 0);
     return 0;
 }
