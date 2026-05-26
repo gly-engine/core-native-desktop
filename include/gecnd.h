@@ -400,17 +400,44 @@ typedef struct {
     void (*close)(int port);
 } gamely_input_driver_t;
 
-/* build phase — called by set_toml.c */
-void gamely_daemon_input_add_class  (const char *name);
-void gamely_daemon_input_add_keycode(const char *key_name, uint32_t hex);
+/* build phase — called by set_toml.c / glfw.c */
+void gamely_daemon_input_add_keycode(const char *class_name, const char *key_name, uint32_t hex);
 
-/* register sources — called once per --input before open() */
-void gamely_daemon_input_add_source(const char *uri);
+/* register an input source URI (replaces add_source); must be called before tick() */
+void gamely_input_add_url(const char *url);
 
-/* register a no-arg poller called at the start of every gamely_daemon_input_tick() */
-void gamely_daemon_input_add_tick(void (*fn)(void));
+/*
+ * gamely_input_add_cb(tag, fn, usr) — unified callback registration.
+ * Returns true on success, false if a required class was not found.
+ *
+ *   "@tick"      fn: void (*)(void)
+ *                called at the start of every gamely_daemon_input_tick()
+ *
+ *   "@code"      fn: gamely_input_key_cb  (name, pressed, port, usr)
+ *                called for every resolved key event
+ *
+ *   "@init"      fn: gamely_input_key_cb  (name, pressed, port, usr)
+ *                fired once (on first tick after init) for every key in all
+ *                active sources with pressed=false
+ *
+ *   <classname>  fn: void (*)(const char *name, bool pressed, int port)  [no usr]
+ *                called for every key event; marks <classname> in_use
+ *
+ *   "from:to"    fn: void (*)(uint32_t code, bool pressed, int port)  [no usr]
+ *                cross-keymap translation: active class resolves the name,
+ *                then "to" class translates name→code; fires only when both
+ *                match. "from" constrains which active class triggers (empty =
+ *                all). Returns false if "from" or "to" class not registered.
+ *                Both classes are marked in_use.
+ *
+ *   ":to"        same as "from:to" with empty from (wildcard — all actives).
+ */
+bool gamely_input_add_cb(const char *tag, void *fn, void *usr);
 
-/* drivers are opened lazily on first push/init_keys; falls back to void://0 if none */
+/* free keymap classes not marked in_use; no-op in debug mode */
+void gamely_daemon_input_cleanup(void);
+
+/* drivers are opened lazily on first push; close releases all driver handles */
 void gamely_daemon_input_close(void);
 
 /* inject from driver threads; port from open(); ttl_ms=0 = no TTL */
@@ -419,12 +446,8 @@ void gamely_daemon_input_push     (uint32_t code, bool pressed, uint32_t ttl_ms)
 void gamely_daemon_input_push_name(const char *name, bool pressed, int port, uint32_t ttl_ms);
 
 /* main thread */
-void gamely_daemon_input_subscribe (gamely_input_key_cb cb, void *usr);
 void gamely_daemon_input_tick      (void);
 void gamely_daemon_input_reset_port(int port);
-
-/* fires cb(name, false, port, usr) for every entry across all active sources */
-void gamely_daemon_input_init_keys(gamely_input_key_cb cb, void *usr);
 
 /* remote input propagator — connects to url and forwards local inputs */
 void gamely_daemon_input_remote(const char *url);

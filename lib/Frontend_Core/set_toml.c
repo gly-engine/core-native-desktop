@@ -29,14 +29,13 @@ static void traverse_keymap(toml_datum_t node, char *path, int path_len)
 
         if (all_arrays && node.u.tab.size > 0) {
             /* leaf — register as class */
-            gamely_daemon_input_add_class(path);
             for (int i = 0; i < node.u.tab.size; i++) {
                 const char *key_name = node.u.tab.key[i];
                 toml_datum_t arr     = node.u.tab.value[i];
                 for (int j = 0; j < arr.u.arr.size; j++) {
                     toml_datum_t elem = arr.u.arr.elem[j];
                     if (elem.type == TOML_INT64)
-                        gamely_daemon_input_add_keycode(key_name, (uint32_t)elem.u.int64);
+                        gamely_daemon_input_add_keycode(path, key_name, (uint32_t)elem.u.int64);
                 }
             }
         } else {

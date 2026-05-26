@@ -149,7 +149,7 @@ void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
         gecnd_plugin_load(gly, opt.arg);
     }
     if (c == 2502) {
-        gamely_daemon_input_add_source(opt.arg);
+        gamely_input_add_url(opt.arg);
     }
     if (c == 9999) {
         gamely_set_toml(gly, opt.arg, longopts);

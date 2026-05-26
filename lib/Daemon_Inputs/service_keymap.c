@@ -4,21 +4,22 @@
  * participant "service_keymap" as KM
  * participant "driver" as D
  *
- * T  -> KM : add_class("vivensis.dtv30")
- * T  -> KM : add_keycode("up", 0xF3)
- * T  -> KM : add_keycode("a",  0xF1)
+ * T  -> KM : add_keycode("vivensis.dtv30", "up", 0xF3)
+ * T  -> KM : add_keycode("vivensis.dtv30", "a",  0xF1)
  * ...add_source()...
  * KM -> KM : parse URI — proto, classname, device, port, debug
  * KM -> KM : store source slot
  * ...open()...
- * KM -> KM : validate proto + classname per source
+ * KM -> KM : validate proto + classname per source; mark in_use
  * KM -> D  : open(port, device) per source
- * KM -> KM : free unused classes (if no source has debug=1)
+ * ...cleanup()...
+ * KM -> KM : free classes not marked in_use
  * @enduml
  */
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #include "gecnd.h"
 
@@ -26,40 +27,19 @@
 #define GLFW_DEFAULT_INPUT_CLASS "void://0"
 #endif
 
-typedef struct {
-    char (*pool)[8];
-    int   count;
-    int   capacity;
-} gamely_keyname_bucket_t;
+/* -- keymap (bidirectional map code ↔ name) -- */
 
-static const char *bucket_intern(gamely_keyname_bucket_t *b, const char *name)
-{
-    for (int i = 0; i < b->count; i++) {
-        if (strcmp(b->pool[i], name) == 0)
-            return b->pool[i];
-    }
-    if (b->count == b->capacity) {
-        int nc = b->capacity ? b->capacity * 2 : 16;
-        char (*np)[8] = realloc(b->pool, (size_t)nc * sizeof(*b->pool));
-        if (!np) return NULL;
-        b->pool = np;
-        b->capacity = nc;
-    }
-    strncpy(b->pool[b->count], name, 7);
-    b->pool[b->count][7] = '\0';
-    return b->pool[b->count++];
-}
+typedef struct { uint32_t code; char name[8]; } km_by_code_t; /* sorted by code */
+typedef struct { char name[8]; uint32_t code; } km_by_name_t; /* sorted by name */
 
-/* -- keymap -- */
-
-typedef struct { uint32_t code; const char *name; } gamely_keymap_entry_t;
-
-typedef struct {
-    gamely_keymap_entry_t *entries;
-    int   count;
-    int   capacity;
-    char  name[32];
-    int   debug;
+typedef struct gamely_keymap_t {
+    km_by_code_t *by_code;
+    km_by_name_t *by_name;
+    int           count;
+    int           capacity;
+    char          name[32];  /* class name */
+    bool          in_use;    /* set by do_init; used by cleanup */
+    int           debug;
 } gamely_keymap_t;
 
 /* -- source -- */
@@ -81,12 +61,11 @@ typedef struct {
 #define MAX_CLASSES 64
 
 typedef struct {
-    gamely_keymap_t         *classes[MAX_CLASSES];
-    int                      count;
-    gamely_keyname_bucket_t  bucket;
-    gamely_keymap_t         *current;
-    gamely_input_source_t    sources[MAX_SOURCES];
-    int                      source_count;
+    gamely_keymap_t      *classes[MAX_CLASSES];
+    int                   count;
+    gamely_keymap_t      *current;
+    gamely_input_source_t sources[MAX_SOURCES];
+    int                   source_count;
 } gamely_keymap_registry_t;
 
 static gamely_keymap_registry_t g_reg;
@@ -112,7 +91,49 @@ static const int k_driver_count = (int)(sizeof(k_drivers) / sizeof(k_drivers[0])
 
 /* -- build phase -- */
 
-void gamely_daemon_input_add_class(const char *name)
+void gamely_keymap_mark_in_use(const char *name)
+{
+    if (!name) return;
+    for (int i = 0; i < g_reg.count; i++) {
+        if (g_reg.classes[i] && strcmp(g_reg.classes[i]->name, name) == 0) {
+            g_reg.classes[i]->in_use = true;
+            return;
+        }
+    }
+}
+
+gamely_keymap_t *gamely_keymap_find(const char *name)
+{
+    if (!name) return NULL;
+    for (int i = 0; i < g_reg.count; i++) {
+        if (g_reg.classes[i] && strcmp(g_reg.classes[i]->name, name) == 0)
+            return g_reg.classes[i];
+    }
+    return NULL;
+}
+
+const char *gamely_keymap_get_active_name(void)
+{
+    if (g_reg.source_count && g_reg.sources[0].active)
+        return g_reg.sources[0].active->name;
+    return NULL;
+}
+
+bool gamely_keymap_translate(gamely_keymap_t *km, const char *name, uint32_t *out)
+{
+    if (!km || !name || km->count == 0) return false;
+    int lo = 0, hi = km->count - 1;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        int cmp = strcmp(km->by_name[mid].name, name);
+        if      (cmp == 0) { *out = km->by_name[mid].code; return true; }
+        else if (cmp <  0) lo = mid + 1;
+        else               hi = mid - 1;
+    }
+    return false;
+}
+
+static void set_current_class(const char *name)
 {
     if (!name || strlen(name) >= 32) return;
 
@@ -134,33 +155,47 @@ void gamely_daemon_input_add_class(const char *name)
     g_reg.current = km;
 }
 
-void gamely_daemon_input_add_keycode(const char *key_name, uint32_t hex)
+void gamely_daemon_input_add_keycode(const char *class_name, const char *key_name, uint32_t hex)
 {
+    set_current_class(class_name);
     if (!key_name || !g_reg.current) return;
     if (strlen(key_name) >= 8) {
         fprintf(stderr, "[core:input] key name too long (max 7): %s\n", key_name);
         return;
     }
 
-    const char *interned = bucket_intern(&g_reg.bucket, key_name);
-    if (!interned) return;
-
     gamely_keymap_t *km = g_reg.current;
     if (km->count == km->capacity) {
         int nc = km->capacity ? km->capacity * 2 : 8;
-        gamely_keymap_entry_t *ne = realloc(km->entries, (size_t)nc * sizeof(*km->entries));
-        if (!ne) return;
-        km->entries = ne;
+        km_by_code_t *nc_arr = realloc(km->by_code, (size_t)nc * sizeof(*km->by_code));
+        if (!nc_arr) return;
+        km->by_code = nc_arr;
+        km_by_name_t *nn_arr = realloc(km->by_name, (size_t)nc * sizeof(*km->by_name));
+        if (!nn_arr) return;
+        km->by_name = nn_arr;
         km->capacity = nc;
     }
 
-    int pos = km->count;
-    while (pos > 0 && km->entries[pos - 1].code > hex) {
-        km->entries[pos] = km->entries[pos - 1];
-        pos--;
+    /* inserção ordenada em by_code (por code) */
+    int pc = km->count;
+    while (pc > 0 && km->by_code[pc - 1].code > hex) {
+        km->by_code[pc] = km->by_code[pc - 1];
+        pc--;
     }
-    km->entries[pos].code = hex;
-    km->entries[pos].name = interned;
+    km->by_code[pc].code = hex;
+    strncpy(km->by_code[pc].name, key_name, 7);
+    km->by_code[pc].name[7] = '\0';
+
+    /* inserção ordenada em by_name (por name) */
+    int pn = km->count;
+    while (pn > 0 && strcmp(km->by_name[pn - 1].name, key_name) > 0) {
+        km->by_name[pn] = km->by_name[pn - 1];
+        pn--;
+    }
+    strncpy(km->by_name[pn].name, key_name, 7);
+    km->by_name[pn].name[7] = '\0';
+    km->by_name[pn].code    = hex;
+
     km->count++;
 }
 
@@ -172,18 +207,41 @@ const char *gamely_keymap_lookup(gamely_keymap_t *km, uint32_t code)
     int lo = 0, hi = km->count - 1;
     while (lo <= hi) {
         int mid = (lo + hi) / 2;
-        if      (km->entries[mid].code == code) return km->entries[mid].name;
-        else if (km->entries[mid].code <  code) lo = mid + 1;
+        if      (km->by_code[mid].code == code) return km->by_code[mid].name;
+        else if (km->by_code[mid].code <  code) lo = mid + 1;
         else                                    hi = mid - 1;
     }
     return NULL;
 }
 
-/* -- internal accessors used by service_io -- */
+uint32_t gamely_keymap_lookup_name(gamely_keymap_t *km, const char *name)
+{
+    if (!km || km->count == 0) return 0;
+    int lo = 0, hi = km->count - 1;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        int cmp = strcmp(km->by_name[mid].name, name);
+        if      (cmp == 0) return km->by_name[mid].code;
+        else if (cmp <  0) lo = mid + 1;
+        else               hi = mid - 1;
+    }
+    return 0;
+}
 
-gamely_keymap_t *gamely_keymap_get_active(void) { return g_reg.source_count ? g_reg.sources[0].active : NULL; }
-int              gamely_keymap_get_debug(void)  { return g_reg.source_count ? g_reg.sources[0].debug  : 0;    }
-int              gamely_keymap_get_port(void)   { return g_reg.source_count ? g_reg.sources[0].port   : 0;    }
+/* -- per-source accessors used by service_io -- */
+
+int         gamely_keymap_source_count(void)              { return g_reg.source_count; }
+int         gamely_keymap_source_port(int s)              { return (s >= 0 && s < g_reg.source_count) ? g_reg.sources[s].port  : 0; }
+int         gamely_keymap_source_debug(int s)             { return (s >= 0 && s < g_reg.source_count) ? g_reg.sources[s].debug : 0; }
+const char *gamely_keymap_source_class_name(int s)        { return (s >= 0 && s < g_reg.source_count && g_reg.sources[s].active) ? g_reg.sources[s].active->name : NULL; }
+int         gamely_keymap_source_key_count(int s)         { return (s >= 0 && s < g_reg.source_count && g_reg.sources[s].active) ? g_reg.sources[s].active->count : 0; }
+const char *gamely_keymap_source_key_name(int s, int idx) { return (s >= 0 && s < g_reg.source_count && g_reg.sources[s].active && idx >= 0 && idx < g_reg.sources[s].active->count) ? g_reg.sources[s].active->by_code[idx].name : NULL; }
+
+const char *gamely_keymap_lookup_source(int s, uint32_t code)
+{
+    if (s < 0 || s >= g_reg.source_count) return NULL;
+    return gamely_keymap_lookup(g_reg.sources[s].active, code);
+}
 
 const char *gamely_keymap_lookup_debug(uint32_t code, const char **out_class)
 {
@@ -262,10 +320,6 @@ bool gamely_daemon_input_do_init(void)
     if (g_reg.source_count == 0)
         gamely_daemon_input_add_source(GLFW_DEFAULT_INPUT_CLASS);
 
-    int any_debug = 0;
-    for (int i = 0; i < g_reg.source_count; i++)
-        if (g_reg.sources[i].debug) any_debug = 1;
-
     for (int i = 0; i < g_reg.source_count; i++) {
         gamely_input_source_t *src = &g_reg.sources[i];
 
@@ -273,7 +327,8 @@ bool gamely_daemon_input_do_init(void)
         if (strcmp(src->classname, "0") != 0) {
             for (int j = 0; j < g_reg.count; j++) {
                 if (strcmp(g_reg.classes[j]->name, src->classname) == 0) {
-                    src->active = g_reg.classes[j];
+                    src->active           = g_reg.classes[j];
+                    src->active->in_use   = true;
                     break;
                 }
             }
@@ -293,26 +348,29 @@ bool gamely_daemon_input_do_init(void)
         src->searchparams = NULL;
     }
 
-    if (!any_debug) {
-        for (int i = 0; i < g_reg.count; i++) {
-            int used = 0;
-            for (int j = 0; j < g_reg.source_count; j++) {
-                if (g_reg.classes[i] == g_reg.sources[j].active) { used = 1; break; }
-            }
-            if (!used) {
-                free(g_reg.classes[i]->entries);
-                free(g_reg.classes[i]);
-                g_reg.classes[i] = NULL;
-            }
-        }
-        int w = 0;
-        for (int i = 0; i < g_reg.count; i++)
-            if (g_reg.classes[i]) g_reg.classes[w++] = g_reg.classes[i];
-        g_reg.count = w;
-    }
-
     g_initialized = 1;
     return true;
+}
+
+void gamely_daemon_input_cleanup(void)
+{
+    for (int i = 0; i < g_reg.source_count; i++) {
+        if (g_reg.sources[i].debug) return;
+    }
+
+    int w = 0;
+    for (int i = 0; i < g_reg.count; i++) {
+        gamely_keymap_t *km = g_reg.classes[i];
+        if (!km) continue;
+        if (km->in_use) {
+            g_reg.classes[w++] = km;
+        } else {
+            free(km->by_code);
+            free(km->by_name);
+            free(km);
+        }
+    }
+    g_reg.count = w;
 }
 
 void gamely_daemon_input_close(void)
@@ -326,23 +384,12 @@ void gamely_daemon_input_close(void)
 
     for (int i = 0; i < g_reg.count; i++) {
         if (g_reg.classes[i]) {
-            free(g_reg.classes[i]->entries);
+            free(g_reg.classes[i]->by_code);
+            free(g_reg.classes[i]->by_name);
             free(g_reg.classes[i]);
         }
     }
-    free(g_reg.bucket.pool);
     memset(&g_reg, 0, sizeof(g_reg));
     g_initialized = 0;
 }
 
-void gamely_daemon_input_init_keys(gamely_input_key_cb cb, void *usr)
-{
-    if (!cb) return;
-    if (!gamely_daemon_input_do_init()) return;
-    for (int s = 0; s < g_reg.source_count; s++) {
-        gamely_keymap_t *km = g_reg.sources[s].active;
-        if (!km) continue;
-        for (int i = 0; i < km->count; i++)
-            cb(km->entries[i].name, false, g_reg.sources[s].port, usr);
-    }
-}

@@ -113,11 +113,10 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     gecnd_t *root = gecnd_get_root();
     if (root) root->internal |= GECND_INTERNAL_HW_GL_READY;
 
-    gamely_daemon_input_add_class("glfw");
     for (uint8_t i = 0; i < sizeof(keymap)/sizeof(*keymap); i++) {
-        gamely_daemon_input_add_keycode(keymap[i].name, keymap[i].key);
+        gamely_daemon_input_add_keycode("glfw", keymap[i].name, keymap[i].key);
     }
-    gamely_daemon_input_add_tick(glfwPollEvents);
+    gamely_input_add_cb("@tick", glfwPollEvents, NULL);
 }
 
 void gly_hook_display_dt(int16_t *delta_time) {

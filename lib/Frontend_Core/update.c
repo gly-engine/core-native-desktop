@@ -291,7 +291,7 @@ static bool state_game_loaded(gecnd_t *gly) {
     gly->ref_native_callback_keyboard = luaL_ref(gly->L, LUA_REGISTRYINDEX);
 
     if (gecnd_is_root(gly))
-        gamely_daemon_input_init_keys(gecnd_dispatch_key_event, gly);
+        gamely_input_add_cb("@init", gecnd_dispatch_key_event, gly);
 
     gly->state = GECND_FSM_RUNNING;
     return true;

@@ -81,7 +81,7 @@ void gamely_hypervisor_init(gecnd_t *gly) {
     gamely_daemon_media_register_player("ffmpeg+udp"   , &gamely_player_ffmpeg, NULL);
 #endif
 
-    gamely_daemon_input_subscribe(gecnd_dispatch_key_event, gly);
+    gamely_input_add_cb("@code", gecnd_dispatch_key_event, gly);
 }
 
 void gamely_hypervisor_tick(void) {

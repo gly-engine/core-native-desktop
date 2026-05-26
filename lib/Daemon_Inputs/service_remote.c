@@ -81,7 +81,7 @@ void gamely_daemon_input_remote(const char *url)
     strncpy(g_url, url, sizeof(g_url) - 1);
     g_url[sizeof(g_url) - 1] = '\0';
     if (!g_subscribed) {
-        gamely_daemon_input_subscribe(on_input, NULL);
+        gamely_input_add_cb("@code", on_input, NULL);
         g_subscribed = 1;
     }
     try_connect();

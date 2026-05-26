@@ -284,6 +284,6 @@ int luaopen_chromium_gecnd(lua_State *L) {
 }
 
 void coreopen_chromium_gecnd(void) {
-    gamely_daemon_input_subscribe(on_key, NULL);
+    gamely_input_add_cb("@code", on_key, NULL);
     gamely_daemon_webloop_route_ws(DEVTOOLS_WS_PATH, ws_dev_tools);
 }
