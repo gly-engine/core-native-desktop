@@ -223,67 +223,67 @@ static void av_reap(uint8_t channel) {
     gamely_daemon_media_background_release();
 }
 
-static void av_source(uint8_t channel, const char *url, void *usr) {
+static gdmsp_fsm_t av_source(uint8_t channel, const char *url, void *usr) {
     (void)usr;
-    if (channel >= 4) return;
+    if (channel >= 4) return GDMSP_FSM_ERROR;
 
-    /* canal ocupado: se thread já saiu, faz reap; senão sinaliza stop
-     * e desiste (service reentra no próximo tick). */
+    /* canal ocupado: se thread já saiu, faz reap; senão sinaliza stop e
+     * retorna ERROR — o service não deve chamar source() nesse estado. */
     if (s_streams[channel]) {
         gdmsp_fsm_t st = (gdmsp_fsm_t) atomic_load(&s_streams[channel]->state);
         if (st == GDMSP_FSM_IDLE) {
             av_reap(channel);
         } else {
             atomic_store(&s_streams[channel]->running, 0);
-            return;
+            return GDMSP_FSM_ERROR;
         }
     }
 
     if (!gamely_daemon_media_background_claim()) {
         fprintf(stderr, "[media] background buffer in use\n");
-        return;
+        return GDMSP_FSM_ERROR;
     }
     s_streams[channel] = stream_create(url);
-    if (!s_streams[channel]) gamely_daemon_media_background_release();
+    if (!s_streams[channel]) {
+        gamely_daemon_media_background_release();
+        return GDMSP_FSM_ERROR;
+    }
+    return GDMSP_FSM_LOADING;
 }
 
-static void av_command(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
+static gdmsp_fsm_t av_command(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
     (void)usr;
-    if (channel >= 4 || !s_streams[channel]) return;
+    if (channel >= 4 || !s_streams[channel]) return GDMSP_FSM_IDLE;
     VideoStream *s = s_streams[channel];
 
     switch (cmd) {
+        case GDMSP_CMD_RESOURCE:
+        case GDMSP_CMD_STOP:
+            atomic_store(&s->running, 0);
+            atomic_store(&s->paused, 0);  /* destrava worker preso em pause loop */
+            {
+                gdmsp_fsm_t cur = (gdmsp_fsm_t) atomic_load(&s->state);
+                if (cur != GDMSP_FSM_ERROR && cur != GDMSP_FSM_IDLE)
+                    atomic_store(&s->state, GDMSP_FSM_STOPPING);
+            }
+            break;
         case GDMSP_CMD_PLAY:
             atomic_store(&s->paused, 0);
             break;
         case GDMSP_CMD_PAUSE:
             atomic_store(&s->paused, 1);
             break;
-        case GDMSP_CMD_STOP:
-            atomic_store(&s->running, 0);
-            atomic_store(&s->paused, 0);  /* destrava worker preso em pause loop */
-            /* preserva ERROR caso já tenha sido setado; senão marca STOPPING.
-             * o worker eventualmente escreverá IDLE e av_state fará o reap. */
-            {
-                gdmsp_fsm_t st = (gdmsp_fsm_t) atomic_load(&s->state);
-                if (st != GDMSP_FSM_ERROR && st != GDMSP_FSM_IDLE)
-                    atomic_store(&s->state, GDMSP_FSM_STOPPING);
-            }
-            break;
         case GDMSP_CMD_TICK:
-            /* worker próprio — nada a fazer aqui */
+            /* worker próprio — tick é sinal de frame, não há nada a fazer aqui */
+            break;
+        default:
             break;
     }
-}
 
-static gdmsp_fsm_t av_state(uint8_t channel, void *usr) {
-    (void)usr;
-    if (channel >= 4 || !s_streams[channel]) return GDMSP_FSM_IDLE;
-    gdmsp_fsm_t st = (gdmsp_fsm_t) atomic_load(&s_streams[channel]->state);
-    /* worker já escreveu IDLE → libera recursos. uv_thread_join não bloqueia
-     * porque o thread já saiu. */
+    gdmsp_fsm_t st = (gdmsp_fsm_t) atomic_load(&s->state);
     if (st == GDMSP_FSM_IDLE) {
         av_reap(channel);
+        return GDMSP_FSM_IDLE;
     }
     return st;
 }
@@ -291,5 +291,4 @@ static gdmsp_fsm_t av_state(uint8_t channel, void *usr) {
 gamely_media_player_t gamely_player_ffmpeg = {
     .source  = av_source,
     .command = av_command,
-    .state   = av_state,
 };

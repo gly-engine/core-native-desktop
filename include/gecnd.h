@@ -35,6 +35,7 @@ typedef enum {
 
 typedef enum {
     GDMSP_FSM_IDLE = 0,
+    GDMSP_FSM_OPENING,    /* service thread executando .source() */
     GDMSP_FSM_LOADING,
     GDMSP_FSM_PLAYING,
     GDMSP_FSM_PAUSED,
@@ -447,22 +448,21 @@ MediaFrame *gamely_daemon_media_background_get_frame   (void);
 bool        gamely_daemon_media_background_check_update(atomic_int *local_counter);
 
 typedef enum {
-    GDMSP_CMD_PLAY = 0,
+    GDMSP_CMD_NONE = 0,    /* sentinela interna do service — nunca enviado a drivers */
+    GDMSP_CMD_RESOURCE,    /* aviso: troca de source iminente — driver pode iniciar cleanup */
+    GDMSP_CMD_PLAY,
     GDMSP_CMD_PAUSE,
     GDMSP_CMD_STOP,
     GDMSP_CMD_TICK,
 } gdmsp_cmd_t;
 
 typedef struct {
-    /* prepara pipeline a partir do primeiro source dado (loading→playing
-     * por padrão; o service modula via comandos). */
-    void (*source) (uint8_t channel, const char *url, void *usr);
-    /* PLAY, PAUSE, STOP, TICK. STOP deve sinalizar e retornar rápido;
-     * o driver completa cleanup quando state() virar IDLE. */
-    void (*command)(uint8_t channel, gdmsp_cmd_t cmd, void *usr);
-    /* lock-free snapshot of the driver's lifecycle. Must return quickly.
-     * Required — no NULL. */
-    gdmsp_fsm_t (*state)(uint8_t channel, void *usr);
+    /* chamado pelo service em thread separada; bloqueia até estar pronto.
+     * retorna o estado inicial (LOADING, PLAYING ou ERROR). */
+    gdmsp_fsm_t (*source) (uint8_t channel, const char *url, void *usr);
+    /* RESOURCE, PLAY, PAUSE, STOP, TICK — retorna estado atual do driver.
+     * STOP sinaliza e retorna rápido; driver chega em IDLE assincronamente. */
+    gdmsp_fsm_t (*command)(uint8_t channel, gdmsp_cmd_t cmd, void *usr);
 } gamely_media_player_t;
 
 void gamely_daemon_media_register_player(const char                  *schema,

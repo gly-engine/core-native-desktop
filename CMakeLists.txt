@@ -771,7 +771,7 @@ if(GECND_USE_PLUGIN_LIBRETRO)
     endif()
     file(GLOB_RECURSE libretro_files "${CMAKE_CURRENT_LIST_DIR}/plugins/libretro/*.c")
     add_library(libretro_gecnd SHARED "${libretro_files}")
-    target_include_directories(libretro_gecnd PRIVATE "${LIBRETRO_DIR};${LIBUV_DIR}/include")
+    target_include_directories(libretro_gecnd PRIVATE "${LIBRETRO_DIR}")
     target_link_libraries(libretro_gecnd PRIVATE gecnd_header gecnd_lua)
     set_target_properties(libretro_gecnd PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib

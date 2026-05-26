@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdatomic.h>
+#include <uv.h>
 #include "gecnd.h"
 
 #include "gefilter.h"
@@ -110,19 +112,35 @@ static player_reg_t *select_player(const char *url) {
 /* ── channel state ────────────────────────────────────────────────── */
 
 typedef struct {
-    player_reg_t *player;                 /* anexado ao canal — fonte de state() */
-    char         *url;                    /* URL atualmente tocando */
-    char         *pending_url;            /* novo source enfileirado */
-    bool          pending_play;           /* drain: true=autoplay, false=load pausado */
-    bool          want_pause_after_load;  /* aplicar pause() assim que driver vira PLAYING */
+    player_reg_t *player;
+    char         *url;
+    char         *pending_src;  /* próximo source a abrir */
+    gdmsp_cmd_t   pending_cmd;  /* NONE=autoplay, PAUSE=carregar pausado, STOP=cancelar */
+    atomic_int    st;           /* gdmsp_fsm_t — OPENING enquanto source thread roda */
+    uv_thread_t   src_thread;
+    bool          src_active;   /* join pendente */
 } channel_t;
 
 static channel_t s_channels[CHANNEL_CAP];
+static uint8_t   s_src_idx[CHANNEL_CAP];
 static bool      s_exiting_stops_issued = false;
 
-static gdmsp_fsm_t channel_state(channel_t *ch, uint8_t idx) {
-    if (!ch->player) return GDMSP_FSM_IDLE;
-    return ch->player->cbs.state(idx, ch->player->usr);
+static gdmsp_fsm_t ch_st(channel_t *ch) {
+    return (gdmsp_fsm_t)atomic_load(&ch->st);
+}
+
+static gdmsp_fsm_t channel_cmd(channel_t *ch, uint8_t idx, gdmsp_cmd_t cmd) {
+    gdmsp_fsm_t r = ch->player->cbs.command(idx, cmd, ch->player->usr);
+    atomic_store(&ch->st, (int)r);
+    return r;
+}
+
+static void source_runner(void *arg) {
+    uint8_t    idx = *(uint8_t *)arg;
+    channel_t *ch  = &s_channels[idx];
+    gdmsp_fsm_t r  = ch->player->cbs.source(idx, ch->url, ch->player->usr);
+    atomic_store(&ch->st, (int)r);
+    /* OPENING → r: tick detecta a transição e faz o join */
 }
 
 static bool gate_running(gecnd_fsm_t s) {
@@ -150,66 +168,64 @@ void gamely_daemon_media_playback_source(uint8_t channel, const char *url) {
     channel_t *ch = &s_channels[channel];
 
     if (!url) {
-        free(ch->pending_url);
-        ch->pending_url = NULL;
-        if (ch->player)
-            ch->player->cbs.command(channel, GDMSP_CMD_STOP, ch->player->usr);
+        free(ch->pending_src);
+        ch->pending_src = NULL;
+        ch->pending_cmd = ch->src_active ? GDMSP_CMD_STOP : GDMSP_CMD_NONE;
+        if (!ch->src_active && ch->player)
+            channel_cmd(ch, channel, GDMSP_CMD_STOP);
         return;
     }
 
-    /* mesma URL já anexada e tocando/carregando/pausada: ignora */
+    /* mesma URL já ativa: ignora */
     if (ch->url && strcmp(ch->url, url) == 0) {
-        gdmsp_fsm_t st = channel_state(ch, channel);
-        if (st == GDMSP_FSM_PLAYING || st == GDMSP_FSM_LOADING || st == GDMSP_FSM_PAUSED)
+        gdmsp_fsm_t st = ch_st(ch);
+        if (st == GDMSP_FSM_OPENING || st == GDMSP_FSM_PLAYING
+                || st == GDMSP_FSM_LOADING || st == GDMSP_FSM_PAUSED)
             return;
     }
 
-    free(ch->pending_url);
-    ch->pending_url  = strdup(url);
-    ch->pending_play = true;
+    free(ch->pending_src);
+    ch->pending_src = strdup(url);
+    ch->pending_cmd = GDMSP_CMD_NONE; /* autoplay por padrão */
 }
 
 void gamely_daemon_media_playback_play(uint8_t channel) {
     if (channel >= CHANNEL_CAP) return;
     channel_t *ch = &s_channels[channel];
 
-    if (ch->pending_url) {
-        ch->pending_play = true;
+    if (ch->pending_src || ch->src_active) {
+        if (ch->pending_cmd == GDMSP_CMD_PAUSE) ch->pending_cmd = GDMSP_CMD_NONE;
         return;
     }
     if (!ch->player) return;
 
-    ch->want_pause_after_load = false;
-    gdmsp_fsm_t st = channel_state(ch, channel);
-    if (st == GDMSP_FSM_PAUSED)
-        ch->player->cbs.command(channel, GDMSP_CMD_PLAY, ch->player->usr);
+    if (ch_st(ch) == GDMSP_FSM_PAUSED)
+        channel_cmd(ch, channel, GDMSP_CMD_PLAY);
 }
 
 void gamely_daemon_media_playback_pause(uint8_t channel) {
     if (channel >= CHANNEL_CAP) return;
     channel_t *ch = &s_channels[channel];
 
-    if (ch->pending_url) {
-        ch->pending_play = false;
+    if (ch->pending_src || ch->src_active) {
+        ch->pending_cmd = GDMSP_CMD_PAUSE;
         return;
     }
     if (!ch->player) return;
 
-    gdmsp_fsm_t st = channel_state(ch, channel);
-    if (st == GDMSP_FSM_PLAYING)
-        ch->player->cbs.command(channel, GDMSP_CMD_PAUSE, ch->player->usr);
+    if (ch_st(ch) == GDMSP_FSM_PLAYING)
+        channel_cmd(ch, channel, GDMSP_CMD_PAUSE);
 }
 
 void gamely_daemon_media_playback_stop(uint8_t channel) {
     if (channel >= CHANNEL_CAP) return;
     channel_t *ch = &s_channels[channel];
 
-    free(ch->pending_url);
-    ch->pending_url           = NULL;
-    ch->want_pause_after_load = false;
-    if (ch->player)
-        ch->player->cbs.command(channel, GDMSP_CMD_STOP, ch->player->usr);
-    /* url/player liberados pelo tick quando driver virar IDLE */
+    free(ch->pending_src);
+    ch->pending_src = NULL;
+    ch->pending_cmd = ch->src_active ? GDMSP_CMD_STOP : GDMSP_CMD_NONE;
+    if (!ch->src_active && ch->player)
+        channel_cmd(ch, channel, GDMSP_CMD_STOP);
 }
 
 void gamely_daemon_media_playback_position(uint8_t channel,
@@ -228,63 +244,83 @@ void gamely_daemon_media_playback_tick(void) {
 
     if (!in_running && !in_exiting) return;
 
-    /* na transição pra EXITING: sinaliza stop em todos e descarta pendings */
     if (in_exiting && !s_exiting_stops_issued) {
         for (int i = 0; i < CHANNEL_CAP; i++) {
             channel_t *ch = &s_channels[i];
-            free(ch->pending_url);
-            ch->pending_url           = NULL;
-            ch->want_pause_after_load = false;
-            if (ch->player)
-                ch->player->cbs.command((uint8_t)i, GDMSP_CMD_STOP, ch->player->usr);
+            free(ch->pending_src);
+            ch->pending_src = NULL;
+            ch->pending_cmd = ch->src_active ? GDMSP_CMD_STOP : GDMSP_CMD_NONE;
+            if (!ch->src_active && ch->player)
+                channel_cmd(ch, (uint8_t)i, GDMSP_CMD_STOP);
         }
         s_exiting_stops_issued = true;
     }
 
     for (int i = 0; i < CHANNEL_CAP; i++) {
         channel_t *ch = &s_channels[i];
-        gdmsp_fsm_t st = channel_state(ch, (uint8_t)i);
 
-        /* ERROR não é terminal — chama stop, próximo tick vê IDLE */
-        if (st == GDMSP_FSM_ERROR) {
-            if (ch->player)
-                ch->player->cbs.command((uint8_t)i, GDMSP_CMD_STOP, ch->player->usr);
-            continue;
-        }
+        /* join quando source thread terminar (OPENING → qualquer outro estado) */
+        if (ch->src_active) {
+            if (ch_st(ch) == GDMSP_FSM_OPENING) continue;
+            uv_thread_join(&ch->src_thread);
+            ch->src_active = false;
 
-        /* drena pending quando canal está vazio (só em RUNNING_*) */
-        if (in_running && ch->pending_url) {
-            if (!ch->player || st == GDMSP_FSM_IDLE) {
-                player_reg_t *p = select_player(ch->pending_url);
-                if (!p) {
-                    fprintf(stderr, "[media] no player for '%s'\n", ch->pending_url);
-                    free(ch->pending_url);
-                    ch->pending_url = NULL;
-                    if (ch->url) { free(ch->url); ch->url = NULL; }
-                    ch->player = NULL;
-                    continue;
-                }
-                free(ch->url);
-                ch->url                   = ch->pending_url;
-                ch->pending_url           = NULL;
-                ch->player                = p;
-                ch->want_pause_after_load = !ch->pending_play;
-                p->cbs.source((uint8_t)i, ch->url, p->usr);
+            /* aplica comando diferido */
+            if (ch->pending_cmd == GDMSP_CMD_STOP) {
+                ch->pending_cmd = GDMSP_CMD_NONE;
+                channel_cmd(ch, (uint8_t)i, GDMSP_CMD_STOP);
                 continue;
             }
-            /* canal ocupado — sinaliza stop e espera */
-            if (st != GDMSP_FSM_STOPPING)
-                ch->player->cbs.command((uint8_t)i, GDMSP_CMD_STOP, ch->player->usr);
+            if (ch->pending_cmd == GDMSP_CMD_PAUSE && ch_st(ch) == GDMSP_FSM_PLAYING) {
+                ch->pending_cmd = GDMSP_CMD_NONE;
+                channel_cmd(ch, (uint8_t)i, GDMSP_CMD_PAUSE);
+            }
+            ch->pending_cmd = GDMSP_CMD_NONE;
+            /* fall-through para tick normal */
+        }
+
+        gdmsp_fsm_t st = ch->player ? ch_st(ch) : GDMSP_FSM_IDLE;
+
+        /* ERROR → stop; próximo tick vê IDLE */
+        if (st == GDMSP_FSM_ERROR) {
+            if (ch->player) channel_cmd(ch, (uint8_t)i, GDMSP_CMD_STOP);
             continue;
         }
 
-        /* aplica pause assim que driver entra em PLAYING */
-        if (ch->want_pause_after_load && st == GDMSP_FSM_PLAYING) {
-            ch->player->cbs.command((uint8_t)i, GDMSP_CMD_PAUSE, ch->player->usr);
-            ch->want_pause_after_load = false;
+        /* drena pending source (só em RUNNING_*) */
+        if (in_running && ch->pending_src) {
+            /* avisa player atual enquanto não estiver IDLE (idempotente) */
+            if (ch->player && st != GDMSP_FSM_IDLE) {
+                channel_cmd(ch, (uint8_t)i, GDMSP_CMD_RESOURCE);
+                st = ch_st(ch);
+                if (st != GDMSP_FSM_IDLE) continue;
+            }
+
+            player_reg_t *p = select_player(ch->pending_src);
+            if (!p) {
+                fprintf(stderr, "[media] no player for '%s'\n", ch->pending_src);
+                free(ch->pending_src); ch->pending_src = NULL;
+                if (ch->url) { free(ch->url); ch->url = NULL; }
+                ch->player = NULL;
+                continue;
+            }
+            free(ch->url);
+            ch->url        = ch->pending_src;
+            ch->pending_src = NULL;
+            ch->player     = p;
+
+            atomic_store(&ch->st, (int)GDMSP_FSM_OPENING);
+            s_src_idx[i] = (uint8_t)i;
+            ch->src_active = true;
+            if (uv_thread_create(&ch->src_thread, source_runner, &s_src_idx[i]) != 0) {
+                ch->src_active = false;
+                atomic_store(&ch->st, (int)GDMSP_FSM_ERROR);
+                fprintf(stderr, "[media] failed to spawn source thread\n");
+            }
+            continue;
         }
 
-        /* driver virou IDLE sozinho — libera */
+        /* driver virou IDLE — libera */
         if (ch->player && st == GDMSP_FSM_IDLE) {
             free(ch->url);
             ch->url    = NULL;
@@ -292,18 +328,16 @@ void gamely_daemon_media_playback_tick(void) {
             continue;
         }
 
-        /* TICK em qualquer estado — drivers usam pra reaping / finalize de load
-         * assíncrono / etc. O que rodar dentro depende de cada driver. */
-        if (ch->player)
-            ch->player->cbs.command((uint8_t)i, GDMSP_CMD_TICK, ch->player->usr);
+        /* tick normal */
+        if (ch->player) channel_cmd(ch, (uint8_t)i, GDMSP_CMD_TICK);
     }
 }
 
 bool gamely_daemon_media_playback_active(void) {
     for (int i = 0; i < CHANNEL_CAP; i++) {
         channel_t *ch = &s_channels[i];
-        if (ch->pending_url) return true;
-        if (channel_state(ch, (uint8_t)i) != GDMSP_FSM_IDLE) return true;
+        if (ch->pending_src || ch->src_active) return true;
+        if (ch->player && ch_st(ch) != GDMSP_FSM_IDLE) return true;
     }
     return false;
 }
