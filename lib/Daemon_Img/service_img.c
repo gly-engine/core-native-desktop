@@ -131,6 +131,8 @@ static void decode_after_cb(uv_work_t *req, int status) {
     (void)status;
     img_entry_t *e = find_by_id(w->entry_id);
     if (!e || !w->result.pixels) {
+        if (e) fprintf(stderr, "[img] decode failed id=%d '%s' (%s->%s, %zu bytes)\n",
+                       e->id, e->url, w->dec->from, w->dec->to, w->src_len);
         free(w->result.pixels);
         free(w);
         if (e) set_error(e, "decode failed");
@@ -205,7 +207,12 @@ static void on_fetch(const uint8_t *data, size_t len,
 
     gamely_img_decoded_t result = dec->cb(data, len);
     free((void *)data);
-    if (!result.pixels) { set_error(e, "decode failed"); return; }
+    if (!result.pixels) {
+        fprintf(stderr, "[img] decode failed id=%d '%s' (%s->%s, %zu bytes)\n",
+                e->id, e->url, dec->from, dec->to, len);
+        set_error(e, "decode failed");
+        return;
+    }
     e->w = result.w;
     e->h = result.h;
     backend->cbs.upload(e->id, &e->backend_data,
@@ -326,6 +333,15 @@ void gamely_daemon_img_unload_all(void) {
 
 bool gamely_daemon_img_has_backend(const char *fmt) {
     return fmt && find_backend(fmt) != NULL;
+}
+
+bool gamely_daemon_img_can_decode(const char *from) {
+    if (!from) return false;
+    /* Mirror on_fetch's selection: latest-first, a decoder from->fmt whose
+     * target format has a registered backend. */
+    for (int i = s_backend_n - 1; i >= 0; i--)
+        if (find_decoder(from, s_backends[i].fmt)) return true;
+    return false;
 }
 
 int32_t gamely_daemon_img_loading_count(void) {

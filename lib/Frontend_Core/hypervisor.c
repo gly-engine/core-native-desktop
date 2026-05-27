@@ -77,11 +77,16 @@ void gamely_hypervisor_init(gecnd_t *gly) {
     gamely_daemon_img_register_decoder("jpg",  "yuv", true, gamely_driver_decoder_jpegturbo);
 #endif
 
+    /* Formats the file resolver may substitute for a requested .png, in
+     * priority order (GPU-native first, then small lossy, then raw). Each is
+     * only used if it has a decoder and a sibling file actually exists. */
+    static const char *const img_file_fallbacks[] = { "etc1", "jpg", "jpeg", "tga", NULL };
+
     if (g_display.game_base_url[0])
         gamely_daemon_img_register_schema("", gamely_resolver_image_base_url, g_display.game_base_url);
     else
-        gamely_daemon_img_register_schema("", gamely_resolver_image_file, NULL);
-    gamely_daemon_img_register_schema("file://",  gamely_resolver_image_file, NULL);
+        gamely_daemon_img_register_schema("", gamely_resolver_image_file, (void *)img_file_fallbacks);
+    gamely_daemon_img_register_schema("file://",  gamely_resolver_image_file, (void *)img_file_fallbacks);
     gamely_daemon_img_register_schema("http://",  gamely_resolver_image_http, NULL);
     gamely_daemon_img_register_schema("https://", gamely_resolver_image_http, NULL);
 

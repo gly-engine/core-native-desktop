@@ -311,6 +311,9 @@ void               gamely_daemon_img_unload_id  (int32_t id);
 void               gamely_daemon_img_unload_url (const char *url);
 void               gamely_daemon_img_unload_all (void);
 bool               gamely_daemon_img_has_backend(const char *fmt);
+/* True if some registered decoder can turn `from` (e.g. "jpg") into a format
+ * that has a backend — i.e. the dispatcher would be able to display it. */
+bool               gamely_daemon_img_can_decode (const char *from);
 int32_t            gamely_daemon_img_loading_count(void);
 
 /* ---- Web Daemons ---- */

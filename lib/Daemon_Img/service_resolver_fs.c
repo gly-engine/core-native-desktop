@@ -35,9 +35,12 @@ static void on_found(const char *path, void *usr) {
     }
 }
 
+/* schema_usr is a NULL-terminated list of fallback formats (bare extensions,
+ * e.g. {"etc1","jpg","tga",NULL}) the resolver may substitute for a requested
+ * .png, in priority order. NULL disables substitution. */
 void gamely_resolver_image_file(const char *url, void *schema_usr,
                           gamely_img_on_fetch_cb on_done, void *on_done_usr) {
-    (void)schema_usr;
+    const char *const *alts = (const char *const *)schema_usr;
 
     /* strip file:// prefix */
     const char *path = strncmp(url, "file://", 7) == 0 ? url + 7 : url;
@@ -60,17 +63,30 @@ void gamely_resolver_image_file(const char *url, void *schema_usr,
     gecnd_utils_get_cwd(cwd, sizeof(cwd));
     gecnd_utils_get_exe_cwd(exe, sizeof(exe));
 
-    /* PNG asked + ETC1 backend available: look for a sibling .etc1 first. */
-    if (strcmp(hint, "png") == 0 && gamely_daemon_img_has_backend("etc1")) {
-        char etc1_path[512];
-        size_t base_len = (size_t)(dot - path);
-        if (base_len + 6 < sizeof(etc1_path)) {
-            memcpy(etc1_path, path, base_len);
-            memcpy(etc1_path + base_len, ".etc1", 6);
+    /* PNG asked: prefer a sibling in one of the configured fallback formats
+     * (e.g. .etc1/.jpg/.tga), in priority order, skipping any without a usable
+     * decoder. Falls through to the .png itself when none exist. */
+    if (dot && alts && strcmp(hint, "png") == 0) {
+        char        ext_buf[6][16];
+        const char *exts[7];
+        int         ne = 0;
+        for (int i = 0; alts[i] && ne < 6; i++) {
+            if (!gamely_daemon_img_can_decode(alts[i])) continue;
+            snprintf(ext_buf[ne], sizeof(ext_buf[ne]), ".%s", alts[i]);
+            exts[ne] = ext_buf[ne];
+            ne++;
+        }
+        exts[ne] = NULL;
 
-            const char *etc1_paths[] = { cwd, exe, NULL };
-            const char *etc1_files[] = { etc1_path, NULL };
-            if (gamely_daemon_fs_search(etc1_paths, etc1_files, NULL,
+        char   base[512];
+        size_t base_len = (size_t)(dot - path);
+        if (ne > 0 && base_len < sizeof(base)) {
+            memcpy(base, path, base_len);
+            base[base_len] = '\0';
+
+            const char *paths[] = { cwd, exe, NULL };
+            const char *files[] = { base, NULL };
+            if (gamely_daemon_fs_search(paths, files, exts,
                                          GLY_FS_ONE_CB_ASYNC, on_found, ctx) == 0)
                 return;
         }

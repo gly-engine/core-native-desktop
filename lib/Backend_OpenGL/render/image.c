@@ -112,6 +112,7 @@ static const gamely_img_backend_t s_backend = {
 #if defined(GECND_OPENGLES) && GECND_OPENGLES == 1
 extern const gamely_img_backend_t s_backend_etc1;
 #endif
+extern const gamely_img_backend_t s_backend_yuv;
 
 void gamely_daemon_img_opengl_register(void) {
 #if defined(GECND_OPENGLES) && GECND_OPENGLES == 1
@@ -120,4 +121,7 @@ void gamely_daemon_img_opengl_register(void) {
     }
 #endif
     gamely_daemon_img_register_backend("rgba", &s_backend);
+    /* Registered last so it wins newest-first selection: jpeg with a
+     * jpeg->yuv decoder (libjpeg-turbo) prefers this over jpeg->rgba. */
+    gamely_daemon_img_register_backend("yuv", &s_backend_yuv);
 }

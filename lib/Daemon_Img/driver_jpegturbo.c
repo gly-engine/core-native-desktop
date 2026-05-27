@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <turbojpeg.h>
@@ -73,7 +74,7 @@ gamely_img_decoded_t gamely_driver_decoder_jpegturbo(const uint8_t *data, size_t
     gamely_img_decoded_t out = {0};
 
     tjhandle tj = tjInitDecompress();
-    if (!tj) return out;
+    if (!tj) { fprintf(stderr, "[jpegturbo] tjInitDecompress failed\n"); return out; }
 
     unsigned char *nat = NULL;
     uint8_t       *dst = NULL;
@@ -81,12 +82,21 @@ gamely_img_decoded_t gamely_driver_decoder_jpegturbo(const uint8_t *data, size_t
     do {
         int w = 0, h = 0, subsamp = 0, colorspace = 0;
         if (tjDecompressHeader3(tj, data, (unsigned long)len,
-                                &w, &h, &subsamp, &colorspace) != 0)
+                                &w, &h, &subsamp, &colorspace) != 0) {
+            fprintf(stderr, "[jpegturbo] header failed (len=%zu): %s\n",
+                    len, tjGetErrorStr2(tj));
             break;
-        if (w <= 0 || h <= 0) break;
+        }
+        if (w <= 0 || h <= 0) {
+            fprintf(stderr, "[jpegturbo] bad dims %dx%d\n", w, h);
+            break;
+        }
 
         const int yw = w & ~1, yh = h & ~1;
-        if (yw <= 0 || yh <= 0) break;
+        if (yw <= 0 || yh <= 0) {
+            fprintf(stderr, "[jpegturbo] too small after even-align %dx%d\n", w, h);
+            break;
+        }
         const int cw = yw / 2, ch = yh / 2;
         const int gray = (subsamp == TJSAMP_GRAY);
 
@@ -94,12 +104,16 @@ gamely_img_decoded_t gamely_driver_decoder_jpegturbo(const uint8_t *data, size_t
         const int ny_h = tjPlaneHeight(0, h, subsamp);
         const int nc_w = gray ? 0 : tjPlaneWidth (1, w, subsamp);
         const int nc_h = gray ? 0 : tjPlaneHeight(1, h, subsamp);
-        if (ny_w < yw || ny_h < yh) break;
+        if (ny_w < yw || ny_h < yh) {
+            fprintf(stderr, "[jpegturbo] luma plane %dx%d < output %dx%d (subsamp=%d)\n",
+                    ny_w, ny_h, yw, yh, subsamp);
+            break;
+        }
 
         const size_t y_size = (size_t)yw * yh;
         const size_t c_size = (size_t)cw * ch;
         dst = malloc(y_size + 2 * c_size);
-        if (!dst) break;
+        if (!dst) { fprintf(stderr, "[jpegturbo] oom dst %zu\n", y_size + 2 * c_size); break; }
 
         uint8_t *dst_y = dst;
         uint8_t *dst_u = dst + y_size;
@@ -108,21 +122,31 @@ gamely_img_decoded_t gamely_driver_decoder_jpegturbo(const uint8_t *data, size_t
         if (subsamp == TJSAMP_420 && w == yw && h == yh) {
             unsigned char *planes[3] = { dst_y, dst_u, dst_v };
             if (tjDecompressToYUVPlanes(tj, data, (unsigned long)len,
-                                        planes, w, NULL, h, TJFLAG_FASTDCT) != 0)
+                                        planes, w, NULL, h, TJFLAG_FASTDCT) != 0) {
+                fprintf(stderr, "[jpegturbo] decode (direct 420 %dx%d): %s\n",
+                        w, h, tjGetErrorStr2(tj));
                 break;
+            }
         } else {
             const unsigned long sz0 = tjPlaneSizeYUV(0, w, 0, h, subsamp);
             const unsigned long sz1 = gray ? 0 : tjPlaneSizeYUV(1, w, 0, h, subsamp);
             const unsigned long sz2 = gray ? 0 : tjPlaneSizeYUV(2, w, 0, h, subsamp);
-            if (sz0 == (unsigned long)-1) break;
+            if (sz0 == (unsigned long)-1) {
+                fprintf(stderr, "[jpegturbo] tjPlaneSizeYUV failed (subsamp=%d): %s\n",
+                        subsamp, tjGetErrorStr2(tj));
+                break;
+            }
 
             nat = malloc(sz0 + sz1 + sz2);
-            if (!nat) break;
+            if (!nat) { fprintf(stderr, "[jpegturbo] oom nat %lu\n", sz0 + sz1 + sz2); break; }
 
             unsigned char *planes[3] = { nat, nat + sz0, nat + sz0 + sz1 };
             if (tjDecompressToYUVPlanes(tj, data, (unsigned long)len,
-                                        planes, w, NULL, h, TJFLAG_FASTDCT) != 0)
+                                        planes, w, NULL, h, TJFLAG_FASTDCT) != 0) {
+                fprintf(stderr, "[jpegturbo] decode (%dx%d subsamp=%d): %s\n",
+                        w, h, subsamp, tjGetErrorStr2(tj));
                 break;
+            }
 
             if (ny_w == yw)
                 memcpy(dst_y, planes[0], y_size);

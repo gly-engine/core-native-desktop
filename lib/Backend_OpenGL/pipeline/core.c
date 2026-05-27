@@ -141,6 +141,7 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     init_batch(&s->opaque_batches[GE_PROG_SIMPLE], sizeof(GESimpleShapeVertex));
     init_batch(&s->opaque_batches[GE_PROG_COMPLEX], sizeof(GEDShapeComplexVertex));
     init_batch(&s->opaque_batches[GE_PROG_ATLAS], sizeof(GEAtlasVertex));
+    init_batch(&s->opaque_batches[GE_PROG_ATLAS_YUV], sizeof(GEAtlasVertex));
     init_batch(&s->transparent_batches[GE_PROG_SIMPLE], sizeof(GESimpleShapeVertex));
     init_batch(&s->transparent_batches[GE_PROG_COMPLEX], sizeof(GEDShapeComplexVertex));
     init_batch(&s->transparent_batches[GE_PROG_ATLAS], sizeof(GEAtlasVertex));
@@ -296,6 +297,22 @@ static void flush_batch(GEProgramType type, bool transparent) {
             glBindTexture(GL_TEXTURE_2D, s->atlas_pages.a[b->page_index].tex_id);
         }
         glUniform1i(p->loc_tex, 0);
+    } else if (type == GE_PROG_ATLAS_YUV) {
+        vbo = s->vbo_atlas;
+        stride = sizeof(GEAtlasVertex);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_SHORT, GL_FALSE, stride, (void*)offsetof(GEAtlasVertex, x));
+        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(GEAtlasVertex, r));
+        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_UNSIGNED_SHORT, GL_TRUE, stride, (void*)offsetof(GEAtlasVertex, u));
+        glDisableVertexAttribArray(3); glDisableVertexAttribArray(4);
+
+        if (b->page_index >= 0 && b->page_index < (int)kv_size(s->yuv_atlas_pages)) {
+            GEYuvAtlasPage *yp = &s->yuv_atlas_pages.a[b->page_index];
+            glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, yp->tex_y); glUniform1i(p->loc_tex_y, 0);
+            glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, yp->tex_u); glUniform1i(p->loc_tex_u, 1);
+            glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, yp->tex_v); glUniform1i(p->loc_tex_v, 2);
+            glActiveTexture(GL_TEXTURE0);
+        }
     }
 
     // Orphan the buffer to avoid driver stalls/crashes
@@ -316,6 +333,7 @@ void ge_pipeline_flush_primitives(void) {
     // Flush Opaque first
     flush_batch(GE_PROG_SIMPLE, false);
     flush_batch(GE_PROG_ATLAS, false);
+    flush_batch(GE_PROG_ATLAS_YUV, false);  // YUV images are always opaque
 
     // Flush Transparent
     flush_batch(GE_PROG_SIMPLE, true);

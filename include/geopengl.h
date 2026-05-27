@@ -120,8 +120,9 @@ typedef enum {
     GE_PROG_SIMPLE    = 0,
     GE_PROG_COMPLEX   = 1,
     GE_PROG_ATLAS     = 2,
-    GE_PROG_VIDEO     = 3,  // YUV420P: 3 textures + color filters
-    GE_PROG_COUNT     = 4,  // total size of programs[] and batch arrays
+    GE_PROG_VIDEO     = 3,  // YUV420P fullscreen video: 3 textures + color filters
+    GE_PROG_ATLAS_YUV = 4,  // YUV420P atlas images: 3 textures, YCbCr->RGB in fs
+    GE_PROG_COUNT     = 5,  // total size of programs[] and batch arrays
 } GEProgramType;
 
 typedef struct {
@@ -240,6 +241,7 @@ void ge_atlas_yuv_reset(void);
 bool ge_detect_etc1_support(void);
 
 void ge_batch_add_vertex_tex(int16_t x, int16_t y, float u, float v, uint32_t color, bool opaque, int page_index);
+void ge_batch_add_vertex_yuv(int16_t x, int16_t y, float u, float v, uint32_t color, int page_index);
 void ge_batch_add_vertex_shape(int16_t x, int16_t y, int16_t lx, int16_t ly, int16_t radius, uint32_t color, int8_t mode, bool aa);
 void ge_batch_add_vertex_complex(float x, float y, float px, float py, float hw, float hh, float radius, uint32_t color, float mode);
 
