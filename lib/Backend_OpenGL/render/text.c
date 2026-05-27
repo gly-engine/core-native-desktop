@@ -151,16 +151,21 @@ void native_text_print(int16_t x, int16_t y, const char *text) {
     state->current_z++;
 }
 
-void native_text_mensure(const char *text, int16_t *w, int16_t *h) {
-    if (!text) return;
+void native_text_mensure(const char *text, int16_t *w, int16_t *h)
+{
     ensure_font_loaded();
-    if (fs_font == FONS_INVALID) return;
     fonsSetSize(fs, current_size);
     fonsSetFont(fs, fs_font);
-    float bounds[4];
-    fonsTextBounds(fs, 0, 0, text, NULL, bounds);
-    if (w) *w = (int16_t)(bounds[2] - bounds[0]);
-    if (h) *h = (int16_t)(bounds[3] - bounds[1]);
+
+    if (w) {
+        *w = (int16_t)fonsTextBounds(fs, 0, 0, text, NULL, NULL);
+    }
+
+    if (h) {
+        float asc, desc, lineh;
+        fonsVertMetrics(fs, &asc, &desc, &lineh);
+        *h = (int16_t)lineh;
+    }
 }
 
 void native_text_font_size(uint8_t size) {
