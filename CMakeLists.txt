@@ -33,6 +33,7 @@ file(GLOB_RECURSE SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/lib/Frontend_*/*.c"
     "${CMAKE_CURRENT_LIST_DIR}/lib/Common_*/*.c"
     "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_*/service_*.c"
+    "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_*/driver_easy_*.c"
 )
 if(GECND_AS_LIBRARY)
     add_library(${PROJECT_NAME} STATIC "${SOURCES}")
@@ -101,8 +102,12 @@ target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${KLIB_DIR})
 set(STB_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/stb")
 set(STB_DOWNLOAD "https://github.com/nothings/stb/archive/f1c79c02822848a9bed4315b12c8c8f3761e1296.tar.gz")
 target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${STB_DIR})
-target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Img/driver_stb.c")
-target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Img/driver_etc1.c")
+
+# Wuffs
+set(WUFFS_VERSION "0.3.4")
+set(WUFFS_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/wuffs")
+set(WUFFS_DOWNLOAD "https://github.com/google/wuffs-mirror-release-c/archive/refs/tags/v${WUFFS_VERSION}.tar.gz")
+option(GECND_USE_WUFFS "use wuffs for fast PNG decode" OFF)
 
 # Toml
 set(TOMLC17_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/toml")
@@ -235,8 +240,8 @@ set(SPNG_REPO "https://github.com/randy408/libspng.git")
 set(SPNG_ROOT "${CMAKE_SOURCE_DIR}/vendor/spng")
 set(SPNG_SHARED OFF CACHE BOOL "" FORCE)
 set(SPNG_STATIC ON CACHE BOOL "" FORCE)
-set(SPNG_USE_MINIZ OFF CACHE BOOL "" FORCE)
 set(SPNG_INSTALL OFF CACHE BOOL "" FORCE)
+option(GECND_USE_MINIZ "use bundled miniz as spng zlib backend instead system zlib" OFF)
 
 # Libretro 
 set(LIBRETRO_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/retroarch")
@@ -601,12 +606,28 @@ if((GECND_USE_OPENGL OR GECND_USE_WARMCAT) AND GECND_USE_ZLIB)
 endif()
 
 if(GECND_USE_OPENGL)
+    if(GECND_USE_MINIZ)
+        set(SPNG_USE_MINIZ ON CACHE BOOL "" FORCE)
+    else()
+        set(SPNG_USE_MINIZ OFF CACHE BOOL "" FORCE)
+    endif()
     FetchContent_Declare(spng GIT_REPOSITORY ${SPNG_REPO} GIT_TAG ${SPNG_VERSION} SOURCE_DIR ${SPNG_ROOT})
     FetchContent_MakeAvailable(spng)
     target_compile_options(spng_static PRIVATE ${gecnd_cc_options})
     target_link_libraries(${PROJECT_NAME} PRIVATE spng_static)
     target_include_directories(${PROJECT_NAME} PRIVATE ${SPNG_ROOT}/spng)
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Img/driver_spng.c")
+    set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/lib/Frontend_Core/hypervisor.c" PROPERTIES COMPILE_DEFINITIONS "GECND_USE_SPNG=1")
+endif()
+
+if(GECND_USE_WUFFS)
+    if(NOT EXISTS "${WUFFS_DIR}")
+        FetchContent_Populate(wuffs URL "${WUFFS_DOWNLOAD}" SOURCE_DIR "${WUFFS_DIR}")
+    endif()
+    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE "${WUFFS_DIR}")
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Img/driver_wuffs.c")
+    set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Img/driver_wuffs.c" PROPERTIES INCLUDE_DIRECTORIES "${WUFFS_DIR}/release/c")
+    set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/lib/Frontend_Core/hypervisor.c" PROPERTIES COMPILE_DEFINITIONS "GECND_USE_WUFFS=1")
 endif()
 
 if(GECND_USE_OPENGL AND NOT EXISTS "${FONTSTASH_DIR}")

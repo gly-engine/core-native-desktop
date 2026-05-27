@@ -9,6 +9,10 @@
 #include <stdio.h>
 gamely_img_decoded_t gamely_driver_decoder_stb(const uint8_t *data, size_t len);
 gamely_img_decoded_t gamely_driver_decoder_spng(const uint8_t *data, size_t len);
+gamely_img_decoded_t gamely_driver_decoder_wuffs_bmp(const uint8_t *data, size_t len);
+gamely_img_decoded_t gamely_driver_decoder_wuffs_png(const uint8_t *data, size_t len);
+gamely_img_decoded_t gamely_driver_decoder_wuffs_tga(const uint8_t *data, size_t len);
+gamely_img_decoded_t gamely_driver_decoder_wuffs_jpeg(const uint8_t *data, size_t len);
 gamely_img_decoded_t gamely_driver_decoder_etc1(const uint8_t *data, size_t len);
 void gamely_resolver_image_file(const char *url, void *schema_usr, gamely_img_on_fetch_cb on_done, void *usr);
 void gamely_resolver_image_http(const char *url, void *schema_usr, gamely_img_on_fetch_cb on_done, void *usr);
@@ -48,12 +52,25 @@ void gamely_hypervisor_init(gecnd_t *gly) {
     gamely_daemon_img_start(gly->loop);
 
     gamely_daemon_img_opengl_register();
+    gamely_daemon_img_register_decoder("etc1", "etc1", true, gamely_driver_decoder_etc1);
     gamely_daemon_img_register_decoder("jpeg", "rgba", true, gamely_driver_decoder_stb);
     gamely_daemon_img_register_decoder("jpg",  "rgba", true, gamely_driver_decoder_stb);
     gamely_daemon_img_register_decoder("bmp",  "rgba", true, gamely_driver_decoder_stb);
     gamely_daemon_img_register_decoder("gif",  "rgba", true, gamely_driver_decoder_stb);
+    gamely_daemon_img_register_decoder("png",  "rgba", true, gamely_driver_decoder_stb);
+    
+#if defined(GECND_USE_SPNG)
     gamely_daemon_img_register_decoder("png",  "rgba", true, gamely_driver_decoder_spng);
-    gamely_daemon_img_register_decoder("etc1", "etc1", true, gamely_driver_decoder_etc1);
+#endif
+
+#if defined(GECND_USE_WUFFS)
+    gamely_daemon_img_register_decoder("jpeg", "rgba", true, gamely_driver_decoder_wuffs_jpeg);
+    gamely_daemon_img_register_decoder("jpg",  "rgba", true, gamely_driver_decoder_wuffs_jpeg);
+    gamely_daemon_img_register_decoder("png",  "rgba", true, gamely_driver_decoder_wuffs_png);
+    gamely_daemon_img_register_decoder("bmp",  "rgba", true, gamely_driver_decoder_wuffs_bmp);
+    gamely_daemon_img_register_decoder("tga",  "rgba", true, gamely_driver_decoder_wuffs_tga);
+#endif
+
     if (g_display.game_base_url[0])
         gamely_daemon_img_register_schema("", gamely_resolver_image_base_url, g_display.game_base_url);
     else

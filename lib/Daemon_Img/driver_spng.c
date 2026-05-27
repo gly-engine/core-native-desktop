@@ -5,7 +5,7 @@
 gamely_img_decoded_t gamely_driver_decoder_spng(const uint8_t *data, size_t len) {
     gamely_img_decoded_t out = {0};
 
-    spng_ctx *ctx = spng_ctx_new(0);
+    spng_ctx *ctx = spng_ctx_new(SPNG_CTX_IGNORE_ADLER32);
     if (!ctx) return out;
 
     if (spng_set_png_buffer(ctx, data, len) != 0) {
