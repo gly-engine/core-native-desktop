@@ -24,6 +24,10 @@
 #define GE_ATLAS_SIZE 2048
 // Font Atlas part (within metaatlas)
 #define GE_FONT_ATLAS_SIZE 1024
+// YUV atlas: Y plane is full-res, chroma (Cb/Cr) is half-res. Both planes share
+// the SAME normalized UV, so the shader samples all three at one coordinate.
+#define GE_YUV_ATLAS_SIZE  GE_ATLAS_SIZE
+#define GE_YUV_CHROMA_SIZE (GE_ATLAS_SIZE / 2)
 // Max vertices in a single batch (multiple of 6, approx 256KB)
 #define GE_MAX_VERTICES 8190
 // Max layers for 2D depth sorting
@@ -56,6 +60,19 @@ typedef struct {
     int reset_row_height;
     kvec_t(GEAtlasRect) free_rects;
 } GEAtlasPage;
+
+/* YUV420P atlas page: three GL_ALPHA planes. Cursors are tracked in Y-space
+ * (full-res) pixels and kept even-aligned so the half-res chroma slot at
+ * (ox/2, oy/2) sized (w/2, h/2) always lands on integer texels. */
+typedef struct {
+    GLuint tex_y;
+    GLuint tex_u;
+    GLuint tex_v;
+    int cursor_x;
+    int cursor_y;
+    int row_height;
+    kvec_t(GEAtlasRect) free_rects;
+} GEYuvAtlasPage;
 
 static inline void mat4_ortho(float *mat, float left, float right, float bottom, float top, float near, float far) {
     mat[0] = 2.0f / (right - left); mat[1] = 0.0f; mat[2] = 0.0f; mat[3] = 0.0f;
@@ -151,6 +168,7 @@ typedef struct {
     int fbo_width, fbo_height;
 
     kvec_t(GEAtlasPage) atlas_pages;
+    kvec_t(GEYuvAtlasPage) yuv_atlas_pages;
     bool etc1_supported;
     int active_opaque_page_index;
     int active_transparent_page_index;
@@ -198,9 +216,21 @@ void ge_pipeline_resize(uint16_t w, uint16_t h);
 void ge_pipeline_start(void);
 void ge_pipeline_flush(void);
 void ge_pipeline_flush_primitives(void);
+/* Atlas manager (core/atlas.c). init/terminate own the page kvecs and GL
+ * textures; create_page appends a fresh RGBA metaatlas page. */
+void ge_atlas_init(void);
+void ge_atlas_terminate(void);
+void ge_atlas_create_page(int w, int h);
+
 void ge_atlas_alloc(int w, int h, int *page_index, int *ox, int *oy);
 void ge_atlas_free (int page_index, int ox, int oy, int w, int h);
 void ge_atlas_reset_images(void);
+
+/* YUV420P atlas (triplet Y/Cb/Cr). Offsets returned in Y-space pixels; the
+ * chroma slot is implicitly (ox/2, oy/2) sized (w/2, h/2). */
+void ge_atlas_yuv_alloc(int w, int h, int *page_index, int *ox, int *oy);
+void ge_atlas_yuv_free (int page_index, int ox, int oy, int w, int h);
+void ge_atlas_yuv_reset(void);
 
 /* ETC1 images live in their own GL texture (no atlas). The batch dispatcher
  * uses page_index either as an atlas page index (rgba) or, with this flag
