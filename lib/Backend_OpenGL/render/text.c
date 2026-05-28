@@ -14,6 +14,7 @@
 #include "fontstash.h"
 
 #include "gecnd/notosans.h"
+#include "gecnd/roboto_regular.h"
 
 static int atlas_w = GE_FONT_ATLAS_SIZE; // Font area width
 static int atlas_h = GE_FONT_ATLAS_SIZE; // Font area height
@@ -121,8 +122,12 @@ void native_text_terminate(void) {
 static void ensure_init(void) {
     if (initialized) return;
     fs = glfonsCreate(atlas_w, atlas_h, FONS_ZERO_TOPLEFT);
+    /* old default font
     default_font_mem  = (unsigned char*)Noto_Sans_NotoSans_Regular_ttf;
     default_font_size = Noto_Sans_NotoSans_Regular_ttf_len;
+    */
+    default_font_mem  = (unsigned char*)Roboto_roboto_regular_webfont_ttf;
+    default_font_size = Roboto_roboto_regular_webfont_ttf_len;
     initialized = 1;
 }
 
