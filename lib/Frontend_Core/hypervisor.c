@@ -14,6 +14,7 @@ gamely_img_decoded_t gamely_driver_decoder_wuffs_png(const uint8_t *data, size_t
 gamely_img_decoded_t gamely_driver_decoder_wuffs_tga(const uint8_t *data, size_t len);
 gamely_img_decoded_t gamely_driver_decoder_wuffs_jpeg(const uint8_t *data, size_t len);
 gamely_img_decoded_t gamely_driver_decoder_jpegturbo(const uint8_t *data, size_t len);
+gamely_img_decoded_t gamely_driver_decoder_tga(const uint8_t *data, size_t len);
 gamely_img_decoded_t gamely_driver_decoder_etc1(const uint8_t *data, size_t len);
 void gamely_resolver_image_file(const char *url, void *schema_usr, gamely_img_on_fetch_cb on_done, void *usr);
 void gamely_resolver_image_http(const char *url, void *schema_usr, gamely_img_on_fetch_cb on_done, void *usr);
@@ -53,34 +54,37 @@ void gamely_hypervisor_init(gecnd_t *gly) {
     gamely_daemon_img_start(gly->loop);
 
     gamely_daemon_img_opengl_register();
-    gamely_daemon_img_register_decoder("etc1", "etc1", true, gamely_driver_decoder_etc1);
-    gamely_daemon_img_register_decoder("jpeg", "rgba", true, gamely_driver_decoder_stb);
-    gamely_daemon_img_register_decoder("jpg",  "rgba", true, gamely_driver_decoder_stb);
-    gamely_daemon_img_register_decoder("bmp",  "rgba", true, gamely_driver_decoder_stb);
-    gamely_daemon_img_register_decoder("gif",  "rgba", true, gamely_driver_decoder_stb);
-    gamely_daemon_img_register_decoder("png",  "rgba", true, gamely_driver_decoder_stb);
-    
+    gamely_daemon_img_register_decoder("etc1:etc1",     true, gamely_driver_decoder_etc1);
+    gamely_daemon_img_register_decoder("tga:rgba8888",  true, gamely_driver_decoder_tga);
+    gamely_daemon_img_register_decoder("tga:rgba5551",  true, gamely_driver_decoder_tga);
+    gamely_daemon_img_register_decoder("jpeg:rgba8888", true, gamely_driver_decoder_stb);
+    gamely_daemon_img_register_decoder("jpg:rgba8888",  true, gamely_driver_decoder_stb);
+    gamely_daemon_img_register_decoder("bmp:rgba8888",  true, gamely_driver_decoder_stb);
+    gamely_daemon_img_register_decoder("gif:rgba8888",  true, gamely_driver_decoder_stb);
+    gamely_daemon_img_register_decoder("png:rgba8888",  true, gamely_driver_decoder_stb);
+
 #if defined(GECND_USE_SPNG)
-    gamely_daemon_img_register_decoder("png",  "rgba", true, gamely_driver_decoder_spng);
+    gamely_daemon_img_register_decoder("png:rgba8888",  true, gamely_driver_decoder_spng);
 #endif
 
 #if defined(GECND_USE_WUFFS)
-    gamely_daemon_img_register_decoder("jpeg", "rgba", true, gamely_driver_decoder_wuffs_jpeg);
-    gamely_daemon_img_register_decoder("jpg",  "rgba", true, gamely_driver_decoder_wuffs_jpeg);
-    gamely_daemon_img_register_decoder("png",  "rgba", true, gamely_driver_decoder_wuffs_png);
-    gamely_daemon_img_register_decoder("bmp",  "rgba", true, gamely_driver_decoder_wuffs_bmp);
-    gamely_daemon_img_register_decoder("tga",  "rgba", true, gamely_driver_decoder_wuffs_tga);
+    gamely_daemon_img_register_decoder("jpeg:rgba8888", true, gamely_driver_decoder_wuffs_jpeg);
+    gamely_daemon_img_register_decoder("jpg:rgba8888",  true, gamely_driver_decoder_wuffs_jpeg);
+    gamely_daemon_img_register_decoder("png:rgba8888",  true, gamely_driver_decoder_wuffs_png);
+    gamely_daemon_img_register_decoder("bmp:rgba8888",  true, gamely_driver_decoder_wuffs_bmp);
 #endif
 
 #if defined(GECND_USE_JPEGTURBO)
-    gamely_daemon_img_register_decoder("jpeg", "yuv", true, gamely_driver_decoder_jpegturbo);
-    gamely_daemon_img_register_decoder("jpg",  "yuv", true, gamely_driver_decoder_jpegturbo);
+    gamely_daemon_img_register_decoder("jpeg:yuv420",   true, gamely_driver_decoder_jpegturbo);
+    gamely_daemon_img_register_decoder("jpg:yuv420",    true, gamely_driver_decoder_jpegturbo);
 #endif
 
     /* Formats the file resolver may substitute for a requested .png, in
      * priority order (GPU-native first, then small lossy, then raw). Each is
      * only used if it has a decoder and a sibling file actually exists. */
-    static const char *const img_file_fallbacks[] = { "etc1", "jpg", "jpeg", "tga", NULL };
+    static const char *const img_file_fallbacks[] = {
+        "etc1:etc1", "tga:rgba5551", "tga:rgba8888", "jpg:yuv420p", "jpeg:yuv420p", NULL
+    };
 
     if (g_display.game_base_url[0])
         gamely_daemon_img_register_schema("", gamely_resolver_image_base_url, g_display.game_base_url);

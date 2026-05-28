@@ -49,9 +49,9 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     ge_atlas_init();
     s->etc1_supported = ge_detect_etc1_support();
     // Page 0: Font Atlas (Top Half 1024x1024) + System Glyphs/Images (Bottom Half 1024x2048)
-    ge_atlas_create_page(GE_ATLAS_SIZE, GE_ATLAS_SIZE);
+    ge_atlas_create_page(GECND_PIX_FMT_RGBA8888, true);
     // Page 1: General Atlas
-    ge_atlas_create_page(GE_ATLAS_SIZE, GE_ATLAS_SIZE);
+    ge_atlas_create_page(GECND_PIX_FMT_RGBA8888, true);
 
     s->atlas_dirty = false;
     
@@ -294,6 +294,7 @@ static void flush_batch(GEProgramType type, bool transparent) {
             GLuint tex = (GLuint)(b->page_index & ~GECND_ATLAS_ETC_PAGE_FLAG);
             glBindTexture(GL_TEXTURE_2D, tex);
         } else if (b->page_index >= 0 && b->page_index < (int)kv_size(s->atlas_pages)) {
+            /* Single-texture atlas page (rgba8888 / rgba5551). */
             glBindTexture(GL_TEXTURE_2D, s->atlas_pages.a[b->page_index].tex_id);
         }
         glUniform1i(p->loc_tex, 0);
@@ -306,8 +307,8 @@ static void flush_batch(GEProgramType type, bool transparent) {
         glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_UNSIGNED_SHORT, GL_TRUE, stride, (void*)offsetof(GEAtlasVertex, u));
         glDisableVertexAttribArray(3); glDisableVertexAttribArray(4);
 
-        if (b->page_index >= 0 && b->page_index < (int)kv_size(s->yuv_atlas_pages)) {
-            GEYuvAtlasPage *yp = &s->yuv_atlas_pages.a[b->page_index];
+        if (b->page_index >= 0 && b->page_index < (int)kv_size(s->atlas_pages)) {
+            GEAtlasPage *yp = &s->atlas_pages.a[b->page_index];
             glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, yp->tex_y); glUniform1i(p->loc_tex_y, 0);
             glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, yp->tex_u); glUniform1i(p->loc_tex_u, 1);
             glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, yp->tex_v); glUniform1i(p->loc_tex_v, 2);

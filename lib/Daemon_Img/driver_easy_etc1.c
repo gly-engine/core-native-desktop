@@ -39,9 +39,10 @@ gamely_img_decoded_t gamely_driver_decoder_etc1(const uint8_t *data, size_t len)
     if (!buf) return out;
     memcpy(buf, data + 16, payload);
 
-    out.pixels = buf;
-    out.len    = payload;
-    out.w      = (int16_t)orig_w;
-    out.h      = (int16_t)orig_h;
+    out.pixels       = buf;
+    out.len          = payload;
+    out.w            = (int16_t)orig_w;
+    out.h            = (int16_t)orig_h;
+    out.color_format = GECND_PIX_FMT_ETC1;
     return out;
 }

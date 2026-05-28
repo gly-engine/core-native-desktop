@@ -44,14 +44,25 @@ typedef struct {
     float u2, v2;
     bool is_opaque;
     int page_index;
+    GECNDColorFormat color_format;
 } GLTexture;
 
 typedef struct {
     int x, y, w, h;
 } GEAtlasRect;
 
+/* One atlas page. The texture handle(s) live in an anonymous union keyed by
+ * color_format: single texture (rgba8888/rgba5551), the YUV420P triplet, or a
+ * vec of standalone ETC1 textures (ownership only — ETC1 binds by raw tex id).
+ * Cursors/free_rects drive the shelf allocator for the atlased formats. */
 typedef struct {
-    GLuint tex_id;
+    GECNDColorFormat color_format;
+    bool is_opaque;
+    union {
+        GLuint tex_id;                            /* rgba8888 / rgba5551 */
+        struct { GLuint tex_y, tex_u, tex_v; };   /* yuv420 */
+        kvec_t(GLuint) etc1_texs;                 /* etc1 (ownership) */
+    };
     int cursor_x;
     int cursor_y;
     int row_height;
@@ -60,19 +71,6 @@ typedef struct {
     int reset_row_height;
     kvec_t(GEAtlasRect) free_rects;
 } GEAtlasPage;
-
-/* YUV420P atlas page: three GL_ALPHA planes. Cursors are tracked in Y-space
- * (full-res) pixels and kept even-aligned so the half-res chroma slot at
- * (ox/2, oy/2) sized (w/2, h/2) always lands on integer texels. */
-typedef struct {
-    GLuint tex_y;
-    GLuint tex_u;
-    GLuint tex_v;
-    int cursor_x;
-    int cursor_y;
-    int row_height;
-    kvec_t(GEAtlasRect) free_rects;
-} GEYuvAtlasPage;
 
 static inline void mat4_ortho(float *mat, float left, float right, float bottom, float top, float near, float far) {
     mat[0] = 2.0f / (right - left); mat[1] = 0.0f; mat[2] = 0.0f; mat[3] = 0.0f;
@@ -168,8 +166,7 @@ typedef struct {
     GLuint fbo_tex;
     int fbo_width, fbo_height;
 
-    kvec_t(GEAtlasPage) atlas_pages;
-    kvec_t(GEYuvAtlasPage) yuv_atlas_pages;
+    kvec_t(GEAtlasPage) atlas_pages;   /* unified: all color formats */
     bool etc1_supported;
     int active_opaque_page_index;
     int active_transparent_page_index;
@@ -217,25 +214,29 @@ void ge_pipeline_resize(uint16_t w, uint16_t h);
 void ge_pipeline_start(void);
 void ge_pipeline_flush(void);
 void ge_pipeline_flush_primitives(void);
-/* Atlas manager (core/atlas.c). init/terminate own the page kvecs and GL
- * textures; create_page appends a fresh RGBA metaatlas page. */
+/* Atlas manager (core/atlas.c). One unified page list keyed by color format;
+ * init/terminate own the kvec and GL textures. */
 void ge_atlas_init(void);
 void ge_atlas_terminate(void);
-void ge_atlas_create_page(int w, int h);
+/* Appends a fresh page of (fmt, opaque) and returns its index. */
+int  ge_atlas_create_page(GECNDColorFormat fmt, bool opaque);
 
-void ge_atlas_alloc(int w, int h, int *page_index, int *ox, int *oy);
-void ge_atlas_free (int page_index, int ox, int oy, int w, int h);
+/* Atlased formats (rgba8888/rgba5551/yuv420): find-or-create a page matching
+ * (fmt, opaque) and carve a slot. For YUV the chroma slot is (ox/2,oy/2). */
+void ge_atlas_acquire(GECNDColorFormat fmt, bool opaque, int w, int h,
+                      int *page_index, int *ox, int *oy);
+void ge_atlas_release(int page_index, int ox, int oy, int w, int h);
 void ge_atlas_reset_images(void);
 
-/* YUV420P atlas (triplet Y/Cb/Cr). Offsets returned in Y-space pixels; the
- * chroma slot is implicitly (ox/2, oy/2) sized (w/2, h/2). */
-void ge_atlas_yuv_alloc(int w, int h, int *page_index, int *ox, int *oy);
-void ge_atlas_yuv_free (int page_index, int ox, int oy, int w, int h);
-void ge_atlas_yuv_reset(void);
+/* ETC1 standalone textures: owned by the single ETC1 page (mass-freed at
+ * terminate / clear). Binding is by raw tex id (see flag below). */
+void ge_atlas_etc1_add   (GLuint tex);
+void ge_atlas_etc1_remove(GLuint tex);
+void ge_atlas_etc1_clear (void);
 
-/* ETC1 images live in their own GL texture (no atlas). The batch dispatcher
- * uses page_index either as an atlas page index (rgba) or, with this flag
- * set, as the raw GL texture id (etc1). */
+/* ETC1 images bind by raw GL texture id, not an atlas page index — the batch
+ * carries `page_index = tex | GECND_ATLAS_ETC_PAGE_FLAG`. Atlased formats use
+ * page_index as a direct index into atlas_pages. */
 #define GECND_ATLAS_ETC_PAGE_FLAG 0x10000
 
 bool ge_detect_etc1_support(void);

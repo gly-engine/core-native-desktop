@@ -163,10 +163,11 @@ gamely_img_decoded_t gamely_driver_decoder_jpegturbo(const uint8_t *data, size_t
             }
         }
 
-        out.pixels = dst;
-        out.len    = y_size + 2 * c_size;
-        out.w      = (int16_t)yw;
-        out.h      = (int16_t)yh;
+        out.pixels       = dst;
+        out.len          = y_size + 2 * c_size;
+        out.w            = (int16_t)yw;
+        out.h            = (int16_t)yh;
+        out.color_format = GECND_PIX_FMT_YUV420P;
         dst = NULL;
     } while (0);
 

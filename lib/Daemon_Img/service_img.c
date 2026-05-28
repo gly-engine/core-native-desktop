@@ -143,7 +143,8 @@ static void decode_after_cb(uv_work_t *req, int status) {
         e->w = w->result.w;
         e->h = w->result.h;
         b->cbs.upload(e->id, &e->backend_data,
-                      w->result.pixels, w->result.len, e->w, e->h, release_free);
+                      w->result.pixels, w->result.len, e->w, e->h,
+                      w->result.color_format, release_free);
         set_ready(e);
     } else {
         free(w->result.pixels);
@@ -216,7 +217,8 @@ static void on_fetch(const uint8_t *data, size_t len,
     e->w = result.w;
     e->h = result.h;
     backend->cbs.upload(e->id, &e->backend_data,
-                        result.pixels, result.len, e->w, e->h, release_free);
+                        result.pixels, result.len, e->w, e->h,
+                        result.color_format, release_free);
     set_ready(e);
 }
 
@@ -254,13 +256,20 @@ void gamely_daemon_img_register_schema(const char *prefix,
     s->usr = usr;
 }
 
-void gamely_daemon_img_register_decoder(const char *from, const char *to,
+void gamely_daemon_img_register_decoder(const char *fromto,
                                          bool use_thread,
                                          gamely_img_decoder_cb cb) {
-    if (s_decoder_n >= DECODER_CAP) return;
+    if (s_decoder_n >= DECODER_CAP || !fromto) return;
+    /* "from:to" — split on the colon. */
+    const char *colon = strchr(fromto, ':');
+    if (!colon) return;
     decoder_t *d = &s_decoders[s_decoder_n++];
-    strncpy(d->from, from, sizeof(d->from) - 1);
-    strncpy(d->to,   to,   sizeof(d->to)   - 1);
+    size_t flen = (size_t)(colon - fromto);
+    if (flen >= sizeof(d->from)) flen = sizeof(d->from) - 1;
+    memcpy(d->from, fromto, flen);
+    d->from[flen] = '\0';
+    strncpy(d->to, colon + 1, sizeof(d->to) - 1);
+    d->to[sizeof(d->to) - 1] = '\0';
     d->use_thread = use_thread;
     d->cb         = cb;
 }

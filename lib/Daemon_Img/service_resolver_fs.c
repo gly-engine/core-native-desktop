@@ -35,9 +35,11 @@ static void on_found(const char *path, void *usr) {
     }
 }
 
-/* schema_usr is a NULL-terminated list of fallback formats (bare extensions,
- * e.g. {"etc1","jpg","tga",NULL}) the resolver may substitute for a requested
- * .png, in priority order. NULL disables substitution. */
+/* schema_usr is a NULL-terminated list of "from:to" fallbacks (same notation as
+ * the decoder registry, e.g. {"etc1:etc1","tga:rgba5551","jpeg:yuv420p",NULL})
+ * the resolver may substitute for a requested .png, in priority order. We search
+ * a sibling file by `from` (the extension); the dispatcher then picks the actual
+ * decoder. NULL disables substitution. */
 void gamely_resolver_image_file(const char *url, void *schema_usr,
                           gamely_img_on_fetch_cb on_done, void *on_done_usr) {
     const char *const *alts = (const char *const *)schema_usr;
@@ -64,15 +66,22 @@ void gamely_resolver_image_file(const char *url, void *schema_usr,
     gecnd_utils_get_exe_cwd(exe, sizeof(exe));
 
     /* PNG asked: prefer a sibling in one of the configured fallback formats
-     * (e.g. .etc1/.jpg/.tga), in priority order, skipping any without a usable
+     * (e.g. .etc1/.tga/.jpeg), in priority order, skipping any without a usable
      * decoder. Falls through to the .png itself when none exist. */
     if (dot && alts && strcmp(hint, "png") == 0) {
         char        ext_buf[6][16];
         const char *exts[7];
         int         ne = 0;
         for (int i = 0; alts[i] && ne < 6; i++) {
-            if (!gamely_daemon_img_can_decode(alts[i])) continue;
-            snprintf(ext_buf[ne], sizeof(ext_buf[ne]), ".%s", alts[i]);
+            /* alt is "from:to" — search by `from`, the file extension. */
+            const char *colon = strchr(alts[i], ':');
+            size_t flen = colon ? (size_t)(colon - alts[i]) : strlen(alts[i]);
+            char from[16];
+            if (flen >= sizeof(from)) flen = sizeof(from) - 1;
+            memcpy(from, alts[i], flen);
+            from[flen] = '\0';
+            if (!gamely_daemon_img_can_decode(from)) continue;
+            snprintf(ext_buf[ne], sizeof(ext_buf[ne]), ".%s", from);
             exts[ne] = ext_buf[ne];
             ne++;
         }

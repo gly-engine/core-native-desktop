@@ -75,6 +75,8 @@ typedef enum {
     GECND_PIX_FMT_RGBA8888 = 0,
     GECND_PIX_FMT_YUV420P  = 1,
     GECND_PIX_FMT_RGB565   = 2,
+    GECND_PIX_FMT_RGBA5551 = 3,
+    GECND_PIX_FMT_ETC1     = 4,
     GECND_PIX_FMT_NONE     = -1
 } GECNDColorFormat;
 
@@ -255,9 +257,10 @@ typedef enum {
 } gamely_img_state_t;
 
 typedef struct {
-    uint8_t *pixels;
-    size_t   len;        /* bytes in `pixels` — backend may rely on this */
-    int16_t  w, h;
+    uint8_t         *pixels;
+    size_t           len;        /* bytes in `pixels` — backend may rely on this */
+    int16_t          w, h;
+    GECNDColorFormat color_format;  /* the format the decoder actually produced */
 } gamely_img_decoded_t;
 
 typedef gamely_img_decoded_t (*gamely_img_decoder_cb)(const uint8_t *data, size_t len);
@@ -271,6 +274,7 @@ typedef void (*gamely_img_upload_cb)(
     size_t                len,
     int16_t               w,
     int16_t               h,
+    GECNDColorFormat      color_format,
     gamely_img_release_cb release
 );
 
@@ -295,7 +299,10 @@ void gamely_daemon_img_stop (void);
 
 void gamely_daemon_img_register_schema (const char *prefix,
                                          gamely_img_schema_cb  cb, void *usr);
-void gamely_daemon_img_register_decoder(const char *from, const char *to,
+/* `fromto` is "from:to", e.g. "tga:rgba5551" — `from` is the source hint, `to`
+ * the produced color format. The decoder may override the real format in the
+ * decoded result's color_format. */
+void gamely_daemon_img_register_decoder(const char *fromto,
                                          bool use_thread, gamely_img_decoder_cb cb);
 void gamely_daemon_img_register_backend(const char *fmt,
                                          const gamely_img_backend_t *cbs);
