@@ -52,7 +52,15 @@ static struct {
     conn_t              pool[MAX_CONNS];
     gly_req_id_t         next_id;
     int                 started;
+    char                ca_override[512];
 } g;
+
+void gamely_daemon_webclient_set_ca_path(const char *path)
+{
+    if (!path || !*path) { g.ca_override[0] = '\0'; return; }
+    strncpy(g.ca_override, path, sizeof(g.ca_override) - 1);
+    g.ca_override[sizeof(g.ca_override) - 1] = '\0';
+}
 
 static conn_t *conn_alloc(void)
 {
@@ -252,9 +260,6 @@ void gamely_daemon_webclient_start(void *loop)
     uv_loop_t *uv_loop = (uv_loop_t *)loop;
 
 #if defined(GECND_HAS_SSL)
-    /**
-     * @todo dynamic config
-     */
     static const char *ca_bundles[] = {
         "/etc/ssl/certs/ca-certificates.crt",
         "/etc/pki/tls/certs/ca-bundle.crt",
@@ -262,8 +267,17 @@ void gamely_daemon_webclient_start(void *loop)
         NULL
     };
     const char *ca_path = NULL;
-    for (int i = 0; ca_bundles[i]; i++)
-        if (access(ca_bundles[i], R_OK) == 0) { ca_path = ca_bundles[i]; break; }
+    if (g.ca_override[0]) {
+        if (access(g.ca_override, R_OK) == 0) {
+            ca_path = g.ca_override;
+        } else {
+            fprintf(stderr, "[webclient] --ssl-crt nao legivel: %s\n", g.ca_override);
+        }
+    }
+    if (!ca_path) {
+        for (int i = 0; ca_bundles[i]; i++)
+            if (access(ca_bundles[i], R_OK) == 0) { ca_path = ca_bundles[i]; break; }
+    }
 #endif
     struct lws_context_creation_info info = {0};
     info.port                  = CONTEXT_PORT_NO_LISTEN;
@@ -289,7 +303,10 @@ void gamely_daemon_webclient_stop(void)
 {
     if (!g.started) return;
     lws_context_destroy(g.ctx);
+    char saved_ca[sizeof(g.ca_override)];
+    memcpy(saved_ca, g.ca_override, sizeof(saved_ca));
     memset(&g, 0, sizeof(g));
+    memcpy(g.ca_override, saved_ca, sizeof(g.ca_override));
 }
 
 gly_req_id_t gamely_daemon_webclient_http(

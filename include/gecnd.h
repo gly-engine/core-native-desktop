@@ -380,6 +380,7 @@ void gamely_daemon_webclient_img_register(void);
 
 void         gamely_daemon_webclient_start(void *loop);
 void         gamely_daemon_webclient_stop(void);
+void         gamely_daemon_webclient_set_ca_path(const char *path);
 gly_req_id_t gamely_daemon_webclient_http(const char *url, gly_http_req_t *req,
     gly_wc_status_cb on_status, gly_wc_data_cb on_data,
     gly_wc_done_cb on_done, gly_wc_error_cb on_error, void *user);
