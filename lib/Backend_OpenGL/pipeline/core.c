@@ -210,7 +210,7 @@ void ge_pipeline_start(void) {
     }
     s->active_opaque_page_index = -1;
     s->active_transparent_page_index = -1;
-    s->current_z = 0;
+    ge_zindex_reset();
 }
 
 void ge_pipeline_terminate(void) {

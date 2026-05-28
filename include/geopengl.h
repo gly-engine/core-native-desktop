@@ -214,7 +214,10 @@ void ge_pipeline_resize(uint16_t w, uint16_t h);
 void ge_pipeline_start(void);
 void ge_pipeline_flush(void);
 void ge_pipeline_flush_primitives(void);
-/* Atlas manager (core/atlas.c). One unified page list keyed by color format;
+void    ge_zindex_reset(void);
+int16_t ge_zindex_get(GEProgramType prog, bool opaque, int page_index);
+
+/* Atlas manager (pipeline/atlas.c). One unified page list keyed by color format;
  * init/terminate own the kvec and GL textures. */
 void ge_atlas_init(void);
 void ge_atlas_terminate(void);

@@ -144,8 +144,6 @@ static void gl_draw(int32_t id, void *backend_data, int16_t x, int16_t y) {
         ge_batch_add_vertex_tex(x + iw, y + ih, u2, v2, color, t->is_opaque, t->page_index);
         ge_batch_add_vertex_tex(x + iw, y,      u2, v1, color, t->is_opaque, t->page_index);
     }
-
-    s->current_z++;
 }
 
 static void gl_unload(int32_t id, void *backend_data) {

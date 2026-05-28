@@ -20,7 +20,7 @@ void ge_batch_add_vertex_tex(int16_t x, int16_t y,
     
     vertex->x = (int16_t)x;
     vertex->y = (int16_t)y;
-    vertex->z = (int16_t)s->current_z;
+    vertex->z = ge_zindex_get(GE_PROG_ATLAS, opaque, page_index);
     vertex->w = 1;
     vertex->u = (uint16_t)(u * 65535.0f);
     vertex->v = (uint16_t)(v * 65535.0f);
@@ -53,7 +53,7 @@ void ge_batch_add_vertex_yuv(int16_t x, int16_t y,
 
     vertex->x = (int16_t)x;
     vertex->y = (int16_t)y;
-    vertex->z = (int16_t)s->current_z;
+    vertex->z = ge_zindex_get(GE_PROG_ATLAS_YUV, false, page_index);
     vertex->w = 1;
     vertex->u = (uint16_t)(u * 65535.0f);
     vertex->v = (uint16_t)(v * 65535.0f);
@@ -88,7 +88,7 @@ void ge_batch_add_vertex_shape(
     GESimpleShapeVertex *vertex = &((GESimpleShapeVertex*)b->buffer)[b->count++];
     vertex->x = (int16_t)x;
     vertex->y = (int16_t)y;
-    vertex->z = (int16_t)s->current_z;
+    vertex->z = ge_zindex_get(GE_PROG_SIMPLE, opaque, -1);
     vertex->w = 1;
     uint8_t *c = (uint8_t*)&color;
     vertex->r = c[0];
@@ -119,7 +119,7 @@ void ge_batch_add_vertex_complex(
     GEDShapeComplexVertex *vertex = &((GEDShapeComplexVertex*)b->buffer)[b->count++];
     vertex->x = (int16_t)x;
     vertex->y = (int16_t)y;
-    vertex->z = (int16_t)s->current_z;
+    vertex->z = ge_zindex_get(GE_PROG_COMPLEX, false, -1);
     vertex->w = 1;
     vertex->px = (int16_t)px;
     vertex->py = (int16_t)py;

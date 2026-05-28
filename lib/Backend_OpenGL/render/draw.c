@@ -83,9 +83,6 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
                 ge_batch_add_vertex_shape(x + w - r, y + h - r, 0, 0, 0, color, 0, false);
             }
 
-            /* rounded corners - bump z to avoid z-fighting with fill (PROG_SIMPLE vs PROG_ATLAS transparent pass) */
-            s->current_z++;
-
             /* corner TL */
             ge_batch_add_vertex_tex(x,     y,     u0, v0, color, false, cp);
             ge_batch_add_vertex_tex(x,     y + r, u0, v1, color, false, cp);
@@ -170,7 +167,6 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
             ge_batch_add_vertex_complex(x2, y1, px2, py1, hw, hh, fr, color, 2.0f);
         }
     }
-    s->current_z++;
 }
 
 void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
@@ -190,6 +186,4 @@ void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
     ge_batch_add_vertex_shape((int16_t)px[0], (int16_t)py[0], -32767, -32767, 0, color, 0, false);
     ge_batch_add_vertex_shape((int16_t)px[2], (int16_t)py[2], 32767, 32767, 0, color, 0, false);
     ge_batch_add_vertex_shape((int16_t)px[3], (int16_t)py[3], 32767, -32767, 0, color, 0, false);
-
-    s->current_z++;
 }

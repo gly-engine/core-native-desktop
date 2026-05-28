@@ -153,7 +153,6 @@ void native_text_print(int16_t x, int16_t y, const char *text) {
     fonsSetColor(fs, glfonsRGBA(c.rgba[0], c.rgba[1], c.rgba[2], c.rgba[3]));
     fonsSetAlign(fs, FONS_ALIGN_LEFT | FONS_ALIGN_TOP);
     fonsDrawText(fs, (float)x, (float)y, text, NULL);
-    state->current_z++;
 }
 
 void native_text_mensure(const char *text, int16_t *w, int16_t *h)
