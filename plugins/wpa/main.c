@@ -3,22 +3,13 @@
 #include <string.h>
 #include <stdbool.h>
 #include <ctype.h>
+#include <errno.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 #include "gecnd.h"
 
 static char s_iface[64];
-
-static void sanitize_shell(char *dst, const char *src, size_t max) {
-    size_t i = 0;
-    for (; *src && i < max - 1; src++) {
-        unsigned char c = (unsigned char)*src;
-        if (c == '"' || c == '\\' || c == '$' || c == '`' ||
-            c == '\'' || c == '\n' || c == '\r')
-            continue;
-        dst[i++] = *src;
-    }
-    dst[i] = '\0';
-}
 
 static void json_escape(char *dst, const char *src, size_t max) {
     size_t i = 0;
@@ -36,21 +27,117 @@ static void json_escape(char *dst, const char *src, size_t max) {
     dst[i] = '\0';
 }
 
-static void wpa_cli_run(const char *args, char *out, size_t out_sz) {
-    char cmd[512];
-    if (s_iface[0])
-        snprintf(cmd, sizeof(cmd), "wpa_cli -i %.32s %s 2>&1", s_iface, args);
-    else
-        snprintf(cmd, sizeof(cmd), "wpa_cli %s 2>&1", args);
-    FILE *fp = popen(cmd, "r");
-    if (!fp) { if (out) out[0] = '\0'; return; }
-    size_t n = (out && out_sz) ? fread(out, 1, out_sz - 1, fp) : 0;
-    pclose(fp);
-    if (out) {
-        out[n] = '\0';
-        while (n > 0 && (out[n-1] == '\n' || out[n-1] == '\r' || out[n-1] == ' '))
-            out[--n] = '\0';
+static void detail_set(char *detail, size_t detail_sz, const char *msg) {
+    if (detail && detail_sz)
+        json_escape(detail, msg ? msg : "", detail_sz);
+}
+
+static bool wpa_quote_value(char *dst, const char *src, size_t max) {
+    if (!dst || !src || max < 3) return false;
+
+    size_t i = 0;
+    dst[i++] = '"';
+    for (; *src; src++) {
+        unsigned char c = (unsigned char)*src;
+        if (c < 0x20 || c == 0x7f) return false;
+        if (c == '"' || c == '\\') {
+            if (i + 2 >= max) return false;
+            dst[i++] = '\\';
+            dst[i++] = (char)c;
+        } else {
+            if (i + 1 >= max) return false;
+            dst[i++] = (char)c;
+        }
     }
+    if (i + 1 >= max) return false;
+    dst[i++] = '"';
+    dst[i] = '\0';
+    return true;
+}
+
+static bool is_hex_psk(const char *s) {
+    if (!s || strlen(s) != 64) return false;
+    for (; *s; s++)
+        if (!isxdigit((unsigned char)*s)) return false;
+    return true;
+}
+
+static void trim_output(char *out) {
+    if (!out) return;
+    size_t n = strlen(out);
+    while (n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r' || out[n - 1] == ' '))
+        out[--n] = '\0';
+}
+
+static void run_argv(char *const argv[], char *out, size_t out_sz) {
+    if (out && out_sz) out[0] = '\0';
+
+    int fd[2];
+    if (pipe(fd) != 0) return;
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        close(fd[0]);
+        dup2(fd[1], STDOUT_FILENO);
+        dup2(fd[1], STDERR_FILENO);
+        close(fd[1]);
+        execvp(argv[0], argv);
+        _exit(127);
+    }
+
+    close(fd[1]);
+    if (pid < 0) {
+        close(fd[0]);
+        return;
+    }
+
+    size_t n = 0;
+    for (;;) {
+        char buf[256];
+        ssize_t r = read(fd[0], buf, sizeof(buf));
+        if (r > 0) {
+            if (out && out_sz && n < out_sz - 1) {
+                size_t room = out_sz - 1 - n;
+                size_t take = (size_t)r < room ? (size_t)r : room;
+                memcpy(out + n, buf, take);
+                n += take;
+            }
+            continue;
+        }
+        if (r < 0 && errno == EINTR) continue;
+        break;
+    }
+    close(fd[0]);
+
+    int status;
+    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+
+    if (out && out_sz) {
+        out[n] = '\0';
+        trim_output(out);
+    }
+}
+
+static void wpa_cli_run_argv(const char *const *args, size_t argc,
+                             char *out, size_t out_sz) {
+    char *argv[20];
+    size_t n = 0;
+
+    argv[n++] = "wpa_cli";
+    if (s_iface[0]) {
+        argv[n++] = "-i";
+        argv[n++] = s_iface;
+    }
+    for (size_t i = 0; i < argc && n < (sizeof(argv) / sizeof(argv[0])) - 1; i++)
+        argv[n++] = (char *)args[i];
+    argv[n] = NULL;
+
+    run_argv(argv, out, out_sz);
+}
+
+static void wpa_cli_run(const char *cmd, char *out, size_t out_sz) {
+    const char *args[] = { cmd };
+    wpa_cli_run_argv(args, 1, out, out_sz);
 }
 
 static bool wpa_out_ok(const char *out) {
@@ -67,11 +154,20 @@ static bool wpa_out_ok(const char *out) {
 }
 
 static bool wpa_cli_ok(const char *args, char *detail, size_t detail_sz) {
+    const char *cmd[] = { args };
     char out[256];
-    wpa_cli_run(args, out, sizeof(out));
+    wpa_cli_run_argv(cmd, 1, out, sizeof(out));
     bool ok = wpa_out_ok(out);
-    if (!ok && detail && detail_sz)
-        json_escape(detail, out, detail_sz);
+    if (!ok) detail_set(detail, detail_sz, out);
+    return ok;
+}
+
+static bool wpa_cli_ok_argv(const char *const *args, size_t argc,
+                            char *detail, size_t detail_sz) {
+    char out[256];
+    wpa_cli_run_argv(args, argc, out, sizeof(out));
+    bool ok = wpa_out_ok(out);
+    if (!ok) detail_set(detail, detail_sz, out);
     return ok;
 }
 
@@ -128,15 +224,16 @@ static bool do_connect(const char *ssid, const char *password,
     if (strstr(st, "wpa_state=COMPLETED") && strstr(st, ssid_line))
         return true;
 
-    char safe_ssid[128], safe_pass[128];
-    sanitize_shell(safe_ssid, ssid, sizeof(safe_ssid));
-    sanitize_shell(safe_pass, password ? password : "", sizeof(safe_pass));
+    char quoted_ssid[256], quoted_pass[256];
+    if (!wpa_quote_value(quoted_ssid, ssid, sizeof(quoted_ssid))) {
+        detail_set(detail, detail_sz, "invalid ssid");
+        return false;
+    }
 
-    char out[256], args[512];
-
+    char out[256];
     wpa_cli_run("add_network", out, sizeof(out));
     if (strstr(out, "FAIL")) {
-        if (detail && detail_sz) json_escape(detail, out, detail_sz);
+        detail_set(detail, detail_sz, out);
         return false;
     }
 
@@ -149,31 +246,48 @@ static bool do_connect(const char *ssid, const char *password,
         p++;
     }
     if (net_id < 0) {
-        if (detail && detail_sz) json_escape(detail, out, detail_sz);
+        detail_set(detail, detail_sz, out);
         return false;
     }
 
-    snprintf(args, sizeof(args),
-        "set_network %d ssid \"\\\"%.64s\\\"\"", net_id, safe_ssid);
-    if (!wpa_cli_ok(args, detail, detail_sz)) goto fail;
+    char net_id_str[16];
+    snprintf(net_id_str, sizeof(net_id_str), "%d", net_id);
 
-    if (safe_pass[0]) {
-        snprintf(args, sizeof(args),
-            "set_network %d psk \"\\\"%.63s\\\"\"", net_id, safe_pass);
+    const char *set_ssid[] = { "set_network", net_id_str, "ssid", quoted_ssid };
+    if (!wpa_cli_ok_argv(set_ssid, 4, detail, detail_sz)) goto fail;
+
+    if (password && password[0]) {
+        const char *psk_value = password;
+        if (!is_hex_psk(password)) {
+            size_t pass_len = strlen(password);
+            if (pass_len < 8 || pass_len > 63) {
+                detail_set(detail, detail_sz, "invalid password length");
+                goto fail;
+            }
+            if (!wpa_quote_value(quoted_pass, password, sizeof(quoted_pass))) {
+                detail_set(detail, detail_sz, "invalid password");
+                goto fail;
+            }
+            psk_value = quoted_pass;
+        }
+        const char *set_psk[] = { "set_network", net_id_str, "psk", psk_value };
+        if (!wpa_cli_ok_argv(set_psk, 4, detail, detail_sz)) goto fail;
     } else {
-        snprintf(args, sizeof(args), "set_network %d key_mgmt NONE", net_id);
+        const char *set_open[] = { "set_network", net_id_str, "key_mgmt", "NONE" };
+        if (!wpa_cli_ok_argv(set_open, 4, detail, detail_sz)) goto fail;
     }
-    if (!wpa_cli_ok(args, detail, detail_sz)) goto fail;
 
-    snprintf(args, sizeof(args), "select_network %d", net_id);
-    if (!wpa_cli_ok(args, detail, detail_sz)) goto fail;
+    const char *select_network[] = { "select_network", net_id_str };
+    if (!wpa_cli_ok_argv(select_network, 2, detail, detail_sz)) goto fail;
 
     wpa_cli_ok("save_config", NULL, 0);
     return true;
 
 fail:
-    snprintf(args, sizeof(args), "remove_network %d", net_id);
-    wpa_cli_ok(args, NULL, 0);
+    {
+        const char *remove_network[] = { "remove_network", net_id_str };
+        wpa_cli_ok_argv(remove_network, 2, NULL, 0);
+    }
     return false;
 }
 
@@ -206,7 +320,9 @@ static void http_wifi_status(const gly_http_req_t *req) {
     wpa_cli_run("status", raw, sizeof(raw));
 
     char json[4096];
-    int  jlen = snprintf(json, sizeof(json), "{");
+    size_t jlen = 0;
+    json[jlen++] = '{';
+    json[jlen] = '\0';
     bool first = true;
     char *p = raw;
 
@@ -219,16 +335,28 @@ static void http_wifi_status(const gly_http_req_t *req) {
             char ekey[128], eval[512];
             json_escape(ekey, p,    sizeof(ekey));
             json_escape(eval, eq+1, sizeof(eval));
-            if (jlen < (int)sizeof(json) - 16)
-                jlen += snprintf(json + jlen, sizeof(json) - jlen,
-                    "%s\"%s\":\"%s\"", first ? "" : ",", ekey, eval);
-            first = false;
+            char item[768];
+            int ilen = snprintf(item, sizeof(item),
+                "%s\"%s\":\"%s\"", first ? "" : ",", ekey, eval);
+            if (ilen > 0 && (size_t)ilen < sizeof(item) &&
+                jlen + (size_t)ilen + 2 <= sizeof(json)) {
+                memcpy(json + jlen, item, (size_t)ilen);
+                jlen += (size_t)ilen;
+                json[jlen] = '\0';
+                first = false;
+            }
             *eq = '=';
         }
         if (!nl) break;
         p = nl + 1;
     }
-    snprintf(json + jlen, sizeof(json) - jlen, "}");
+    if (jlen + 2 <= sizeof(json)) {
+        json[jlen++] = '}';
+        json[jlen] = '\0';
+    } else {
+        json[sizeof(json) - 2] = '}';
+        json[sizeof(json) - 1] = '\0';
+    }
     send_json(req, 200, json);
 }
 
@@ -299,9 +427,21 @@ void coreopen_wpa_gecnd(void) {
 
     const char *supl = getenv("wifi_supplicant");
     if (supl) {
-        char cmd[512];
-        snprintf(cmd, sizeof(cmd), "wpa_supplicant %.500s 2>/dev/null", supl);
-        (void)system(cmd);
+        char buf[512];
+        char *argv[32];
+        snprintf(buf, sizeof(buf), "%s", supl);
+        argv[0] = "wpa_supplicant";
+        int argc = 1;
+        char *p = buf;
+        while (*p && argc < (int)(sizeof(argv) / sizeof(argv[0])) - 1) {
+            while (isspace((unsigned char)*p)) p++;
+            if (!*p) break;
+            argv[argc++] = p;
+            while (*p && !isspace((unsigned char)*p)) p++;
+            if (*p) *p++ = '\0';
+        }
+        argv[argc] = NULL;
+        run_argv(argv, NULL, 0);
     }
 
     const char *ssid = getenv("wifi_ssid");
