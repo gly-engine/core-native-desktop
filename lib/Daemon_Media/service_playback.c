@@ -267,22 +267,26 @@ void gamely_daemon_media_playback_tick(void) {
                 bool same_player = (ch->player == new_p);
                 bool diff_player = (ch->player && !same_player);
 
-                /* troca pra player DIFERENTE: STOP e aguarda IDLE */
-                if (diff_player && st != GDMSP_FSM_IDLE) {
+                /* Troca de URL/player com stream ativo: para e só abre .source() em
+                 * IDLE. Em STOPPING não pode dar continue aqui — step 7 TICK chama
+                 * av_reap quando o worker ffmpeg termina. */
+                if ((same_player || diff_player) && st != GDMSP_FSM_IDLE) {
                     if (st != GDMSP_FSM_STOPPING) {
-                        fprintf(stderr, "[media-pb] ch=%d switching player → STOP (st=%d)\n",
-                                i, (int)st);
-                        channel_cmd(ch, (uint8_t)i, GDMSP_CMD_STOP);
+                        if (diff_player) {
+                            fprintf(stderr,
+                                    "[media-pb] ch=%d switching player → STOP (st=%d)\n",
+                                    i, (int)st);
+                            channel_cmd(ch, (uint8_t)i, GDMSP_CMD_STOP);
+                        } else {
+                            fprintf(stderr,
+                                    "[media-pb] ch=%d same player, stop before new source (st=%d)\n",
+                                    i, (int)st);
+                            channel_cmd(ch, (uint8_t)i, GDMSP_CMD_RESOURCE);
+                        }
+                        continue; /* pending_src preservado */
                     }
-                    if (ch_st(ch) != GDMSP_FSM_IDLE) continue;
-                }
-
-                /* mesmo player e ativo: avisa RESOURCE antes do próximo .source() */
-                if (same_player && st != GDMSP_FSM_IDLE) {
-                    fprintf(stderr, "[media-pb] ch=%d same player, RESOURCE notice (st=%d)\n",
-                            i, (int)st);
-                    channel_cmd(ch, (uint8_t)i, GDMSP_CMD_RESOURCE);
-                }
+                    /* STOPPING: segue para step 5/7 (TICK), sem spawn ainda */
+                } else {
 
                 fprintf(stderr, "[media-pb] ch=%d spawn .source('%s') %s\n",
                         i, ch->pending_src, same_player ? "(same player)" : "(new player)");
@@ -300,6 +304,7 @@ void gamely_daemon_media_playback_tick(void) {
                     fprintf(stderr, "[media-pb] ch=%d failed to spawn source thread\n", i);
                 }
                 continue;
+                } /* else: pronto para spawn */
             }
         }
 
