@@ -74,10 +74,15 @@ static req_ctx_t *pending_find(int64_t req_id)
     return NULL;
 }
 
-static void pending_remove(req_ctx_t *ctx)
+/* Returns 1 if ctx was still pending (and is now removed), 0 if it had already
+ * been claimed. Lets each terminal path (on_done / on_error / immediate connect
+ * failure) own the free exactly once, even if the webclient driver both invokes
+ * on_error AND returns 0 for the same synchronous failure. */
+static int pending_remove(req_ctx_t *ctx)
 {
     for (int i = 0; i < MAX_PENDING; i++)
-        if (g_pending[i] == ctx) { g_pending[i] = NULL; return; }
+        if (g_pending[i] == ctx) { g_pending[i] = NULL; return 1; }
+    return 0;
 }
 
 static void on_status(gly_req_id_t id, int status, void *user)
@@ -99,19 +104,19 @@ static void on_data(gly_req_id_t id, const char *data, size_t len, void *user)
 static void on_done(gly_req_id_t id, void *user)
 {
     req_ctx_t *ctx = user;
+    if (!pending_remove(ctx)) return;   /* already finished by another path */
     cb_resolve(ctx->L, ctx->req_id);
-    pending_remove(ctx);
     free(ctx);
 }
 
 static void on_error(gly_req_id_t id, const char *msg, void *user)
 {
     req_ctx_t *ctx = user;
+    if (!pending_remove(ctx)) return;   /* already finished by another path */
     cb_push(ctx->L, ctx->req_id, "set-error");
     lua_pushstring(ctx->L, msg);
     lua_pcall(ctx->L, 3, 0, 0);
     cb_resolve(ctx->L, ctx->req_id);
-    pending_remove(ctx);
     free(ctx);
 }
 
@@ -135,12 +140,12 @@ static void on_ws_msg(gly_req_id_t id, const char *data, size_t len, void *user)
 static void on_ws_close(gly_req_id_t id, void *user)
 {
     req_ctx_t *ctx = user;
+    if (!pending_remove(ctx)) return;   /* already finished by another path */
     if (!ctx->lua_close) {
         cb_push(ctx->L, ctx->req_id, "sock-event");
         lua_pushstring(ctx->L, "disconnect");
         lua_pcall(ctx->L, 3, 0, 0);
     }
-    pending_remove(ctx);
     free(ctx);
 }
 
@@ -216,9 +221,12 @@ static int lua_native_http_handler(lua_State *L)
     }
 
     if (!wc_id) {
-        pending_remove(ctx);
-        free(ctx);
-        cb_error_immediate(L, "failed to connect");
+        /* If the driver already reported the failure via on_error it freed ctx
+         * and removed it from pending; only clean up here when it didn't. */
+        if (pending_remove(ctx)) {
+            free(ctx);
+            cb_error_immediate(L, "failed to connect");
+        }
         return 0;
     }
     ctx->wc_id = wc_id;
