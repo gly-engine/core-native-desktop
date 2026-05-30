@@ -342,6 +342,7 @@ static void callback_draw(gecnd_t *gly) {
 static bool state_running(gecnd_t *gly) {
     gecnd_metrics_finish_wait();
     gamely_daemon_media_playback_tick();
+    gamely_daemon_webserver_lua_tick();
 
     gecnd_metrics_start_input();
     if (gecnd_is_root(gly)) gamely_hypervisor_tick();

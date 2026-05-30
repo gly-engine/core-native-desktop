@@ -366,6 +366,10 @@ void gamely_daemon_webserver_ws_send_all(const char *path, const char *data, siz
         gly_req_id_t exclude_id);
 void gamely_daemon_webserver_stream_write(gly_req_id_t id, const uint8_t *buf, int size);
 
+/* Drena a fila do REPL /lua, executando o código no VM (thread principal).
+ * Chamar a cada tick. */
+void gamely_daemon_webserver_lua_tick(void);
+
 void gamely_daemon_webloop_start(void *loop);
 void gamely_daemon_webloop_stop(void);
 void gamely_daemon_webloop_route_http  (const char *path, gly_http_cb_t cb);

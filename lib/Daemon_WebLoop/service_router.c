@@ -31,6 +31,8 @@ extern void gamely_daemon_webserver_route_stream (const char *, const char *, gl
  * ---------------------------------------------------------------------- */
 extern void http_rc              (const gly_http_req_t *);
 extern void ws_rc                (const gly_ws_req_t *);
+extern void http_lua             (const gly_http_req_t *);
+extern void ws_lua               (const gly_ws_req_t *);
 extern void service_stream_client_cb (gly_req_id_t, bool);
 
 /* -----------------------------------------------------------------------
@@ -126,5 +128,7 @@ void wl_router_init(void)
 {
     gamely_daemon_webloop_route_http("/rc", http_rc);
     gamely_daemon_webloop_route_ws  ("/rc", ws_rc);
+    gamely_daemon_webloop_route_http("/lua", http_lua);
+    gamely_daemon_webloop_route_ws  ("/lua", ws_lua);
     gamely_daemon_webloop_route_stream("/stream", "video/mp2t", service_stream_client_cb);
 }
