@@ -151,7 +151,7 @@ static gdmsp_fsm_t libretro_file_source(uint8_t channel, const char *url, void *
     return GDMSP_FSM_LOADING;
 }
 
-static gdmsp_fsm_t libretro_set(uint8_t channel, gdmsp_cmd_t cmd, int64_t value, void *usr) {
+static gdmsp_fsm_t libretro_set(uint8_t channel, gdmsp_cmd_t cmd, gdmsp_value_t value, void *usr) {
     (void)channel; (void)usr; (void)value;
     switch (cmd) {
         case GDMSP_CMD_RESOURCE:
@@ -178,9 +178,10 @@ static gdmsp_fsm_t libretro_set(uint8_t channel, gdmsp_cmd_t cmd, int64_t value,
     return libretro_get_state();
 }
 
-static int64_t libretro_get(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
+static gdmsp_value_t libretro_get(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
     (void)channel; (void)cmd; (void)usr;
-    return -1;  /* libretro não expõe tempo/duração */
+    gdmsp_value_t value = {-1};
+    return value;
 }
 
 static gamely_media_player_t libretro_file_player = {

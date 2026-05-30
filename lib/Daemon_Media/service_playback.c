@@ -130,7 +130,8 @@ static gdmsp_fsm_t ch_st(channel_t *ch) {
 }
 
 static gdmsp_fsm_t channel_cmd(channel_t *ch, uint8_t idx, gdmsp_cmd_t cmd) {
-    gdmsp_fsm_t r = ch->player->cbs.set(idx, cmd, 0, ch->player->usr);
+    gdmsp_value_t value = {0};
+    gdmsp_fsm_t r = ch->player->cbs.set(idx, cmd, value, ch->player->usr);
     atomic_store(&ch->st, (int)r);
     return r;
 }
@@ -195,14 +196,15 @@ int64_t gamely_daemon_media_playback_get_integer(uint8_t channel, gdmsp_cmd_t cm
     if (channel >= CHANNEL_CAP) return -1;
     channel_t *ch = &s_channels[channel];
     if (!ch->player || !ch->player->cbs.get) return -1;
-    return ch->player->cbs.get(channel, cmd, ch->player->usr);
+    return ch->player->cbs.get(channel, cmd, ch->player->usr).i64;
 }
 
 gdmsp_fsm_t gamely_daemon_media_playback_set_integer(uint8_t channel, gdmsp_cmd_t cmd,
-                                                     int64_t value) {
+                                                     int64_t value_integer) {
     if (channel >= CHANNEL_CAP) return GDMSP_FSM_IDLE;
     channel_t *ch = &s_channels[channel];
     if (!ch->player || !ch->player->cbs.set) return GDMSP_FSM_IDLE;
+    gdmsp_value_t value = { value_integer };
     gdmsp_fsm_t r = ch->player->cbs.set(channel, cmd, value, ch->player->usr);
     atomic_store(&ch->st, (int)r);
     return r;
@@ -211,8 +213,11 @@ gdmsp_fsm_t gamely_daemon_media_playback_set_integer(uint8_t channel, gdmsp_cmd_
 void gamely_daemon_media_playback_position(uint8_t channel,
                                             int16_t x, int16_t y,
                                             int16_t w, int16_t h) {
-    (void)channel;
-    gecnd_filter_set_video_pos(x, y, w, h);
+    if (channel >= CHANNEL_CAP) return;
+    channel_t *ch = &s_channels[channel];
+    if (!ch->player || !ch->player->cbs.set) return;
+    gdmsp_value_t value = { .x = x, .y = y, .w = w, .h = h };
+    ch->player->cbs.set(channel, GDMSP_CMD_POSITION, value, ch->player->usr);
 }
 
 void gamely_daemon_media_playback_tick(void) {

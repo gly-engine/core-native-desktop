@@ -255,7 +255,7 @@ static gdmsp_fsm_t av_source(uint8_t channel, const char *url, void *usr) {
     return GDMSP_FSM_LOADING;
 }
 
-static gdmsp_fsm_t av_set(uint8_t channel, gdmsp_cmd_t cmd, int64_t value, void *usr) {
+static gdmsp_fsm_t av_set(uint8_t channel, gdmsp_cmd_t cmd, gdmsp_value_t value, void *usr) {
     (void)usr; (void)value;
     if (channel >= 4 || !s_streams[channel]) return GDMSP_FSM_IDLE;
     VideoStream *s = s_streams[channel];
@@ -271,18 +271,26 @@ static gdmsp_fsm_t av_set(uint8_t channel, gdmsp_cmd_t cmd, int64_t value, void 
                     atomic_store(&s->state, GDMSP_FSM_STOPPING);
             }
             break;
+
         case GDMSP_CMD_PLAY:
             atomic_store(&s->paused, 0);
             break;
+
         case GDMSP_CMD_PAUSE:
             atomic_store(&s->paused, 1);
             break;
+    
         case GDMSP_CMD_TICK:
-            /* worker próprio — tick é sinal de frame, não há nada a fazer aqui */
             break;
+
         case GDMSP_CMD_CURRENT_TIME:
-            /* TODO: seek p/ `value` ms — stub por enquanto */
+            /** @todo seek */
             break;
+
+        case GDMSP_CMD_POSITION:
+            gecnd_filter_set_video_pos(value.x, value.y, value.w, value.h);
+            break;
+
         default:
             break;
     }
@@ -292,18 +300,28 @@ static gdmsp_fsm_t av_set(uint8_t channel, gdmsp_cmd_t cmd, int64_t value, void 
         av_reap(channel);
         return GDMSP_FSM_IDLE;
     }
+    
     return st;
 }
 
-static int64_t av_get(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
+static gdmsp_value_t av_get(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
     (void)usr;
-    if (channel >= 4 || !s_streams[channel]) return -1;
+
+    gdmsp_value_t value = { -1 };
+    
+    if (channel >= 4 || !s_streams[channel]) return value;
     VideoStream *s = s_streams[channel];
+
     switch (cmd) {
-        case GDMSP_CMD_CURRENT_TIME: return atomic_load(&s->cur_ms);
-        case GDMSP_CMD_DURATION:     return atomic_load(&s->dur_ms);
-        default:                     return -1;
+        case GDMSP_CMD_CURRENT_TIME:
+            value.i64 = atomic_load(&s->cur_ms);
+            break;
+        
+        case GDMSP_CMD_DURATION:
+            value.i64 = atomic_load(&s->dur_ms);
     }
+
+    return value;
 }
 
 gamely_media_player_t gamely_player_ffmpeg = {

@@ -481,21 +481,32 @@ void        gamely_daemon_media_background_push_rgb565  (const uint8_t *data,
 MediaFrame *gamely_daemon_media_background_get_frame   (void);
 bool        gamely_daemon_media_background_check_update(atomic_int *local_counter);
 
+typedef union {
+    int64_t i64;
+    struct {
+        int16_t x;
+        int16_t y;
+        int16_t w;
+        int16_t h;
+    };
+} gdmsp_value_t;
+
 typedef enum {
-    GDMSP_CMD_NONE = 0,    /* sentinela interna do service — nunca enviado a drivers */
-    GDMSP_CMD_RESOURCE,    /* aviso: troca de source iminente — driver pode iniciar cleanup */
+    GDMSP_CMD_NONE = 0,
+    GDMSP_CMD_RESOURCE,
     GDMSP_CMD_PLAY,
     GDMSP_CMD_PAUSE,
     GDMSP_CMD_STOP,
     GDMSP_CMD_TICK,
-    GDMSP_CMD_CURRENT_TIME,  /* posição em milissegundos (.get/.set) */
-    GDMSP_CMD_DURATION,      /* duração total em ms (.get; 0 = desconhecida/live) */
+    GDMSP_CMD_CURRENT_TIME,
+    GDMSP_CMD_DURATION,
+    GDMSP_CMD_POSITION,
 } gdmsp_cmd_t;
 
 typedef struct {
     gdmsp_fsm_t (*src)(uint8_t channel, const char *url, void *usr);
-    gdmsp_fsm_t (*set)(uint8_t channel, gdmsp_cmd_t cmd, int64_t value, void *usr);
-    int64_t     (*get)(uint8_t channel, gdmsp_cmd_t cmd, void *usr);
+    gdmsp_fsm_t (*set)(uint8_t channel, gdmsp_cmd_t cmd, gdmsp_value_t value, void *usr);
+    gdmsp_value_t (*get)(uint8_t channel, gdmsp_cmd_t cmd, void *usr);
 } gamely_media_player_t;
 
 void gamely_daemon_media_register_player(const char                  *schema,
