@@ -16,7 +16,7 @@ typedef struct {
 } lua_job_t;
 
 static lua_job_t s_queue[LUA_QUEUE_CAP];
-static int       s_head = 0.
+static int       s_head = 0;
 static int       s_tail = 0;
 
 static int queue_count(void) {
