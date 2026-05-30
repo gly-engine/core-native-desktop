@@ -488,15 +488,14 @@ typedef enum {
     GDMSP_CMD_PAUSE,
     GDMSP_CMD_STOP,
     GDMSP_CMD_TICK,
+    GDMSP_CMD_CURRENT_TIME,  /* posição em milissegundos (.get/.set) */
+    GDMSP_CMD_DURATION,      /* duração total em ms (.get; 0 = desconhecida/live) */
 } gdmsp_cmd_t;
 
 typedef struct {
-    /* chamado pelo service em thread separada; bloqueia até estar pronto.
-     * retorna o estado inicial (LOADING, PLAYING ou ERROR). */
-    gdmsp_fsm_t (*source) (uint8_t channel, const char *url, void *usr);
-    /* RESOURCE, PLAY, PAUSE, STOP, TICK — retorna estado atual do driver.
-     * STOP sinaliza e retorna rápido; driver chega em IDLE assincronamente. */
-    gdmsp_fsm_t (*command)(uint8_t channel, gdmsp_cmd_t cmd, void *usr);
+    gdmsp_fsm_t (*src)(uint8_t channel, const char *url, void *usr);
+    gdmsp_fsm_t (*set)(uint8_t channel, gdmsp_cmd_t cmd, int64_t value, void *usr);
+    int64_t     (*get)(uint8_t channel, gdmsp_cmd_t cmd, void *usr);
 } gamely_media_player_t;
 
 void gamely_daemon_media_register_player(const char                  *schema,
@@ -505,6 +504,10 @@ void gamely_daemon_media_register_player(const char                  *schema,
 
 void gamely_daemon_media_playback_source  (uint8_t channel, const char *url);
 void gamely_daemon_media_playback_command (uint8_t channel, gdmsp_cmd_t cmd);
+gdmsp_fsm_t gamely_daemon_media_playback_get_status (uint8_t channel);
+int64_t     gamely_daemon_media_playback_get_integer(uint8_t channel, gdmsp_cmd_t cmd);
+gdmsp_fsm_t gamely_daemon_media_playback_set_integer(uint8_t channel, gdmsp_cmd_t cmd,
+                                                     int64_t value);
 void gamely_daemon_media_playback_position(uint8_t channel,
                                             int16_t x, int16_t y,
                                             int16_t w, int16_t h);

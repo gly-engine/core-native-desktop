@@ -42,6 +42,8 @@ typedef struct {
     atomic_int running;
     atomic_int paused;
     atomic_int state;        /* gdmsp_fsm_t — lock-free snapshot */
+    atomic_llong cur_ms;     /* posição atual em ms — snapshot do worker */
+    atomic_llong dur_ms;     /* duração total em ms — 0 se desconhecida/live */
     double clock_start;
     int64_t start_pts;
     char *url;

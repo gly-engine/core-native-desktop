@@ -130,7 +130,7 @@ static gdmsp_fsm_t ch_st(channel_t *ch) {
 }
 
 static gdmsp_fsm_t channel_cmd(channel_t *ch, uint8_t idx, gdmsp_cmd_t cmd) {
-    gdmsp_fsm_t r = ch->player->cbs.command(idx, cmd, ch->player->usr);
+    gdmsp_fsm_t r = ch->player->cbs.set(idx, cmd, 0, ch->player->usr);
     atomic_store(&ch->st, (int)r);
     return r;
 }
@@ -138,7 +138,7 @@ static gdmsp_fsm_t channel_cmd(channel_t *ch, uint8_t idx, gdmsp_cmd_t cmd) {
 static void source_runner(void *arg) {
     uint8_t    idx = *(uint8_t *)arg;
     channel_t *ch  = &s_channels[idx];
-    gdmsp_fsm_t r  = ch->player->cbs.source(idx, ch->url, ch->player->usr);
+    gdmsp_fsm_t r  = ch->player->cbs.src(idx, ch->url, ch->player->usr);
     atomic_store(&ch->st, (int)r);
     /* OPENING → r: tick detecta a transição e faz o join */
 }
@@ -182,6 +182,30 @@ void gamely_daemon_media_playback_command(uint8_t channel, gdmsp_cmd_t cmd) {
     if (channel >= CHANNEL_CAP) return;
     s_channels[channel].pending_cmd = cmd; /* last-write-wins */
     fprintf(stderr, "[media-pb] ch=%u command set cmd=%d\n", channel, (int)cmd);
+}
+
+gdmsp_fsm_t gamely_daemon_media_playback_get_status(uint8_t channel) {
+    if (channel >= CHANNEL_CAP) return GDMSP_FSM_IDLE;
+    channel_t *ch = &s_channels[channel];
+    if (ch->pending_src || ch->src_active) return GDMSP_FSM_OPENING;
+    return ch->player ? ch_st(ch) : GDMSP_FSM_IDLE;
+}
+
+int64_t gamely_daemon_media_playback_get_integer(uint8_t channel, gdmsp_cmd_t cmd) {
+    if (channel >= CHANNEL_CAP) return -1;
+    channel_t *ch = &s_channels[channel];
+    if (!ch->player || !ch->player->cbs.get) return -1;
+    return ch->player->cbs.get(channel, cmd, ch->player->usr);
+}
+
+gdmsp_fsm_t gamely_daemon_media_playback_set_integer(uint8_t channel, gdmsp_cmd_t cmd,
+                                                     int64_t value) {
+    if (channel >= CHANNEL_CAP) return GDMSP_FSM_IDLE;
+    channel_t *ch = &s_channels[channel];
+    if (!ch->player || !ch->player->cbs.set) return GDMSP_FSM_IDLE;
+    gdmsp_fsm_t r = ch->player->cbs.set(channel, cmd, value, ch->player->usr);
+    atomic_store(&ch->st, (int)r);
+    return r;
 }
 
 void gamely_daemon_media_playback_position(uint8_t channel,

@@ -79,6 +79,9 @@ static void threadworker(void *arg) {
         goto cleanup_format;
     }
 
+    if (s->fmt->duration != AV_NOPTS_VALUE && s->fmt->duration > 0)
+        atomic_store(&s->dur_ms, s->fmt->duration / (AV_TIME_BASE / 1000));
+
     s->video_index = AV.av_find_best_stream(s->fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
     if (s->video_index < 0) {
         fprintf(stderr, "[media] no video stream\n");
@@ -156,6 +159,7 @@ static void threadworker(void *arg) {
                     int64_t pts_val = vfrm->pts;
                     if (pts_val == AV_NOPTS_VALUE) pts_val = vfrm->best_effort_timestamp;
                     double pts = (pts_val != AV_NOPTS_VALUE) ? pts_val * gly_av_q2d(s->video->time_base) : 0.0;
+                    atomic_store(&s->cur_ms, (long long)(pts * 1000.0));
 
                     double delay = (s->clock_start + pts) - now_sec();
                     if (delay > 0.001) usleep((useconds_t)(delay * 1e6));
@@ -251,8 +255,8 @@ static gdmsp_fsm_t av_source(uint8_t channel, const char *url, void *usr) {
     return GDMSP_FSM_LOADING;
 }
 
-static gdmsp_fsm_t av_command(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
-    (void)usr;
+static gdmsp_fsm_t av_set(uint8_t channel, gdmsp_cmd_t cmd, int64_t value, void *usr) {
+    (void)usr; (void)value;
     if (channel >= 4 || !s_streams[channel]) return GDMSP_FSM_IDLE;
     VideoStream *s = s_streams[channel];
 
@@ -276,6 +280,9 @@ static gdmsp_fsm_t av_command(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
         case GDMSP_CMD_TICK:
             /* worker próprio — tick é sinal de frame, não há nada a fazer aqui */
             break;
+        case GDMSP_CMD_CURRENT_TIME:
+            /* TODO: seek p/ `value` ms — stub por enquanto */
+            break;
         default:
             break;
     }
@@ -288,7 +295,19 @@ static gdmsp_fsm_t av_command(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
     return st;
 }
 
+static int64_t av_get(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
+    (void)usr;
+    if (channel >= 4 || !s_streams[channel]) return -1;
+    VideoStream *s = s_streams[channel];
+    switch (cmd) {
+        case GDMSP_CMD_CURRENT_TIME: return atomic_load(&s->cur_ms);
+        case GDMSP_CMD_DURATION:     return atomic_load(&s->dur_ms);
+        default:                     return -1;
+    }
+}
+
 gamely_media_player_t gamely_player_ffmpeg = {
-    .source  = av_source,
-    .command = av_command,
+    .src = av_source,
+    .set = av_set,
+    .get = av_get,
 };
