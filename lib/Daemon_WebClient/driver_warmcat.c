@@ -170,12 +170,6 @@ static int callback_wc(struct lws *wsi,
     }
 
     case LWS_CALLBACK_CLOSED_CLIENT_HTTP: {
-        if (!c || !c->active) break;
-        gly_wc_error_cb cb  = c->on_error;
-        gly_req_id_t    cid = c->id;
-        void           *usr = c->user;
-        conn_free(c);
-        if (cb) cb(cid, "connection closed", usr);
         break;
     }
 
