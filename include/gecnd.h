@@ -230,6 +230,8 @@ int32_t gamely_daemon_db_insert_media(
     const char *url_image
 );
 void    gamely_daemon_db_delete_media(const char *short_id);
+/* Deletes every media row whose `type` matches (NULL/"" = all rows). */
+void    gamely_daemon_db_delete_media_by_type(const char *type);
 
 int32_t gamely_daemon_db_insert_blob(
     const uint8_t *data,
@@ -246,6 +248,11 @@ const char *gamely_daemon_db_kv_get(const char *key);
  * *out_len is filled for BLOB; optional for TEXT (strlen). NULL if not found.
  * Caller must free() the returned pointer. */
 void *gamely_daemon_db_query_uri(const char *uri, size_t *out_len);
+
+/* Heap-allocated JSON array of media rows whose `type` matches (NULL/"" = all):
+ * [{"name":..,"short":..,"url":..,"type":..,"url_image":..}, …]. Empty → "[]".
+ * Caller must free(). NULL on error. */
+char *gamely_daemon_db_media_json(const char *type);
 
 /* ---- Daemon_Img ---- */
 

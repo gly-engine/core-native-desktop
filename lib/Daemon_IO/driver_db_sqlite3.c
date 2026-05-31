@@ -205,6 +205,18 @@ void gamely_daemon_db_delete_media(const char *short_id) {
     sqlite3_finalize(st);
 }
 
+void gamely_daemon_db_delete_media_by_type(const char *type) {
+    if (!s_db) return;
+    sqlite3_stmt *st;
+    const char *sql = (type && type[0])
+        ? "DELETE FROM media WHERE type=?;"
+        : "DELETE FROM media;";
+    if (sqlite3_prepare_v2(s_db, sql, -1, &st, NULL) != SQLITE_OK) return;
+    if (type && type[0]) sqlite3_bind_text(st, 1, type, -1, SQLITE_TRANSIENT);
+    sqlite3_step(st);
+    sqlite3_finalize(st);
+}
+
 int32_t gamely_daemon_db_insert_blob(const uint8_t *data, size_t len,
                                       const char *hint) {
     if (!s_db) return -1;
@@ -259,6 +271,29 @@ const char *gamely_daemon_db_kv_get(const char *key) {
     }
     sqlite3_finalize(st);
     return rc;
+}
+
+char *gamely_daemon_db_media_json(const char *type) {
+    if (!s_db) return NULL;
+    static const char sel[] =
+        "SELECT json_group_array(json_object("
+        "'name',name,'short',short,'url',url,"
+        "'type',type,'url_image',url_image)) FROM media";
+    char sql[256];
+    snprintf(sql, sizeof(sql), "%s%s;", sel, (type && type[0]) ? " WHERE type=?" : "");
+
+    sqlite3_stmt *st;
+    if (sqlite3_prepare_v2(s_db, sql, -1, &st, NULL) != SQLITE_OK) return NULL;
+    if (type && type[0]) sqlite3_bind_text(st, 1, type, -1, SQLITE_TRANSIENT);
+
+    char *out = NULL;
+    if (sqlite3_step(st) == SQLITE_ROW) {
+        const char *v = (const char *)sqlite3_column_text(st, 0);
+        size_t l = v ? strlen(v) : 0;
+        if ((out = malloc(l + 1))) memcpy(out, v ? v : "", l + 1);
+    }
+    sqlite3_finalize(st);
+    return out;
 }
 
 void *gamely_daemon_db_query_uri(const char *uri, size_t *out_len) {
