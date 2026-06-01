@@ -24,16 +24,19 @@ bool gamely_daemon_media_background_claim(void) {
     return atomic_compare_exchange_strong(&g_owner, &expected, 1);
 }
 
-void gamely_daemon_media_background_release(void) {
-    atomic_store(&g_owner, 0);
-}
-
 static MediaFrame  frames[3]       = {0};
 static atomic_int  front_idx       = 0;
 static atomic_int  back_idx        = 1;
 static atomic_int  mid_idx         = 2;
 static atomic_int  mid_dirty       = 0;
 static atomic_int  update_counter  = 0;
+
+void gamely_daemon_media_background_release(void) {
+    for (int i = 0; i < 3; i++)
+        atomic_store(&frames[i].ready, false);
+    atomic_fetch_add(&update_counter, 1);
+    atomic_store(&g_owner, 0);
+}
 
 static void frame_resize(MediaFrame *f, int w, int h, int format) {
     if (f->width == w && f->height == h && f->format == format && f->data[0])
