@@ -268,6 +268,36 @@ static void _ws_send_wsi(struct lws *wsi, const char *text, size_t len)
 }
 
 /* -----------------------------------------------------------------------
+ * CORS — reflete o Origin da requisição (aceita qualquer origem)
+ * ---------------------------------------------------------------------- */
+static int add_cors_headers(struct lws *wsi, unsigned char **p, unsigned char *end)
+{
+    char origin[256];
+    int  olen = lws_hdr_copy(wsi, origin, sizeof(origin), WSI_TOKEN_ORIGIN);
+
+    /* sem Origin (requisição não-CORS): libera para qualquer um */
+    const char *allow = (olen > 0) ? origin : "*";
+
+    if (lws_add_http_header_by_name(wsi,
+            (const unsigned char *)"access-control-allow-origin:",
+            (const unsigned char *)allow, (int)strlen(allow), p, end))
+        return -1;
+    if (lws_add_http_header_by_name(wsi,
+            (const unsigned char *)"access-control-allow-credentials:",
+            (const unsigned char *)"true", 4, p, end))
+        return -1;
+    if (lws_add_http_header_by_name(wsi,
+            (const unsigned char *)"access-control-allow-methods:",
+            (const unsigned char *)"GET, POST, PUT, DELETE, PATCH, OPTIONS", 38, p, end))
+        return -1;
+    if (lws_add_http_header_by_name(wsi,
+            (const unsigned char *)"access-control-allow-headers:",
+            (const unsigned char *)"Content-Type, Authorization", 27, p, end))
+        return -1;
+    return 0;
+}
+
+/* -----------------------------------------------------------------------
  * callback_http
  * ---------------------------------------------------------------------- */
 static int callback_http(struct lws *wsi,
@@ -403,6 +433,7 @@ static int callback_http(struct lws *wsi,
                     lws_add_http_header_by_name(wsi,
                         (const unsigned char *)"connection:",
                         (const unsigned char *)"keep-alive", 10, &p, end) ||
+                    add_cors_headers(wsi, &p, end) ||
                     lws_finalize_http_header(wsi, &p, end) ||
                     lws_write(wsi, hdr, (size_t)(p - hdr),
                               LWS_WRITE_HTTP_HEADERS) < 0)
@@ -446,6 +477,7 @@ static int callback_http(struct lws *wsi,
                 (unsigned char *)s->content_type,
                 (int)strlen(s->content_type), &p, end) ||
             lws_add_http_header_content_length(wsi, s->body_len, &p, end) ||
+            add_cors_headers(wsi, &p, end) ||
             lws_finalize_http_header(wsi, &p, end))
             return -1;
 
