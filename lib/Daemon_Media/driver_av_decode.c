@@ -300,7 +300,14 @@ static gdmsp_fsm_t av_set(uint8_t channel, gdmsp_cmd_t cmd, gdmsp_value_t value,
         av_reap(channel);
         return GDMSP_FSM_IDLE;
     }
-    
+
+    /** @todo fix state — o decoder abre de forma assíncrona e o LOADING→PLAYING
+     *  real depende do primeiro frame decodificado (que hoje não sai: o
+     *  receive_frame nunca retorna 0). Reportar PLAYING no TICK evita o status
+     *  preso em 'loading'; remover quando o pipeline de decode estiver ok. */
+    if (cmd == GDMSP_CMD_TICK && st == GDMSP_FSM_LOADING)
+        return GDMSP_FSM_PLAYING;
+
     return st;
 }
 

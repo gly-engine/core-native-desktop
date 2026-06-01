@@ -189,15 +189,7 @@ gdmsp_fsm_t gamely_daemon_media_playback_get_status(uint8_t channel) {
     if (channel >= CHANNEL_CAP) return GDMSP_FSM_IDLE;
     channel_t *ch = &s_channels[channel];
     if (ch->pending_src || ch->src_active) return GDMSP_FSM_OPENING;
-    if (!ch->player) return GDMSP_FSM_IDLE;
-    /* puxa o estado vivo do decoder via TICK — mesmo caminho que o service
-     * tick usa pra atualizar ch->st. Sem isso, o cache fica atrás da transição
-     * assíncrona LOADING→PLAYING do worker ffmpeg (que roda em thread própria).
-     * Players síncronos (ex.: dvb) já retornam o estado final, então o TICK
-     * deles só confirma o cache. Mesma thread do tick → reap-em-IDLE seguro. */
-    if (ch->player->cbs.set)
-        return channel_cmd(ch, channel, GDMSP_CMD_TICK);
-    return ch_st(ch);
+    return ch->player ? ch_st(ch) : GDMSP_FSM_IDLE;
 }
 
 int64_t gamely_daemon_media_playback_get_integer(uint8_t channel, gdmsp_cmd_t cmd) {
