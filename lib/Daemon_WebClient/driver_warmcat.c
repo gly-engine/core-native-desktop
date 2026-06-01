@@ -137,7 +137,7 @@ static int callback_wc(struct lws *wsi,
     switch (reason) {
 
     case LWS_CALLBACK_ESTABLISHED_CLIENT_HTTP:
-        if (!c) break;
+        if (!c || !c->active) break;
         c->http_status = (int)lws_http_client_http_response(wsi);
         if (c->on_status)
             c->on_status(c->id, c->http_status, c->user);
@@ -152,7 +152,7 @@ static int callback_wc(struct lws *wsi,
     }
 
     case LWS_CALLBACK_RECEIVE_CLIENT_HTTP_READ:
-        if (!c) break;
+        if (!c || !c->active) break;
         if (c->on_data && len > 0)
             c->on_data(c->id, (const char *)in, len, c->user);
         break;
@@ -162,7 +162,9 @@ static int callback_wc(struct lws *wsi,
         gly_wc_done_cb  cb  = c->on_done;
         gly_req_id_t    cid = c->id;
         void           *usr = c->user;
-        conn_free(c);
+        c->on_done  = NULL;
+        c->on_error = NULL;
+        c->user     = NULL;
         if (cb) cb(cid, usr);
         break;
     }
@@ -225,7 +227,14 @@ static int callback_wc(struct lws *wsi,
         gly_wc_error_cb cb  = c->on_error;
         gly_req_id_t    cid = c->id;
         void           *usr = c->user;
-        conn_free(c);
+        c->on_error    = NULL;
+        c->on_status   = NULL;
+        c->on_data     = NULL;
+        c->on_done     = NULL;
+        c->on_ws_open  = NULL;
+        c->on_ws_msg   = NULL;
+        c->on_ws_close = NULL;
+        c->user        = NULL;
         if (cb) cb(cid, msg, usr);
         break;
     }
