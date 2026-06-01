@@ -179,8 +179,20 @@ static route_t *find_route(const char *path, route_type_t type)
     memset(&key, 0, sizeof(key));
     key.type = type;
     strncpy(key.path, path, sizeof(key.path) - 1);
-    return (route_t *)bsearch(&key, g.routes, (size_t)g.route_count,
-                               sizeof(route_t), route_cmp_key);
+    route_t *r = (route_t *)bsearch(&key, g.routes, (size_t)g.route_count,
+                                    sizeof(route_t), route_cmp_key);
+    if (r) return r;
+
+    /* fallback wildcard: rota "/prefixo/*" casa qualquer path sob "/prefixo/". */
+    for (int i = 0; i < g.route_count; i++) {
+        route_t *e = &g.routes[i];
+        if (e->type != type) continue;
+        size_t n = strlen(e->path);
+        if (n >= 2 && e->path[n - 1] == '*' && e->path[n - 2] == '/'
+                && strncmp(path, e->path, n - 1) == 0)
+            return e;
+    }
+    return NULL;
 }
 
 static route_t *insert_route(const char *path, route_type_t type)

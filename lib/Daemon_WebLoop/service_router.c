@@ -68,6 +68,16 @@ static wl_route_t *insert_route(const char *path, wlr_type_t type)
 gly_http_cb_t wl_router_find_http(const char *path)
 {
     wl_route_t *r = find_route(path, WLR_HTTP);
+    if (!r) {
+        /* fallback wildcard: "/prefixo/*" casa qualquer path sob "/prefixo/". */
+        for (int i = 0; i < s_count; i++) {
+            wl_route_t *e = &s_routes[i];
+            if (e->type != WLR_HTTP) continue;
+            size_t n = strlen(e->path);
+            if (n >= 2 && e->path[n - 1] == '*' && e->path[n - 2] == '/'
+                    && strncmp(path, e->path, n - 1) == 0) { r = e; break; }
+        }
+    }
     return r ? r->http_cb : NULL;
 }
 
