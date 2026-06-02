@@ -50,6 +50,10 @@ if(NOT TARGET gecnd_cc_flags)
 endif()
 target_include_directories(gecnd_header INTERFACE "${CMAKE_CURRENT_LIST_DIR}/include;${CMAKE_BINARY_DIR}/include")
 target_link_libraries(${PROJECT_NAME} PRIVATE gecnd_header gecnd_lua gecnd_cc_flags)
+if(LINUX)
+    file(GLOB_RECURSE SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_*/driver_linux_*.c")
+    target_sources(${PROJECT_NAME} PRIVATE "${SOURCES}")
+endif()
 
 if(GECND_NO_SANITIZE)
     target_compile_options(gecnd_cc_flags INTERFACE -fno-sanitize=all -fno-sanitize-recover=all)
@@ -297,7 +301,6 @@ set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
 option(GECND_USE_MBEDTLS "use mbedtls backend for ssl" OFF)
 
 # Plugins
-option(GECND_USE_PLUGIN_ALSA "build plugin alsa for core native" OFF)
 option(GECND_USE_PLUGIN_CHROMIUM "build plugin chromium for core native" OFF)
 option(GECND_USE_PLUGIN_LIBRETRO "build plugin libretro for core native" OFF)
 
@@ -812,16 +815,6 @@ if(GECND_USE_PROFILER)
     FetchContent_Declare(profiler GIT_REPOSITORY ${GPERFTOOLS_REPO} GIT_TAG ${GPERFTOOLS_VERSION} SOURCE_DIR ${GPERFTOOLS_DIR})
     FetchContent_MakeAvailable(profiler)
     target_link_libraries(${PROJECT_NAME} PRIVATE profiler)
-endif()
-
-if(GECND_USE_PLUGIN_ALSA)
-    add_library(alsa_gecnd SHARED "${CMAKE_CURRENT_LIST_DIR}/plugins/alsa/main.c")
-    target_link_libraries(alsa_gecnd PRIVATE gecnd_header)
-    set_target_properties(alsa_gecnd PROPERTIES
-        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-    )
 endif()
 
 if(GECND_USE_PLUGIN_CHROMIUM)

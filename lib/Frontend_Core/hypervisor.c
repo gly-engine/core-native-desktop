@@ -20,6 +20,7 @@ void gamely_resolver_image_file(const char *url, void *schema_usr, gamely_img_on
 void gamely_resolver_image_http(const char *url, void *schema_usr, gamely_img_on_fetch_cb on_done, void *usr);
 extern gamely_media_player_t gamely_player_ffmpeg;
 extern gamely_media_player_t gamely_player_color;
+void coreopen_alsa_gecnd();
 
 static gecnd_display_t g_display;
 
@@ -112,6 +113,10 @@ void gamely_hypervisor_init(gecnd_t *gly) {
     gamely_daemon_media_register_player("ffmpeg+rtsp"  , &gamely_player_ffmpeg, NULL);
     gamely_daemon_media_register_player("ffmpeg+rtmp"  , &gamely_player_ffmpeg, NULL);
     gamely_daemon_media_register_player("ffmpeg+udp"   , &gamely_player_ffmpeg, NULL);
+#endif
+
+#if defined(__linux__)
+    coreopen_alsa_gecnd();
 #endif
 
     gamely_daemon_media_register_player("background", &gamely_player_color, NULL);
