@@ -178,7 +178,7 @@ static int lua_native_http_handler(lua_State *L)
     if (is_ws) {
         upgrade = cb_get_str(L, req_id, "get-sock-upgrade");
     } else {
-        body = cb_get_str(L, req_id, "get-body-data");
+        body = cb_get_str(L, req_id, "get-body");
     }
 
     /**
