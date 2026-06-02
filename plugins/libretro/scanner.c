@@ -24,6 +24,7 @@ static const char *s_rom_dirs[] = {
     "/mnt/*/*/roms",
     "/mnt/*/*/libretro/roms",
     "RetroArch/downloads",
+    "Downloads",
 };
 
 static char s_found[PATH_CAP];
