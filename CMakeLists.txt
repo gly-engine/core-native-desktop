@@ -302,6 +302,7 @@ option(GECND_USE_MBEDTLS "use mbedtls backend for ssl" OFF)
 
 # Plugins
 option(GECND_USE_PLUGIN_CHROMIUM "build plugin chromium for core native" OFF)
+option(GECND_USE_PLUGIN_WPA "build plugin wpa for core native" OFF)
 option(GECND_USE_PLUGIN_LIBRETRO "build plugin libretro for core native" OFF)
 
 # Lua Host + GLY CLI

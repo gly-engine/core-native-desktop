@@ -137,7 +137,13 @@ static void _http_fire(uv_timer_t *h)
     wl_conn_t *c = (wl_conn_t *)h->data;
     uv_timer_stop(h);
 
-    gly_http_cb_t route_cb = wl_router_find_http(c->path);
+    char route_path[sizeof(c->path)];
+    strncpy(route_path, c->path, sizeof(route_path) - 1);
+    route_path[sizeof(route_path) - 1] = '\0';
+    char *query = strchr(route_path, '?');
+    if (query) *query = '\0';
+
+    gly_http_cb_t route_cb = wl_router_find_http(route_path);
     if (!route_cb) {
         if (c->on_error) c->on_error(c->id, "no route", c->user);
         wl_conn_free(c);
