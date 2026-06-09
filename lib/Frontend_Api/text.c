@@ -3,6 +3,7 @@
 #include <lauxlib.h>
 #include <lua.h>
 
+#include "gecnd.h"
 #include "gehook.h"
 
 static int lua_native_text_print(lua_State *L) {
@@ -21,7 +22,9 @@ static int lua_native_text_mensure(lua_State *L) {
 }
 
 static int lua_native_text_font_size(lua_State *L) {
-    native_text_font_size(floorf((int16_t)luaL_checknumber(L, 1)));
+    float factor = gecnd_get_display()->font_factor;
+    if (factor <= 0.0f) factor = 1.0f;
+    native_text_font_size(floorf((int16_t)luaL_checknumber(L, 1) * factor));
     lua_settop(L, 0);
     return 0;
 }

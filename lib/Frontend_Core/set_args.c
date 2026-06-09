@@ -23,6 +23,7 @@ static ko_longopt_t longopts[] = {
     { "disable-radius", ko_no_argument,       1309 },
     { "port",           ko_required_argument, 1310 },
     { "ssl-cert",        ko_required_argument, 1311 },
+    { "font-factor",    ko_required_argument, 1312 },
     { "filter-aa",      ko_required_argument, 1401 },
     { "filter-color",   ko_required_argument, 1402 },
     { "filter-grain",   ko_required_argument, 1403 },
@@ -111,6 +112,11 @@ void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
         gecnd_add_error(gly, "invalid port!");
     if (c == 1311) {
         gamely_daemon_webclient_set_ca_path(opt.arg);
+    }
+    if (c == 1312) {
+        float f = (float)atof(opt.arg);
+        check_range(gly, f, 0.1f, 4.0f, "font-factor");
+        gecnd_get_display()->font_factor = f;
     }
     if (c == 1402) {
         float b = 1.0f, cv = 1.0f, s = 1.0f;
