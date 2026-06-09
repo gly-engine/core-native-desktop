@@ -10,6 +10,10 @@
 #define L_FLAVOR "PUC"
 #endif
 
+#if !defined(LUA_RELEASE)
+#define LUA_RELEASE "Lua 5.1"
+#endif
+
 #define FMT_FPS  "FPS: %3d avg | %3d cur | %3d low (1%%) | %3d drops | " FMT_TEMP
 #define FMT_LUA  "Lua %s (%s %db) | %9s cur | %9s avg | %9s peak"
 #define FMT_PERF "Perf: I/O %4dms | Loop %4dms | Draw %4dms | Post %4dms | Wait %4dms"
