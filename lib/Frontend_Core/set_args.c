@@ -21,6 +21,7 @@ static ko_longopt_t longopts[] = {
     { "play",           ko_required_argument, 1307 },
     { "game+engine",    ko_required_argument, 1308 },
     { "disable-radius", ko_no_argument,       1309 },
+    { "mojibake",       ko_no_argument,       1313 },
     { "port",           ko_required_argument, 1310 },
     { "ssl-cert",        ko_required_argument, 1311 },
     { "font-factor",    ko_required_argument, 1312 },
@@ -107,6 +108,9 @@ void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
     }
     if (c == 1309) {
         gecnd_get_display()->disable_radius = true;
+    }
+    if (c == 1313) {
+        gecnd_get_display()->mojibake = true;
     }
     if (c == 1310 && (sscanf(opt.arg, "%hu", &gecnd_get_display()->port) != 1))
         gecnd_add_error(gly, "invalid port!");

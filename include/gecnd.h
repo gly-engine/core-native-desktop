@@ -120,6 +120,7 @@ typedef struct {
     int16_t  window_height;
     uint16_t port;
     bool     disable_radius;
+    bool     mojibake;
     float    font_factor;
     char     game_base_url[512];
 } gecnd_display_t;
