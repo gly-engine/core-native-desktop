@@ -3,6 +3,7 @@ set(LIBFFI_VERSION "v3.6.0")
 set(LIBFFI_DIR "${CMAKE_SOURCE_DIR}/vendor/libffi")
 set(LIBFFI_BIN "${CMAKE_BINARY_DIR}/libffi")
 set(LIBFFI_DOWNLOAD "https://github.com/libffi/libffi/archive/refs/tags/${LIBFFI_VERSION}.tar.gz")
+set(LIBFFI_SOURCE "${CMAKE_CURRENT_LIST_DIR}/../lib/Daemon_Registry/driver_lua_ffi.c")
 
 set(LIBFFI_BUILD_TRIPLE "x86_64-linux-gnu")
 set(LIBFFI_HOST_TRIPLE  "arm-linux-gnueabihf")
@@ -42,15 +43,7 @@ if (GECND_USE_FFI)
     )
     add_dependencies(ffi libffi_proj)
 
-    target_sources(${PROJECT_NAME}
-        PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../lib/Daemon_System/driver_lua_ffi.c"
-    )
-
-    set_source_files_properties(
-        "${CMAKE_CURRENT_LIST_DIR}/../lib/Daemon_System/driver_lua_ffi.c"
-        PROPERTIES
-            COMPILE_OPTIONS "-I${LIBFFI_INCLUDE}"
-    )
-    
+    target_sources(${PROJECT_NAME} PRIVATE ${LIBFFI_SOURCE})
+    set_source_files_properties(${LIBFFI_SOURCE} PROPERTIES COMPILE_OPTIONS "-I${LIBFFI_INCLUDE}")
     target_link_libraries(${PROJECT_NAME} PRIVATE ffi)
 endif()
