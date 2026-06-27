@@ -126,12 +126,7 @@ typedef struct {
     char     game_base_url[512];
 } gecnd_display_t;
 
-typedef struct {
-    void (*func)(const char *key, void *value, void *ctx);
-    void *ctx;
-} gecnd_registry_handler_t;
-
-int gecnd_registry(const char* cmd, const char *key, void *const value);
+int gecnd_registry(const char* cmd, const char *key, void *const value, void *const usr);
 
 // plugins
 bool gecnd_plugin_load(gecnd_t *gly, const char *path);

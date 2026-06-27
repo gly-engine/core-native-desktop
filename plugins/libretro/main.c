@@ -349,21 +349,12 @@ static int lua_libretro_is_running(lua_State *L) {
     return 1;
 }
 
-int luaopen_libretro_gecnd(lua_State *L) {
-    const luaL_Reg api[] = {
-        { "native_libretro_url",        lua_native_libretro_url    },
-        { "native_libretro_exit",       lua_native_libretro_exit   },
-        { "native_libretro_error",      lua_native_libretro_error  },
-        { "native_libretro_is_running", lua_libretro_is_running    },
-        { NULL, NULL }
-    };
-    for (int i = 0; api[i].name; i++)
-        lua_register(L, api[i].name, api[i].func);
-    return 0;
-}
-
-void coreopen_libretro_gecnd(void) {
-    gamely_daemon_media_register_player("libretro+?",        &libretro_file_player, NULL);
-    gamely_daemon_media_register_player("libretro+http+?",   &libretro_http_player, NULL);
-    gamely_daemon_media_register_player("libretro+https+?",  &libretro_http_player, NULL);
+void coreopen_libretro_gecnd(gecnd_api_t *const api) {
+    api->registry("set", "lua_global_ffi:native_libretro_url+$s+$0", lua_native_libretro_url, NULL);
+    api->registry("set", "lua_global_ffi:native_libretro_exit+$0+$0", lua_native_libretro_exit, NULL);
+    api->registry("set", "lua_global_ffi:native_libretro_error+$0+$s", lua_native_libretro_error, NULL);
+    api->registry("set", "lua_global_ffi:native_libretro_is_running+$0+$b", lua_native_libretro_is_running, NULL);
+    api->registry("set", "media_player:libretro+$s", &libretro_file_player, NULL);
+    api->registry("set", "media_player:libretro+$s+http", &libretro_http_player, NULL);
+    api->registry("set", "media_player:libretro+$s+https", &libretro_http_player, NULL);
 }
