@@ -1,7 +1,7 @@
 #include "gecnd.h"
 
 static void lua_global_ffi(const char* name, void* func, void* usr) {
-    gecnd_lang_rdsl_t ctx = {};
+    /*gecnd_lang_rdsl_t ctx = {};
     lua_State *L = (lua_State*) usr;
     const char *lua_func_str = NULL;
     size_t lua_fun_len = 0;
@@ -24,10 +24,10 @@ static void lua_global_ffi(const char* name, void* func, void* usr) {
         if (ctx->namespace == 4) {
             // rets
         }
-    }
+    }*/
 }
 
 __attribute__((constructor))
 static void init() {
-    gecnd_register("set", "function:lua_global_ffi", driver_lua_ffi, NULL);
+    gecnd_registry("set", "function:lua_global_ffi", lua_global_ffi, NULL);
 }

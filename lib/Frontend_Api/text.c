@@ -81,7 +81,7 @@ static int lua_native_text_font_default(lua_State *L) {
 }
 
 static int lua_native_text_font_previous(lua_State *L) {
-    native_text_font_previous();
+    ///! @todo remove on 0.4.X native_text_font_previous();
     lua_settop(L, 0);
     return 0;
 }

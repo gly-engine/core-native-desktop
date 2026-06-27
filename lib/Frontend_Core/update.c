@@ -181,6 +181,13 @@ static bool state_boot(gecnd_t *gly) {
     gly_hook_display_fps(gly->loop ? 0 : gly->target_fps);
     const char *e = gecnd_plugins_open_lua(gly->L);
     if (e) { gecnd_add_error(gly, "%s", e); return false; }
+    gly->state = GECND_FSM_LUALIB_LOADED;
+    return init_check_exit(gly);
+}
+
+static bool state_lualib_load(gecnd_t *gly) {
+    gecnd_registry("get", "boot:*", NULL, gly);
+    if (gly->error_len) return false;
     gly->state = GECND_FSM_DAEMONS_UP;
     return init_check_exit(gly);
 }
@@ -405,7 +412,7 @@ bool gecnd_update(gecnd_t *gly) {
     case GECND_FSM_ARGS_PARSED:    return state_boot(gly);
     case GECND_FSM_DAEMONS_UP:     return state_daemons_up(gly);
     case GECND_FSM_FETCHING:       return state_fetching(gly);
-    case GECND_FSM_SOMETIHING:    return state_lualib_open(gly);
+    case GECND_FSM_LUALIB_LOADED:  return state_lualib_load(gly);
     case GECND_FSM_ENGINE_LOADED:  return state_engine_loaded(gly);
     case GECND_FSM_GAME_LOADED:    return state_game_loaded(gly);
     case GECND_FSM_RUNNING:

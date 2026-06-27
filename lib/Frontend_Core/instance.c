@@ -24,13 +24,6 @@
 #define GECND_DEFAULT_FRAMESKIP 0
 #endif
 
-extern const luaL_Reg frontend_api_log[];
-extern const luaL_Reg frontend_api_draw[];
-extern const luaL_Reg frontend_api_text[];
-extern const luaL_Reg frontend_api_image[];
-extern const luaL_Reg frontend_api_media[];
-extern const luaL_Reg frontend_api_system[];
-
 static gecnd_t *instance;
 
 void gecnd_global_signal_init();
