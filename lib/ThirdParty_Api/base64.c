@@ -44,14 +44,9 @@ static int lua_base64_decode(lua_State *L) {
     return 1;
 }
 
-void gly_hook_luaopen_base64(lua_State *L) {
-    const luaL_Reg base64_funcs[] = {
-        {"native_base64_encode", lua_base64_encode},
-        {"native_base64_decode", lua_base64_decode},
-        {NULL, NULL}
-    };
-    
-    for (int i = 0; base64_funcs[i].name != NULL; i++) {
-        lua_register(L, base64_funcs[i].name, base64_funcs[i].func);
-    }
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "lua_global_func:native_base64_encode", lua_base64_encode, NULL);
+    gecnd_registry("set", "lua_global_func:native_base64_decode", lua_base64_decode, NULL);
+
 }

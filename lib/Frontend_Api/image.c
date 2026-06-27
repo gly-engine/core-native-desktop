@@ -3,8 +3,6 @@
 #include <lua.h>
 #include "gecnd.h"
 
-/* Resolves the first Lua argument (string url or integer id) to an id.
- * For strings: starts load if not already loaded. */
 static int32_t resolve_id(lua_State *L, int idx) {
     if (lua_type(L, idx) == LUA_TNUMBER)
         return (int32_t)lua_tointeger(L, idx);
@@ -15,14 +13,15 @@ static int32_t resolve_id(lua_State *L, int idx) {
 
 static int lua_native_image_load(lua_State *L) {
     const char *url = luaL_checkstring(L, 1);
-    lua_pushinteger(L, gamely_daemon_img_get_id(url));
+    int32_t id = gamely_daemon_img_get_id(url);
+    lua_pushinteger(L, id);
     return 1;
 }
 
 static int lua_native_image_exists(lua_State *L) {
     int32_t id = resolve_id(L, 1);
-    lua_pushboolean(L, id != -1 &&
-                       gamely_daemon_img_get_state(id) == GLY_IMG_READY);
+    bool exists = gamely_daemon_img_get_state(id) == GLY_IMG_READY;
+    lua_pushboolean(L, exists);
     return 1;
 }
 
@@ -71,14 +70,19 @@ static int lua_native_image_loading_count(lua_State *L) {
     return 1;
 }
 
-const luaL_Reg frontend_api_image[] = {
-    {"native_image_load",       lua_native_image_load},
-    {"native_image_exists",     lua_native_image_exists},
-    {"native_image_draw",       lua_native_image_draw},
-    {"native_image_mensure",    lua_native_image_mensure},
-    {"native_image_error",      lua_native_image_error},
-    {"native_image_unload",     lua_native_image_unload},
-    {"native_image_unload_all", lua_native_image_unload_all},
-    {"native_image_loading_count", lua_native_image_loading_count},
-    {NULL, NULL}
-};
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "lua_global_func:native_image_load", lua_native_image_load, NULL);
+    gecnd_registry("set", "lua_global_func:native_image_exists", lua_native_image_exists, NULL);
+    gecnd_registry("set", "lua_global_func:native_image_draw", lua_native_image_draw, NULL);
+    gecnd_registry("set", "lua_global_func:native_image_mensure", lua_native_image_mensure, NULL);
+    gecnd_registry("set", "lua_global_func:native_image_error", lua_native_image_error, NULL);
+    gecnd_registry("set", "lua_global_func:native_image_unload", lua_native_image_unload, NULL);
+    gecnd_registry("set", "lua_global_func:native_image_unload_all", lua_native_image_unload_all, NULL);
+    gecnd_registry("set", "lua_global_func:native_image_loading_count", lua_native_image_loading_count, NULL);
+}
+
+__attribute__((destructor))
+static void cleanup() {
+    gamely_daemon_img_unload_all();
+}

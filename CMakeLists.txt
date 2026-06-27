@@ -839,6 +839,8 @@ if(GECND_USE_PLUGIN_WPA)
     )
 endif()
 
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/libffi.cmake)
+
 if(GECND_USE_PLUGIN_LIBRETRO)
     if(NOT EXISTS "${LIBRETRO_DIR}/libretro.h")
         file(DOWNLOAD "${LIBRETRO_DOWNLOAD}" "${LIBRETRO_DIR}/libretro.h")

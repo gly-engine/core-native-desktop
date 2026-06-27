@@ -92,15 +92,15 @@ static int lua_native_media_set_integer(lua_State *L) {
     return 1;
 }
 
-const luaL_Reg frontend_api_media[] = {
-    {"native_media_bootstrap", lua_native_media_bootstrap},
-    {"native_media_source",    lua_native_media_source},
-    {"native_media_position",  lua_native_media_position},
-    {"native_media_play",      lua_native_media_play},
-    {"native_media_pause",     lua_native_media_pause},
-    {"native_media_stop",      lua_native_media_stop},
-    {"native_media_get_status",  lua_native_media_get_status},
-    {"native_media_get_integer", lua_native_media_get_integer},
-    {"native_media_set_integer", lua_native_media_set_integer},
-    {NULL, NULL}
-};
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "lua_global_func:native_media_bootstrap", lua_native_media_bootstrap, NULL);
+    gecnd_registry("set", "lua_global_func:native_media_source", lua_native_media_source, NULL);
+    gecnd_registry("set", "lua_global_func:native_media_position", lua_native_media_position, NULL);
+    gecnd_registry("set", "lua_global_func:native_media_play", lua_native_media_play, NULL);
+    gecnd_registry("set", "lua_global_func:native_media_pause", lua_native_media_pause, NULL);
+    gecnd_registry("set", "lua_global_func:native_media_stop", lua_native_media_stop, NULL);
+    gecnd_registry("set", "lua_global_func:native_media_get_status", lua_native_media_get_status, NULL);
+    gecnd_registry("set", "lua_global_func:native_media_get_integer", lua_native_media_get_integer, NULL);
+    gecnd_registry("set", "lua_global_func:native_media_set_integer", lua_native_media_set_integer, NULL);
+}

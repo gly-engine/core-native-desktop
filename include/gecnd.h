@@ -22,6 +22,7 @@ typedef enum {
     GECND_FSM_ARGS_PARSED,
     GECND_FSM_DAEMONS_UP,
     GECND_FSM_FETCHING,
+    GECND_FSM_LUALIB_LOADED,
     GECND_FSM_ENGINE_LOADED,
     GECND_FSM_GAME_LOADED,
     GECND_FSM_RUNNING,
@@ -124,6 +125,13 @@ typedef struct {
     float    font_factor;
     char     game_base_url[512];
 } gecnd_display_t;
+
+typedef struct {
+    void (*func)(const char *key, void *value, void *ctx);
+    void *ctx;
+} gecnd_registry_handler_t;
+
+int gecnd_registry(const char* cmd, const char *key, void *const value);
 
 // plugins
 bool gecnd_plugin_load(gecnd_t *gly, const char *path);

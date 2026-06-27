@@ -71,10 +71,9 @@ static int lua_native_system_get_env(lua_State *L) {
     return 1;
 }
 
-
-const luaL_Reg frontend_api_system[] = {
-    {"native_system_get_language", lua_native_system_get_language},
-    {"native_system_get_env", lua_native_system_get_env},
-    {"native_system_exit", lua_native_system_exit},
-    {NULL, NULL}
-};
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "lua_global_func:native_system_get_language", lua_native_system_get_language, NULL);
+    gecnd_registry("set", "lua_global_func:native_system_get_env", lua_native_system_get_env, NULL);
+    gecnd_registry("set", "lua_global_func:native_system_exit", lua_native_system_exit, NULL);
+}

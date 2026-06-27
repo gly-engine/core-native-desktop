@@ -278,9 +278,16 @@ void gly_hook_luaopen_http(lua_State *L)
     lua_setglobal(L, "native_http_has_callback");
 }
 
-void gly_hook_luaclose_http(lua_State *L)
-{
-    (void)L;
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "lua_global_func:native_http_handler", lua_native_http_handler, NULL);
+    gecnd_registry("set", "lua_global_func:native_http_sock", lua_native_http_sock, NULL);
+    gecnd_registry("set", "lua_global_bool:native_http_has_ssl", 1LLU, NULL);
+    gecnd_registry("set", "lua_global_bool:native_http_has_callback", 1LLU, NULL);
+}
+
+__attribute__((destructor))
+static void cleanup() {
     if (g_started) {
         gamely_daemon_webclient_stop();
         g_started = 0;

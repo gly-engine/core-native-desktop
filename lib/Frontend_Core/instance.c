@@ -65,30 +65,6 @@ gecnd_t *gecnd_new(lua_State* L) {
         gly->target_fps = GECND_DEFAULT_FPS;
         gly->frameskip = GECND_DEFAULT_FRAMESKIP;
         gly->flags = GECND_FLAG_TIMER_PREFER_BACKEND;
-
-        for (int i = 0; frontend_api_log[i].name != NULL; i++) {
-            lua_register(L, frontend_api_log[i].name, frontend_api_log[i].func);
-        }
-        for (int i = 0; frontend_api_draw[i].name != NULL; i++) {
-            lua_register(L, frontend_api_draw[i].name, frontend_api_draw[i].func);
-        }
-        for (int i = 0; frontend_api_text[i].name != NULL; i++) {
-            lua_register(L, frontend_api_text[i].name, frontend_api_text[i].func);
-        }
-        for (int i = 0; frontend_api_media[i].name != NULL; i++) {
-            lua_register(L, frontend_api_media[i].name, frontend_api_media[i].func);
-        }
-        for (int i = 0; frontend_api_image[i].name != NULL; i++) {
-            lua_register(L, frontend_api_image[i].name, frontend_api_image[i].func);
-        }
-        for (int i = 0; frontend_api_system[i].name != NULL; i++) {
-            lua_register(L, frontend_api_system[i].name, frontend_api_system[i].func);
-        }
-
-        gly_hook_luaopen_http(L);
-        gly_hook_luaopen_cjson(L);
-        gly_hook_luaopen_base64(L);
-        gly_hook_luaopen_storage(L);
     }
     while(0);
 

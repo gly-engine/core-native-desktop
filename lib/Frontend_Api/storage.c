@@ -27,9 +27,15 @@ static int lua_native_storage_get(lua_State *L) {
     return 0;
 }
 
-void gly_hook_luaopen_storage(lua_State *L) {
-    lua_register(L, "native_storage_set", lua_native_storage_set);
-    lua_register(L, "native_storage_get", lua_native_storage_get);
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "lua_global_func:native_storage_set", lua_native_storage_set, NULL);
+    gecnd_registry("set", "lua_global_func:native_storage_get", lua_native_storage_get, NULL);
 }
 
-void gly_hook_luaclose_storage(lua_State *L) { (void)L; }
+__attribute__((destructor))
+static void cleanup() {
+    /**
+     * @todo safe shutdown database
+     */
+}

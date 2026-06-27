@@ -86,11 +86,19 @@ static int lua_native_text_font_previous(lua_State *L) {
     return 0;
 }
 
-const luaL_Reg frontend_api_text[] = {
-               {"native_text_print", lua_native_text_print},
-               {"native_text_mensure", lua_native_text_mensure},
-               {"native_text_font_size", lua_native_text_font_size},
-               {"native_text_font_name", lua_native_text_font_name},
-               {"native_text_font_default", lua_native_text_font_default},
-               {"native_text_font_previous", lua_native_text_font_previous},
-               {NULL, NULL}};
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "lua_global_func:native_text_print", lua_native_text_print, NULL);
+    gecnd_registry("set", "lua_global_func:native_text_mensure", lua_native_text_mensure, NULL);
+    gecnd_registry("set", "lua_global_func:native_text_font_size", lua_native_text_font_size, NULL);
+    gecnd_registry("set", "lua_global_func:native_text_font_name", lua_native_text_font_name, NULL);
+    gecnd_registry("set", "lua_global_func:native_text_font_default", lua_native_text_font_default, NULL);
+    gecnd_registry("set", "lua_global_func:native_text_font_previous", lua_native_text_font_previous, NULL);
+}
+
+__attribute__((destructor))
+static void cleanup() {
+    /**
+     * @todo unload all fonts
+     */
+}

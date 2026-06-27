@@ -54,11 +54,13 @@ static int lua_native_draw_line(lua_State *L) {
     return 0;
 }
 
-const luaL_Reg frontend_api_draw[] = {{"native_draw_start", lua_native_draw_start},
-               {"native_draw_flush", lua_native_draw_flush},
-               {"native_draw_clear", lua_native_draw_clear},
-               {"native_draw_color", lua_native_draw_color},
-               {"native_draw_rect2", lua_native_draw_rect},
-               {"native_draw_rect", lua_native_draw_rect},
-               {"native_draw_line", lua_native_draw_line},
-               {NULL, NULL}};
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "lua_global_func:native_draw_start", lua_native_draw_start, NULL);
+    gecnd_registry("set", "lua_global_func:native_draw_flush", lua_native_draw_flush, NULL);
+    gecnd_registry("set", "lua_global_func:native_draw_clear", lua_native_draw_clear, NULL);
+    gecnd_registry("set", "lua_global_func:native_draw_color", lua_native_draw_color, NULL);
+    gecnd_registry("set", "lua_global_func:native_draw_rect", lua_native_draw_rect, NULL);
+    gecnd_registry("set", "lua_global_func:native_draw_rect", lua_native_draw_rect, NULL);
+    gecnd_registry("set", "lua_global_func:native_draw_line", lua_native_draw_line, NULL);
+}

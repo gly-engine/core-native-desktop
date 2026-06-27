@@ -47,11 +47,12 @@ static int lua_native_log_fatal(lua_State *L) {
     return 0;
 }
 
-const luaL_Reg frontend_api_log[] = {
-               {"native_log_trace", lua_native_log_trace},
-               {"native_log_info", lua_native_log_info},
-               {"native_log_debug", lua_native_log_debug},
-               {"native_log_warn", lua_native_log_warn},
-               {"native_log_error", lua_native_log_error},
-               {"native_log_fatal", lua_native_log_fatal},
-               {NULL, NULL}};
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "lua_global_func:native_log_trace", lua_native_log_trace, NULL);
+    gecnd_registry("set", "lua_global_func:native_log_info", lua_native_log_info, NULL);
+    gecnd_registry("set", "lua_global_func:native_log_debug", lua_native_log_debug, NULL);
+    gecnd_registry("set", "lua_global_func:native_log_warn", lua_native_log_warn, NULL);
+    gecnd_registry("set", "lua_global_func:native_log_error", lua_native_log_error, NULL);
+    gecnd_registry("set", "lua_global_func:native_log_fatal", lua_native_log_fatal, NULL);
+}

@@ -23,8 +23,6 @@ typedef struct {
 
 extern int gecnd_signal;
 
-/* ── Lua file reader ─────────────────────────────────────────────── */
-
 static const char *reader(lua_State *L, void *ud, size_t *size) {
     (void)L;
     gecnd_buffer_t *data = (gecnd_buffer_t *)ud;
@@ -407,6 +405,7 @@ bool gecnd_update(gecnd_t *gly) {
     case GECND_FSM_ARGS_PARSED:    return state_boot(gly);
     case GECND_FSM_DAEMONS_UP:     return state_daemons_up(gly);
     case GECND_FSM_FETCHING:       return state_fetching(gly);
+    case GECND_FSM_SOMETIHING:    return state_lualib_open(gly);
     case GECND_FSM_ENGINE_LOADED:  return state_engine_loaded(gly);
     case GECND_FSM_GAME_LOADED:    return state_game_loaded(gly);
     case GECND_FSM_RUNNING:

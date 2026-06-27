@@ -5,7 +5,7 @@
 
 extern int luaopen_cjson(lua_State *L);
 
-void gly_hook_luaopen_cjson(lua_State *L) {
+static int lua_native_json_open(lua_State *L) {
     luaopen_cjson(L);
     int cjson_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
@@ -34,4 +34,10 @@ void gly_hook_luaopen_cjson(lua_State *L) {
     lua_gettable(L, -2);
     lua_setglobal(L, "native_json_decode");
     lua_pop(L, 1);
+    return 0;
+}
+
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "lua_global_init:native_json_open", lua_native_json_open, NULL);
 }

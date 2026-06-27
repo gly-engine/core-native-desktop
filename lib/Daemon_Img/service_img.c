@@ -297,6 +297,7 @@ int32_t gamely_daemon_img_get_id(const char *url) {
 }
 
 gamely_img_state_t gamely_daemon_img_get_state(int32_t id) {
+    if (id < 0) return GLY_IMG_ERROR;
     img_entry_t *e = find_by_id(id);
     return e ? e->state : GLY_IMG_ERROR;
 }
