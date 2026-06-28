@@ -2,7 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <lua.h>
+#ifdef LUAU_FASTMATH_BEGIN
+#include <lualib.h>
+#else
 #include <lauxlib.h>
+#endif
 
 #include "gecnd.h"
 #include "gedll.h"
@@ -79,10 +83,10 @@ bool gecnd_plugin_load(gecnd_t *gly, const char *path) {
 const char *gecnd_plugins_open_lua(lua_State *L) {
     for (gecnd_plugin_t *p = plugin_head; p; p = p->next) {
         if (!p->luaopen) continue;
-        lua_pushcfunction(L, p->luaopen);
-        if (lua_pcall(L, 0, LUA_MULTRET, 0)) {
-            return luaL_checkstring(L, -1);
-        }
+        //lua_pushcfunction(L, p->luaopen);
+        //if (lua_pcall(L, 0, LUA_MULTRET, 0)) {
+        //    return luaL_checkstring(L, -1);
+        //}
     }
     return NULL;
 }

@@ -1,9 +1,11 @@
 option(GECND_USE_LUA51 "prefer lua 5.1 instead lua 5.4" OFF)
 option(GECND_USE_LUAJIT "prefer lua jit instead lua 5.4" OFF)
+option(GECND_USE_LUAROBLOX "prefer luau instead lua 5.4" OFF)
 option(GECND_USE_LUA32BITS "lua puc uses float instead double" OFF)
 option(GECND_USE_LUA_CJSON "add cjson library to lua" ON)
 option(GECND_USE_LUA_BASE64 "add base64 library to lua" ON)
 
+set(LUA_COUNT 0)
 add_library(gecnd_lua INTERFACE)
 target_link_libraries(${PROJECT_NAME} PRIVATE gecnd_lua)
 
@@ -21,6 +23,10 @@ set(LUAJIT_DIR "${CMAKE_SOURCE_DIR}/vendor/lua/luajit")
 set(LUAJIT_LIB1 "${CMAKE_SOURCE_DIR}/vendor/lua/luajit/src/libluajit.a")
 set(LUAJIT_LIB2 "${CMAKE_BINARY_DIR}/libluajit.a")
 set(LUAJIT_DOWNLOAD "https://github.com/luajit/luajit/archive/refs/tags/${LUAJIT_VERSION}.tar.gz")
+
+set(LUAROBLOX_VERSION "0.727")
+set(LUAROBLOX_DOWNLOAD "https://github.com/luau-lang/luau/archive/refs/tags/${LUAROBLOX_VERSION}.tar.gz")
+set(LUAROBLOX_DIR "${CMAKE_SOURCE_DIR}/vendor/lua/luau")
 
 set(LUACJSON_VERSION "2.1.0.9")
 set(LUACJSON_DIR "${CMAKE_SOURCE_DIR}/vendor/lua/cjson")
@@ -50,6 +56,7 @@ endif()
 find_program(LUA_BIN NAMES lua PATHS ${CMAKE_BINARY_DIR} NO_DEFAULT_PATH REQUIRED)
 
 if(GECND_USE_LUA51)
+    math(EXPR LUA_COUNT "${LUA_COUNT} + 1")
     FetchContent_Populate(lua51-static URL "${LUA51_DOWNLOAD}" SOURCE_DIR ${LUA51_DIR})
     file(GLOB lua_files "${LUA51_DIR}/*.c")
     list(REMOVE_ITEM lua_files "${LUA51_DIR}/lua.c")
@@ -60,6 +67,7 @@ if(GECND_USE_LUA51)
 endif()
 
 if(GECND_USE_LUAJIT)
+    math(EXPR LUA_COUNT "${LUA_COUNT} + 1")
     FetchContent_Populate(dep_luajit URL "${LUAJIT_DOWNLOAD}" SOURCE_DIR ${LUAJIT_DIR})
     if(TARGET)
         add_library(gcc_float STATIC ${CMAKE_CURRENT_LIST_DIR}/../lib/ThirdParty_Compat/gcc_float.c)
@@ -104,7 +112,51 @@ if(GECND_USE_LUAJIT)
     target_include_directories(gecnd_lua INTERFACE "${LUAJIT_DIR}/src")
 endif()
 
-if(NOT GECND_USE_LUA51 AND NOT GECND_USE_LUAJIT)
+if(GECND_USE_LUAROBLOX)
+    enable_language(CXX)
+    math(EXPR LUA_COUNT "${LUA_COUNT} + 1")
+    ExternalProject_Add(luaroblox_proj
+        URL "${LUAROBLOX_DOWNLOAD}"
+        SOURCE_DIR ${LUAROBLOX_DIR}
+        BUILD_BYPRODUCTS
+            ${LUAROBLOX_DIR}/lib/libLuau.VM.a
+            ${LUAROBLOX_DIR}/lib/libLuau.Compiler.a
+            ${LUAROBLOX_DIR}/lib/libLuau.Bytecode.a
+            ${LUAROBLOX_DIR}/lib/libLuau.Ast.a
+            ${LUAROBLOX_DIR}/lib/libLuau.Common.a
+        CMAKE_ARGS
+            -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+            -DBUILD_SHARED_LIBS=OFF
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+            -DBUILD_SHARED_LIBS=OFF
+            -DLUAU_BUILD_SHARED=OFF
+            -DLUAU_BUILD_CLI=OFF
+            -DLUAU_BUILD_TESTS=OFF
+            -DLUAU_BUILD_WEB=OFF
+            -DLUAU_WERROR=OFF
+            -DLUAU_EXTERN_C=ON
+        INSTALL_COMMAND ""
+    )
+    ExternalProject_Get_Property(luaroblox_proj BINARY_DIR)
+    set(LUAROBLOX_BIN ${BINARY_DIR})
+    add_library(luaroblox INTERFACE)
+    target_link_libraries(luaroblox INTERFACE
+        ${LUAROBLOX_BIN}/libLuau.VM.a
+        ${LUAROBLOX_BIN}/libLuau.Compiler.a
+        ${LUAROBLOX_BIN}/libLuau.Bytecode.a
+        ${LUAROBLOX_BIN}/libLuau.Ast.a
+        ${LUAROBLOX_BIN}/libLuau.Common.a
+    )
+    add_dependencies(luaroblox luaroblox_proj)
+    add_dependencies(${PROJECT_NAME} luaroblox)
+    target_link_libraries(${PROJECT_NAME} PRIVATE luaroblox)
+    target_include_directories(gecnd_lua INTERFACE "${LUAROBLOX_DIR}/VM/include;${LUAROBLOX_DIR}/Compiler/include")
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../lib/ThirdParty_Compat/luau.cpp")
+endif()
+
+if(LUA_COUNT GREATER 1)
+    message(FATAL_ERROR "multiple lua's defined")
+elseif(LUA_COUNT EQUAL 0)
     FetchContent_Populate(lua54-static URL "${LUA54_DOWNLOAD}" SOURCE_DIR ${LUA54_DIR})
     file(GLOB lua_files "${LUA54_DIR}/*.c")
     list(REMOVE_ITEM lua_files "${LUA54_DIR}/lua.c")

@@ -2,7 +2,11 @@
 #include <string.h>
 
 #include <lua.h>
+#ifdef LUAU_FASTMATH_BEGIN
+#include <lualib.h>
+#else
 #include <lauxlib.h>
+#endif
 
 #include <libbase64.h>
 #include "gehook.h"

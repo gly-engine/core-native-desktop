@@ -1,7 +1,6 @@
 #include <signal.h>
 
 #include "gecnd.h"
-#include "lauxlib.h"
 #include "lua.h"
 #include "lualib.h"
 

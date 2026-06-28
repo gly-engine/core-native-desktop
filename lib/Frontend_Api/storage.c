@@ -1,5 +1,9 @@
 #include <lua.h>
+#ifdef LUAU_FASTMATH_BEGIN
+#include <lualib.h>
+#else
 #include <lauxlib.h>
+#endif
 #include "gecnd.h"
 
 static int lua_native_storage_set(lua_State *L) {

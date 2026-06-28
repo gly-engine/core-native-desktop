@@ -4,7 +4,10 @@
 #include <string.h>
 #include <lua.h>
 
-#if defined(LUA_LJDIR)
+#if defined(LUAU_FASTMATH_BEGIN)
+#define L_FLAVOR "LuaU"
+#define LUA_RELEASE "Roblox"
+#elif defined(LUA_LJDIR)
 #define L_FLAVOR "JIT"
 #else
 #define L_FLAVOR "PUC"

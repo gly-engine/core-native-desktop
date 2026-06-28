@@ -1,7 +1,13 @@
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <lauxlib.h>
+
 #include <lua.h>
+#ifdef LUAU_FASTMATH_BEGIN
+#include <lualib.h>
+#else
+#include <lauxlib.h>
+#endif
 
 #define GLY_HOOK_IMPL
 #include "gehook.h"

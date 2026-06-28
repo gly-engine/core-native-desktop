@@ -2,8 +2,12 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include <lauxlib.h>
 #include <lua.h>
+#ifdef LUAU_FASTMATH_BEGIN
+#include <lualib.h>
+#else
+#include <lauxlib.h>
+#endif
 
 #include "gecnd.h"
 #include "gehook.h"

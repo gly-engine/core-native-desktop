@@ -2,8 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include <lauxlib.h>
+
 #include <lua.h>
+#ifdef LUAU_FASTMATH_BEGIN
+#include <lualib.h>
+#else
+#include <lauxlib.h>
+#endif
 
 #include "gecnd.h"
 
@@ -202,7 +207,6 @@ static int lua_native_http_handler(lua_State *L)
     ctx->is_ws     = is_ws;
     ctx->lua_close = 0;
     pending_add(ctx);
-    fprintf(stderr, "new request %li\n", req_id);
 
     gly_req_id_t wc_id;
     if (is_ws) {
@@ -261,21 +265,6 @@ static int lua_native_http_sock(lua_State *L)
         return 1;
     }
     return 0;
-}
-
-void gly_hook_luaopen_http(lua_State *L)
-{
-    lua_pushcfunction(L, lua_native_http_handler);
-    lua_setglobal(L, "native_http_handler");
-
-    lua_pushcfunction(L, lua_native_http_sock);
-    lua_setglobal(L, "native_http_sock");
-
-    lua_pushboolean(L, true);
-    lua_setglobal(L, "native_http_has_ssl");
-
-    lua_pushboolean(L, true);
-    lua_setglobal(L, "native_http_has_callback");
 }
 
 __attribute__((constructor))

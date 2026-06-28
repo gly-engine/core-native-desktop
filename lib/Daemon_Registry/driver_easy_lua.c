@@ -1,5 +1,9 @@
 #include <lua.h>
+#ifdef LUAU_FASTMATH_BEGIN
+#include <lualib.h>
+#else
 #include <lauxlib.h>
+#endif
 
 #include "gecnd.h"
 
@@ -10,7 +14,11 @@ static void lua_global_func(const char *key, void *value, void *usr) {
 
 static void lua_global_init(const char *key, void *value, void *usr) {
     gecnd_t *const gly = (gecnd_t *)usr;
+#ifdef LUAU_FASTMATH_BEGIN
+    lua_pushcfunction(gly->L, (lua_CFunction)value, key);
+#else
     lua_pushcfunction(gly->L, (lua_CFunction)value);
+#endif
     if (lua_pcall(gly->L, 0, 0, 0)) {
         gecnd_add_error(gly, "[%s] %s", key, lua_tostring(gly->L, -1));
         lua_pop(gly->L, 1);
