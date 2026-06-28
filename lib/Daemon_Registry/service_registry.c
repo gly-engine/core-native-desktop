@@ -41,6 +41,31 @@ int gecnd_registry(const char *cmd, const char *key, void *const value, void *co
     }
 
     if (strcmp(cmd, "get") == 0) {
+        const char *paren = strchr(key, '(');
+        if (paren) {
+            size_t                 plen    = (size_t)(paren - key);
+            const char            *text    = paren + 1;
+            gecnd_registry_handler handler = (gecnd_registry_handler)value;
+            const char            *best_key = NULL;
+            void                  *best_val = NULL;
+            int                    best_score = -1;
+            for (size_t i = lower_bound(key, plen); i < count; i++) {
+                if (strncmp(entries[i].key, key, plen) != 0) break;
+                gecnd_lang_rdsl_t ctx = {0};
+                int score = 0;
+                while (gecnd_lang_rdsl_iterator(&ctx, entries[i].key + plen, text)) {
+                    score += ctx.score;
+                }
+                if (ctx.error) continue;
+                if (score > best_score) {
+                    best_score = score;
+                    best_key   = entries[i].key;
+                    best_val   = entries[i].value;
+                }
+            }
+            if (handler) handler(best_key, best_val, usr);
+            return best_score >= 0 ? 1 : 0;
+        }
         const char *star = strchr(key, '*');
         if (!star) {
             size_t pos = lower_bound(key, strlen(key) + 1);

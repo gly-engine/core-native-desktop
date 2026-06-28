@@ -142,15 +142,72 @@ typedef struct {
     char     game_base_url[512];
 } gecnd_display_t;
 
+/**
+ * @brief Tagged scalar/string value shared by the rdsl iterator and the ffi
+ *        marshaller.
+ *
+ * The anonymous struct exposes `.ptr`/`.len` for string-like values; the scalar
+ * members alias the same storage for numeric values.
+ */
+typedef union {
+    uint8_t  u8;
+    int8_t   i8;
+    uint16_t u16;
+    int16_t  i16;
+    uint32_t u32;
+    int32_t  i32;
+    uint64_t u64;
+    int64_t  i64;
+    float    f32;
+    double   f64;
+    struct {
+        void  *ptr;
+        size_t len;
+    };
+} gly_any_t;
+
+/**
+ * @brief Iterator state for one walk over an rdsl pattern.
+ *
+ * @var ptr,len    current pattern token slice.
+ * @var tptr       text cursor (match mode only).
+ * @var val        concrete value captured from `text` for the current token.
+ * @var kind       token type; void/string depend on whether `text` was given.
+ * @var keyidx     index of the current keyword (literal) token.
+ * @var plusidx    index of the current '+' group.
+ * @var typeidx    index of the current '$' type within the group; -1 on keywords.
+ * @var score      match weight of the current token.
+ * @var error      syntax error, or (match mode) the pattern did not match `text`.
+ */
 typedef struct {
-    const char *ptr;
-    bool error;
-    int8_t len;
-    int8_t keyidx;
-    int8_t plusidx;
-    int8_t typeidx;
+    const char  *ptr;
+    const char  *tptr;
+    gly_any_t    val;
     gecnd_type_t kind;
+    int8_t       len;
+    int8_t       keyidx;
+    int8_t       plusidx;
+    int8_t       typeidx;
+    uint8_t      score;
+    bool         error;
 } gecnd_lang_rdsl_t;
+
+/**
+ * @brief Walks one token of an rdsl pattern per call.
+ *
+ * @param[in,out] ctx     zero-initialised on the first call; carries cursors.
+ * @param[in]     pattern the rdsl pattern (e.g. "media_player:libretro+$l$0").
+ * @param[in]     text    concrete string to match against, or NULL to only
+ *                        parse the pattern.
+ * @return true while a token was produced, false at the end of the pattern.
+ *
+ * @pre on the first call `*ctx` must be all-zero.
+ * @note when `text` is NULL behaviour is pure parsing and `val`/`tptr` are
+ *       untouched; when `text` is given each token is matched and `val` is
+ *       filled, `error` is raised on mismatch or on leftover text.
+ */
+bool gecnd_lang_rdsl_iterator(gecnd_lang_rdsl_t *const ctx,
+                              const char *pattern, const char *text);
 
 typedef void (*gecnd_registry_handler)(const char *key, void *value, void *usr);
 

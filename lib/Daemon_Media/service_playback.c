@@ -8,111 +8,33 @@
 
 #include "gefilter.h"
 
-#define PLAYER_CAP  32
 #define CHANNEL_CAP 4
-#define TOKEN_CAP   8
-#define TOKEN_LEN   32
 
-/* ── player registry ──────────────────────────────────────────────── */
+/* ── player selection (registry-backed) ───────────────────────────── */
 
 typedef struct {
-    char                  named[TOKEN_CAP][TOKEN_LEN];
-    int                   named_n;
-    int                   wild_n;
-    gamely_media_player_t cbs;
-    void                 *usr;
-} player_reg_t;
+    const gamely_media_player_t *player;
+} select_ctx_t;
 
-static player_reg_t s_players[PLAYER_CAP];
-static int          s_player_n = 0;
-
-static void parse_schema(const char *schema,
-                          char named[][TOKEN_LEN], int *named_n, int *wild_n) {
-    *named_n = 0;
-    *wild_n  = 0;
-    char buf[256];
-    strncpy(buf, schema, sizeof(buf) - 1);
-    buf[sizeof(buf) - 1] = '\0';
-    char *tok = strtok(buf, "+");
-    while (tok) {
-        if (strcmp(tok, "?") == 0) {
-            (*wild_n)++;
-        } else if (*named_n < TOKEN_CAP) {
-            strncpy(named[*named_n], tok, TOKEN_LEN - 1);
-            named[(*named_n)++][TOKEN_LEN - 1] = '\0';
-        }
-        tok = strtok(NULL, "+");
-    }
+static void select_handler(const char *key, void *value, void *usr) {
+    (void)key;
+    ((select_ctx_t *)usr)->player = (const gamely_media_player_t *)value;
 }
 
-static int parse_url_schema(const char *url,
-                              char tokens[][TOKEN_LEN], int cap) {
-    (void)cap;
-    const char *sep = strstr(url, "://");
-    int n = 0;
-    if (!sep) return 0;
-    char buf[256];
-    size_t slen = (size_t)(sep - url);
-    if (slen >= sizeof(buf)) slen = sizeof(buf) - 1;
-    memcpy(buf, url, slen);
-    buf[slen] = '\0';
-    char *tok = strtok(buf, "+");
-    while (tok && n < cap) {
-        strncpy(tokens[n], tok, TOKEN_LEN - 1);
-        tokens[n++][TOKEN_LEN - 1] = '\0';
-        tok = strtok(NULL, "+");
-    }
-    return n;
-}
-
-static bool has_token(const char tokens[][TOKEN_LEN], int n, const char *t) {
-    for (int i = 0; i < n; i++)
-        if (strcmp(tokens[i], t) == 0) return true;
-    return false;
-}
-
-static int count_extras(const char url_tok[][TOKEN_LEN], int url_n,
-                         const char named[][TOKEN_LEN],   int named_n) {
-    int extras = 0;
-    for (int i = 0; i < url_n; i++)
-        if (!has_token(named, named_n, url_tok[i])) extras++;
-    return extras;
-}
-
-static player_reg_t *select_player(const char *url) {
-    char url_tok[TOKEN_CAP][TOKEN_LEN];
-    int  url_n = parse_url_schema(url, url_tok, TOKEN_CAP);
-
-    player_reg_t *best       = NULL;
-    int           best_score = -1;
-
-    for (int i = 0; i < s_player_n; i++) {
-        player_reg_t *p = &s_players[i];
-
-        bool all_present = true;
-        for (int j = 0; j < p->named_n; j++) {
-            if (!has_token(url_tok, url_n, p->named[j])) {
-                all_present = false;
-                break;
-            }
-        }
-        if (!all_present) continue;
-
-        if (count_extras(url_tok, url_n, p->named, p->named_n) != p->wild_n)
-            continue;
-
-        if (p->named_n >= best_score) {
-            best       = p;
-            best_score = p->named_n;
-        }
-    }
-    return best;
+static const gamely_media_player_t *select_player(const char *url) {
+    select_ctx_t ctx = { NULL };
+    char        *key = malloc(strlen(url) + sizeof("media_player:()"));
+    if (!key) return NULL;
+    sprintf(key, "media_player:(%s)", url);
+    gecnd_registry("get", key, (void *)select_handler, &ctx);
+    free(key);
+    return ctx.player;
 }
 
 /* ── channel state ────────────────────────────────────────────────── */
 
 typedef struct {
-    player_reg_t *player;
+    const gamely_media_player_t *player;
     char         *url;
     char         *pending_src;  /* próxima URL a abrir (NULL = nenhuma) */
     gdmsp_cmd_t   pending_cmd;  /* último comando solicitado (NONE = nada a despachar) */
@@ -131,7 +53,7 @@ static gdmsp_fsm_t ch_st(channel_t *ch) {
 
 static gdmsp_fsm_t channel_cmd(channel_t *ch, uint8_t idx, gdmsp_cmd_t cmd) {
     gdmsp_value_t value = {0};
-    gdmsp_fsm_t r = ch->player->cbs.set(idx, cmd, value, ch->player->usr);
+    gdmsp_fsm_t r = ch->player->set(idx, cmd, value, NULL);
     atomic_store(&ch->st, (int)r);
     return r;
 }
@@ -139,7 +61,7 @@ static gdmsp_fsm_t channel_cmd(channel_t *ch, uint8_t idx, gdmsp_cmd_t cmd) {
 static void source_runner(void *arg) {
     uint8_t    idx = *(uint8_t *)arg;
     channel_t *ch  = &s_channels[idx];
-    gdmsp_fsm_t r  = ch->player->cbs.src(idx, ch->url, ch->player->usr);
+    gdmsp_fsm_t r  = ch->player->src(idx, ch->url, NULL);
     atomic_store(&ch->st, (int)r);
     /* OPENING → r: tick detecta a transição e faz o join */
 }
@@ -153,16 +75,6 @@ static bool gate_running(gecnd_fsm_t s) {
 }
 
 /* ── public API ───────────────────────────────────────────────────── */
-
-void gamely_daemon_media_register_player(const char                  *schema,
-                                          const gamely_media_player_t *cbs,
-                                          void                        *usr) {
-    if (s_player_n >= PLAYER_CAP) return;
-    player_reg_t *p = &s_players[s_player_n++];
-    parse_schema(schema, p->named, &p->named_n, &p->wild_n);
-    p->cbs = *cbs;
-    p->usr = usr;
-}
 
 void gamely_daemon_media_playback_source(uint8_t channel, const char *url) {
     if (channel >= CHANNEL_CAP) return;
@@ -195,17 +107,17 @@ gdmsp_fsm_t gamely_daemon_media_playback_get_status(uint8_t channel) {
 int64_t gamely_daemon_media_playback_get_integer(uint8_t channel, gdmsp_cmd_t cmd) {
     if (channel >= CHANNEL_CAP) return -1;
     channel_t *ch = &s_channels[channel];
-    if (!ch->player || !ch->player->cbs.get) return -1;
-    return ch->player->cbs.get(channel, cmd, ch->player->usr).i64;
+    if (!ch->player || !ch->player->get) return -1;
+    return ch->player->get(channel, cmd, NULL).i64;
 }
 
 gdmsp_fsm_t gamely_daemon_media_playback_set_integer(uint8_t channel, gdmsp_cmd_t cmd,
                                                      int64_t value_integer) {
     if (channel >= CHANNEL_CAP) return GDMSP_FSM_IDLE;
     channel_t *ch = &s_channels[channel];
-    if (!ch->player || !ch->player->cbs.set) return GDMSP_FSM_IDLE;
+    if (!ch->player || !ch->player->set) return GDMSP_FSM_IDLE;
     gdmsp_value_t value = { value_integer };
-    gdmsp_fsm_t r = ch->player->cbs.set(channel, cmd, value, ch->player->usr);
+    gdmsp_fsm_t r = ch->player->set(channel, cmd, value, NULL);
     atomic_store(&ch->st, (int)r);
     return r;
 }
@@ -215,9 +127,9 @@ void gamely_daemon_media_playback_position(uint8_t channel,
                                             int16_t w, int16_t h) {
     if (channel >= CHANNEL_CAP) return;
     channel_t *ch = &s_channels[channel];
-    if (!ch->player || !ch->player->cbs.set) return;
+    if (!ch->player || !ch->player->set) return;
     gdmsp_value_t value = { .x = x, .y = y, .w = w, .h = h };
-    ch->player->cbs.set(channel, GDMSP_CMD_POSITION, value, ch->player->usr);
+    ch->player->set(channel, GDMSP_CMD_POSITION, value, NULL);
 }
 
 void gamely_daemon_media_playback_tick(void) {
@@ -282,7 +194,7 @@ void gamely_daemon_media_playback_tick(void) {
                         i, (int)st);
                 free(ch->pending_src); ch->pending_src = NULL;
             } else {
-                player_reg_t *new_p = select_player(ch->pending_src);
+                const gamely_media_player_t *new_p = select_player(ch->pending_src);
                 if (!new_p) {
                     fprintf(stderr, "[media-pb] ch=%d no player for '%s'\n",
                             i, ch->pending_src);

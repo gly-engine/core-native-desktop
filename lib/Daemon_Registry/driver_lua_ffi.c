@@ -14,20 +14,6 @@
 #define LUA_FFI_NAME_MAX  64
 #define LUA_FFI_GROUP_ARGS 0
 
-typedef union {
-    uint8_t  u8;
-    int8_t   i8;
-    uint16_t u16;
-    int16_t  i16;
-    uint32_t u32;
-    int32_t  i32;
-    uint64_t u64;
-    int64_t  i64;
-    float    f32;
-    double   f64;
-    void    *ptr;
-} lua_ffi_slot_t;
-
 typedef struct {
     void        *func;
     ffi_cif      cif;
@@ -60,10 +46,10 @@ static ffi_type *lua_ffi_type(gecnd_type_t kind) {
 static int lua_ffi_dispatch(lua_State *L) {
     lua_ffi_closure_t *c = (lua_ffi_closure_t *)lua_touserdata(L, lua_upvalueindex(1));
 
-    lua_ffi_slot_t slots[LUA_FFI_MAX_ARGS] = {0};
-    lua_ffi_slot_t store[LUA_FFI_MAX_ARGS] = {0};
-    void          *avalue[LUA_FFI_MAX_ARGS];
-    int            argn = 1;
+    gly_any_t slots[LUA_FFI_MAX_ARGS] = {0};
+    gly_any_t store[LUA_FFI_MAX_ARGS] = {0};
+    void     *avalue[LUA_FFI_MAX_ARGS];
+    int       argn = 1;
 
     for (unsigned i = 0; i < c->nargs; i++) {
         if (c->is_ret[i]) {
@@ -133,12 +119,16 @@ static void lua_global_ffi(const char *name, void *func, gecnd_t *const gly) {
     ffi_type    *arg_types[LUA_FFI_MAX_ARGS];
     unsigned     nargs = 0;
 
-    while (gecnd_lang_rdsl_iterator(&ctx, name)) {
+    while (gecnd_lang_rdsl_iterator(&ctx, name, NULL)) {
         if (ctx.typeidx == -1) {
             if (ctx.keyidx == 1) {
                 fn_name = ctx.ptr;
                 fn_len  = ctx.len;
             }
+            continue;
+        }
+
+        if (ctx.kind == GECND_TYPE_VOID) {
             continue;
         }
 
@@ -206,5 +196,6 @@ const char *testing(uint8_t foo, uint8_t *const bar) {
 
 __attribute__((constructor))
 static void init() {
+    gecnd_registry("set", "lua_global_ffi:testing+$u8+$u8", testing, NULL);
     gecnd_registry("set", "function:lua_global_ffi", lua_global_ffi, NULL);
 }
