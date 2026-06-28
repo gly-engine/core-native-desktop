@@ -13,31 +13,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-typedef enum __attribute__((packed)) {
-    GECND_TYPE_VOID,
-    GECND_TYPE_STRING,
-    GECND_TYPE_BOOLEAN,
-    GECND_TYPE_U8,
-    GECND_TYPE_U16,
-    GECND_TYPE_U32,
-    GECND_TYPE_U64,
-    GECND_TYPE_I8,
-    GECND_TYPE_I16,
-    GECND_TYPE_I32,
-    GECND_TYPE_I64,
-    GECND_TYPE_F32,
-    GECND_TYPE_F64,
-} gecnd_type_t;
-
-typedef struct {
-    const char *ptr;
-    bool error;
-    int8_t len;
-    int8_t keyidx;
-    int8_t plusidx;
-    int8_t typeidx;
-    gecnd_type_t kind;
-} gecnd_lang_rdsl_t;
+#include "gecnd.h"
 
 /**
  * @param[in,out] ctx

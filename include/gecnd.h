@@ -17,7 +17,23 @@
 #define GECND_INTERNAL_HW_GL_READY      (16u)
 #endif
 
-typedef enum {
+typedef enum __attribute__((packed)) {
+    GECND_TYPE_VOID,
+    GECND_TYPE_STRING,
+    GECND_TYPE_BOOLEAN,
+    GECND_TYPE_U8,
+    GECND_TYPE_U16,
+    GECND_TYPE_U32,
+    GECND_TYPE_U64,
+    GECND_TYPE_I8,
+    GECND_TYPE_I16,
+    GECND_TYPE_I32,
+    GECND_TYPE_I64,
+    GECND_TYPE_F32,
+    GECND_TYPE_F64,
+} gecnd_type_t;
+
+typedef enum __attribute__((packed)) {
     GECND_FSM_BOOT = 0,
     GECND_FSM_ARGS_PARSED,
     GECND_FSM_DAEMONS_UP,
@@ -125,6 +141,18 @@ typedef struct {
     float    font_factor;
     char     game_base_url[512];
 } gecnd_display_t;
+
+typedef struct {
+    const char *ptr;
+    bool error;
+    int8_t len;
+    int8_t keyidx;
+    int8_t plusidx;
+    int8_t typeidx;
+    gecnd_type_t kind;
+} gecnd_lang_rdsl_t;
+
+typedef void (*gecnd_registry_handler)(const char *key, void *value, void *usr);
 
 int gecnd_registry(const char* cmd, const char *key, void *const value, void *const usr);
 

@@ -3,8 +3,6 @@
 
 #include "gecnd.h"
 
-typedef void (*gecnd_registry_handler)(const char *key, void *value, void *usr);
-
 typedef struct {
     const char *key;
     void       *value;
@@ -47,7 +45,7 @@ int gecnd_registry(const char *cmd, const char *key, void *const value, void *co
         if (!star) {
             size_t pos = lower_bound(key, strlen(key) + 1);
             if (pos >= count || strcmp(entries[pos].key, key) != 0) return 0;
-            if (usr) *(void **)usr = entries[pos].value;
+            if (value) *(void **)value = entries[pos].value;
             return 1;
         }
         size_t len = (size_t)(star - key);
