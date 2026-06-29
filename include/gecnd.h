@@ -397,9 +397,6 @@ typedef void (*gamely_img_schema_cb)(
 void gamely_daemon_img_start(void *loop);
 void gamely_daemon_img_stop (void);
 
-void gamely_daemon_img_register_backend(const char *fmt,
-                                         const gamely_img_backend_t *cbs);
-
 /* Returns the ID for url. Starts async load on first call.
  * Every URL keeps its ID until an unload is called. */
 int32_t            gamely_daemon_img_get_id     (const char *url);

@@ -5,7 +5,6 @@
 #include "gecnd.h"
 
 #define IMG_CAP     256
-#define BACKEND_CAP 16
 
 /* ── image entry ──────────────────────────────────────────────────── */
 
@@ -26,9 +25,6 @@ static int32_t     s_next_id = 1;
 
 /* ── registries ───────────────────────────────────────────────────── */
 
-typedef struct { char fmt[16]; gamely_img_backend_t cbs; } backend_t;
-
-static backend_t s_backends[BACKEND_CAP]; static int s_backend_n = 0;
 static uv_loop_t *s_loop = NULL;
 
 /* ── entry helpers ────────────────────────────────────────────────── */
@@ -72,11 +68,35 @@ static gamely_img_decoder_cb find_decoder(const char *from, const char *to, bool
     return NULL;
 }
 
-static backend_t *find_backend(const char *fmt) {
-    for (int i = s_backend_n - 1; i >= 0; i--)
-        if (strcmp(s_backends[i].fmt, fmt) == 0)
-            return &s_backends[i];
-    return NULL;
+static const gamely_img_backend_t *find_backend(const char *fmt) {
+    char  key[64];
+    void *cbs = NULL;
+    snprintf(key, sizeof(key), "image_backend:%s", fmt);
+    gecnd_registry("get", key, (void *)&cbs, NULL);
+    return (const gamely_img_backend_t *)cbs;
+}
+
+typedef struct {
+    const char                 *from;
+    gamely_img_decoder_cb       cb;
+    bool                        threaded;
+    char                        to[16];
+    const gamely_img_backend_t *backend;
+} backend_pick_t;
+
+static void backend_pick(const char *key, void *value, void *usr) {
+    backend_pick_t *p = (backend_pick_t *)usr;
+    if (p->cb) return;
+    const char *fmt = key + (sizeof("image_backend:") - 1);
+    bool threaded = false;
+    gamely_img_decoder_cb cb = find_decoder(p->from, fmt, &threaded);
+    if (cb) {
+        p->cb       = cb;
+        p->threaded = threaded;
+        p->backend  = (const gamely_img_backend_t *)value;
+        strncpy(p->to, fmt, sizeof(p->to) - 1);
+        p->to[sizeof(p->to) - 1] = '\0';
+    }
 }
 
 /* ── state transitions ────────────────────────────────────────────── */
@@ -126,14 +146,14 @@ static void decode_after_cb(uv_work_t *req, int status) {
         if (e) set_error(e, "decode failed");
         return;
     }
-    backend_t *b = find_backend(e->fmt);
+    const gamely_img_backend_t *b = find_backend(e->fmt);
     if (b) {
         e->w = w->result.w;
         e->h = w->result.h;
         if (move) e->src_owned = w->src;
-        b->cbs.upload(e->id, &e->backend_data,
-                      w->result.pixels, w->result.len, e->w, e->h,
-                      w->result.color_format, move ? release_noop : release_free);
+        b->upload(e->id, &e->backend_data,
+                  w->result.pixels, w->result.len, e->w, e->h,
+                  w->result.color_format, move ? release_noop : release_free);
         set_ready(e);
     } else {
         if (move) free(w->src); else free(w->result.pixels);
@@ -157,48 +177,37 @@ static void on_fetch(const uint8_t *data, size_t len,
         return;
     }
 
-    if (s_backend_n == 0) {
-        free((void *)data);
-        set_error(e, "no backend registered");
-        return;
-    }
-
     const char *from = hint ? hint : "";
 
-    gamely_img_decoder_cb cb      = NULL;
-    backend_t            *backend = NULL;
-    bool                  threaded = false;
-    for (int i = s_backend_n - 1; i >= 0; i--) {
-        cb = find_decoder(from, s_backends[i].fmt, &threaded);
-        if (cb) { backend = &s_backends[i]; break; }
-    }
-    if (!backend || !cb) {
+    backend_pick_t pick = {0};
+    pick.from = from;
+    gecnd_registry("get", "image_backend:*", backend_pick, &pick);
+    if (!pick.cb) {
         printf("[img] no decoder '%s'→backend for '%s'\n", from, e->url);
         free((void *)data);
         set_error(e, "no decoder for format");
         return;
     }
 
-    const char *to = backend->fmt;
-    strncpy(e->fmt, to, sizeof(e->fmt) - 1);
+    strncpy(e->fmt, pick.to, sizeof(e->fmt) - 1);
     e->state = GLY_IMG_DECODING;
 
-    if (threaded && s_loop) {
+    if (pick.threaded && s_loop) {
         decode_work_t *w = calloc(1, sizeof(*w));
         if (!w) { free((void *)data); set_error(e, "oom"); return; }
         w->entry_id = e->id;
-        w->cb       = cb;
-        w->src     = (uint8_t *)data;
-        w->src_len = len;
+        w->cb       = pick.cb;
+        w->src      = (uint8_t *)data;
+        w->src_len  = len;
         uv_queue_work(s_loop, &w->work, decode_work_cb, decode_after_cb);
         return;
     }
 
-    gamely_img_decoded_t result = cb(data, len);
+    gamely_img_decoded_t result = pick.cb(data, len);
     if (!result.pixels) {
         free((void *)data);
         fprintf(stderr, "[img] decode failed id=%d '%s' (->%s, %zu bytes)\n",
-                e->id, e->url, to, len);
+                e->id, e->url, pick.to, len);
         set_error(e, "decode failed");
         return;
     }
@@ -207,9 +216,9 @@ static void on_fetch(const uint8_t *data, size_t len,
     else      free((void *)data);
     e->w = result.w;
     e->h = result.h;
-    backend->cbs.upload(e->id, &e->backend_data,
-                        result.pixels, result.len, e->w, e->h,
-                        result.color_format, move ? release_noop : release_free);
+    pick.backend->upload(e->id, &e->backend_data,
+                         result.pixels, result.len, e->w, e->h,
+                         result.color_format, move ? release_noop : release_free);
     set_ready(e);
 }
 
@@ -244,21 +253,12 @@ void gamely_daemon_img_start(void *loop) {
     s_loop = (uv_loop_t *)loop;
     memset(s_imgs, 0, sizeof(s_imgs));
     s_next_id  = 1;
-    s_backend_n = 0;
 }
 
 void gamely_daemon_img_stop(void) {
     for (int i = 0; i < IMG_CAP; i++)
         if (s_imgs[i].active) entry_free(&s_imgs[i]);
     s_loop = NULL;
-}
-
-void gamely_daemon_img_register_backend(const char *fmt,
-                                         const gamely_img_backend_t *cbs) {
-    if (s_backend_n >= BACKEND_CAP) return;
-    backend_t *b = &s_backends[s_backend_n++];
-    strncpy(b->fmt, fmt, sizeof(b->fmt) - 1);
-    b->cbs = *cbs;
 }
 
 int32_t gamely_daemon_img_get_id(const char *url) {
@@ -295,15 +295,15 @@ void gamely_daemon_img_get_mensure(int32_t id, int16_t *w, int16_t *h) {
 void gamely_daemon_img_draw(int32_t id, int16_t x, int16_t y) {
     img_entry_t *e = find_by_id(id);
     if (!e || e->state != GLY_IMG_READY) return;
-    backend_t *b = find_backend(e->fmt);
-    if (b) b->cbs.draw(id, e->backend_data, x, y);
+    const gamely_img_backend_t *b = find_backend(e->fmt);
+    if (b) b->draw(id, e->backend_data, x, y);
 }
 
 void gamely_daemon_img_unload_id(int32_t id) {
     img_entry_t *e = find_by_id(id);
     if (!e) return;
-    backend_t *b = find_backend(e->fmt);
-    if (b && e->state == GLY_IMG_READY) b->cbs.unload(id, e->backend_data);
+    const gamely_img_backend_t *b = find_backend(e->fmt);
+    if (b && e->state == GLY_IMG_READY) b->unload(id, e->backend_data);
     entry_free(e);
 }
 
@@ -313,9 +313,14 @@ void gamely_daemon_img_unload_url(const char *url) {
     gamely_daemon_img_unload_id(e->id);
 }
 
+static void backend_unload_all(const char *key, void *value, void *usr) {
+    (void)key; (void)usr;
+    const gamely_img_backend_t *b = (const gamely_img_backend_t *)value;
+    if (b->unload_all) b->unload_all();
+}
+
 void gamely_daemon_img_unload_all(void) {
-    for (int i = s_backend_n - 1; i >= 0; i--)
-        if (s_backends[i].cbs.unload_all) s_backends[i].cbs.unload_all();
+    gecnd_registry("get", "image_backend:*", backend_unload_all, NULL);
     for (int i = 0; i < IMG_CAP; i++)
         if (s_imgs[i].active) entry_free(&s_imgs[i]);
 }
@@ -326,9 +331,10 @@ bool gamely_daemon_img_has_backend(const char *fmt) {
 
 bool gamely_daemon_img_can_decode(const char *from) {
     if (!from) return false;
-    for (int i = s_backend_n - 1; i >= 0; i--)
-        if (find_decoder(from, s_backends[i].fmt, NULL)) return true;
-    return false;
+    backend_pick_t pick = {0};
+    pick.from = from;
+    gecnd_registry("get", "image_backend:*", backend_pick, &pick);
+    return pick.cb != NULL;
 }
 
 int32_t gamely_daemon_img_loading_count(void) {

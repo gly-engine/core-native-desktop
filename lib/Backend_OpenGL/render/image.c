@@ -183,14 +183,13 @@ static const gamely_img_backend_t s_backend = {
 };
 
 void gamely_daemon_img_opengl_register(void) {
-    /* One generic backend registered under each color format string the
-     * decoders may target. Newest-first dispatch: order doesn't matter since
-     * all point to the same backend (the decoded result carries the format). */
-    gamely_daemon_img_register_backend("rgba8888", &s_backend);
-    gamely_daemon_img_register_backend("rgba5551", &s_backend);
-    gamely_daemon_img_register_backend("yuv420",   &s_backend);
+    /* One generic backend registered under each color format the decoders may
+     * target (the decoded result carries the actual format). */
+    gecnd_registry("set", "image_backend:rgba8888", (void *)&s_backend, NULL);
+    gecnd_registry("set", "image_backend:rgba5551", (void *)&s_backend, NULL);
+    gecnd_registry("set", "image_backend:yuv420",   (void *)&s_backend, NULL);
 #if defined(GECND_OPENGLES) && GECND_OPENGLES == 1
     if (geogl_get_state()->etc1_supported)
-        gamely_daemon_img_register_backend("etc1", &s_backend);
+        gecnd_registry("set", "image_backend:etc1", (void *)&s_backend, NULL);
 #endif
 }
