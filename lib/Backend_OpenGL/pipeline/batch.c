@@ -32,6 +32,37 @@ void ge_batch_add_vertex_tex(int16_t x, int16_t y,
     vertex->a = c[3];
 }
 
+void ge_batch_add_vertex_alpha(int16_t x, int16_t y,
+    float u, float v,
+    uint32_t color,
+    int page_index) {
+
+    GLBackendState *s = geogl_get_state();
+    GEBatch *b = &s->transparent_batches[GE_PROG_ALPHA8];
+
+    if (b->count >= GE_MAX_VERTICES || (b->count > 0 && b->page_index != page_index)) {
+        ge_pipeline_flush_primitives();
+        b = &s->transparent_batches[GE_PROG_ALPHA8];
+    }
+
+    b->page_index = page_index;
+
+    GEAtlasVertex *vertex = &((GEAtlasVertex*)b->buffer)[b->count++];
+
+    vertex->x = (int16_t)x;
+    vertex->y = (int16_t)y;
+    vertex->z = ge_zindex_get(GE_PROG_ALPHA8, false, page_index);
+    vertex->w = 1;
+    vertex->u = (uint16_t)(u * 65535.0f);
+    vertex->v = (uint16_t)(v * 65535.0f);
+
+    uint8_t *c = (uint8_t*)&color;
+    vertex->r = c[0];
+    vertex->g = c[1];
+    vertex->b = c[2];
+    vertex->a = c[3];
+}
+
 void ge_batch_add_vertex_yuv(int16_t x, int16_t y,
     float u, float v,
     uint32_t color,

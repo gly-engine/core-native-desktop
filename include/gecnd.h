@@ -95,6 +95,7 @@ typedef enum {
     GECND_PIX_FMT_RGB565   = 2,
     GECND_PIX_FMT_RGBA5551 = 3,
     GECND_PIX_FMT_ETC1     = 4,
+    GECND_PIX_FMT_ALPHA8   = 5,
     GECND_PIX_FMT_NONE     = -1
 } GECNDColorFormat;
 

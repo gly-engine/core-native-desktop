@@ -28,6 +28,8 @@ static fmt_info_t fmt_info(GECNDColorFormat f) {
         return (fmt_info_t){ GL_RGBA, GL_RGBA, GL_UNSIGNED_SHORT_5_5_5_1, false, false };
     case GECND_PIX_FMT_YUV420P:
         return (fmt_info_t){ GL_ALPHA, GL_ALPHA, GL_UNSIGNED_BYTE, true, true };
+    case GECND_PIX_FMT_ALPHA8:
+        return (fmt_info_t){ GL_ALPHA, GL_ALPHA, GL_UNSIGNED_BYTE, false, false };
     case GECND_PIX_FMT_RGBA8888:
     default:
         return (fmt_info_t){ GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, false, false };

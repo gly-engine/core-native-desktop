@@ -84,36 +84,36 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
             }
 
             /* corner TL */
-            ge_batch_add_vertex_tex(x,     y,     u0, v0, color, false, cp);
-            ge_batch_add_vertex_tex(x,     y + r, u0, v1, color, false, cp);
-            ge_batch_add_vertex_tex(x + r, y + r, u1, v1, color, false, cp);
-            ge_batch_add_vertex_tex(x,     y,     u0, v0, color, false, cp);
-            ge_batch_add_vertex_tex(x + r, y + r, u1, v1, color, false, cp);
-            ge_batch_add_vertex_tex(x + r, y,     u1, v0, color, false, cp);
+            ge_batch_add_vertex_alpha(x,     y,     u0, v0, color, cp);
+            ge_batch_add_vertex_alpha(x,     y + r, u0, v1, color, cp);
+            ge_batch_add_vertex_alpha(x + r, y + r, u1, v1, color, cp);
+            ge_batch_add_vertex_alpha(x,     y,     u0, v0, color, cp);
+            ge_batch_add_vertex_alpha(x + r, y + r, u1, v1, color, cp);
+            ge_batch_add_vertex_alpha(x + r, y,     u1, v0, color, cp);
 
             /* corner TR */
-            ge_batch_add_vertex_tex(x + w - r, y,     u1, v0, color, false, cp);
-            ge_batch_add_vertex_tex(x + w - r, y + r, u1, v1, color, false, cp);
-            ge_batch_add_vertex_tex(x + w,     y + r, u0, v1, color, false, cp);
-            ge_batch_add_vertex_tex(x + w - r, y,     u1, v0, color, false, cp);
-            ge_batch_add_vertex_tex(x + w,     y + r, u0, v1, color, false, cp);
-            ge_batch_add_vertex_tex(x + w,     y,     u0, v0, color, false, cp);
+            ge_batch_add_vertex_alpha(x + w - r, y,     u1, v0, color, cp);
+            ge_batch_add_vertex_alpha(x + w - r, y + r, u1, v1, color, cp);
+            ge_batch_add_vertex_alpha(x + w,     y + r, u0, v1, color, cp);
+            ge_batch_add_vertex_alpha(x + w - r, y,     u1, v0, color, cp);
+            ge_batch_add_vertex_alpha(x + w,     y + r, u0, v1, color, cp);
+            ge_batch_add_vertex_alpha(x + w,     y,     u0, v0, color, cp);
 
             /* corner BL */
-            ge_batch_add_vertex_tex(x,     y + h - r, u0, v1, color, false, cp);
-            ge_batch_add_vertex_tex(x,     y + h,     u0, v0, color, false, cp);
-            ge_batch_add_vertex_tex(x + r, y + h,     u1, v0, color, false, cp);
-            ge_batch_add_vertex_tex(x,     y + h - r, u0, v1, color, false, cp);
-            ge_batch_add_vertex_tex(x + r, y + h,     u1, v0, color, false, cp);
-            ge_batch_add_vertex_tex(x + r, y + h - r, u1, v1, color, false, cp);
+            ge_batch_add_vertex_alpha(x,     y + h - r, u0, v1, color, cp);
+            ge_batch_add_vertex_alpha(x,     y + h,     u0, v0, color, cp);
+            ge_batch_add_vertex_alpha(x + r, y + h,     u1, v0, color, cp);
+            ge_batch_add_vertex_alpha(x,     y + h - r, u0, v1, color, cp);
+            ge_batch_add_vertex_alpha(x + r, y + h,     u1, v0, color, cp);
+            ge_batch_add_vertex_alpha(x + r, y + h - r, u1, v1, color, cp);
 
             /* corner BR */
-            ge_batch_add_vertex_tex(x + w - r, y + h - r, u1, v1, color, false, cp);
-            ge_batch_add_vertex_tex(x + w - r, y + h,     u1, v0, color, false, cp);
-            ge_batch_add_vertex_tex(x + w,     y + h,     u0, v0, color, false, cp);
-            ge_batch_add_vertex_tex(x + w - r, y + h - r, u1, v1, color, false, cp);
-            ge_batch_add_vertex_tex(x + w,     y + h,     u0, v0, color, false, cp);
-            ge_batch_add_vertex_tex(x + w,     y + h - r, u0, v1, color, false, cp);
+            ge_batch_add_vertex_alpha(x + w - r, y + h - r, u1, v1, color, cp);
+            ge_batch_add_vertex_alpha(x + w - r, y + h,     u1, v0, color, cp);
+            ge_batch_add_vertex_alpha(x + w,     y + h,     u0, v0, color, cp);
+            ge_batch_add_vertex_alpha(x + w - r, y + h - r, u1, v1, color, cp);
+            ge_batch_add_vertex_alpha(x + w,     y + h,     u0, v0, color, cp);
+            ge_batch_add_vertex_alpha(x + w,     y + h - r, u0, v1, color, cp);
         }
     } else {
         if (r == 0) {

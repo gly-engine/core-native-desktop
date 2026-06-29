@@ -21,6 +21,7 @@ static int atlas_h = GE_FONT_ATLAS_SIZE; // Font area height
 
 struct GLFONScontext {
     GLuint tex;
+    int page_index;
     int width, height;
     void *scratch;
     size_t scratch_size;
@@ -33,7 +34,11 @@ static int glfons__renderCreate(void* userPtr, int width, int height) {
     GLFONScontext* gl = (GLFONScontext*)userPtr;
     GLBackendState *s = geogl_get_state();
     gl->width = width; gl->height = height;
-    gl->tex = s->atlas_pages.a[0].tex_id;
+    /* Share the UI alpha8 page (made at pipeline init, holds the rounded-corner
+     * mask) so glyphs and corners batch under GE_PROG_ALPHA8 with one texture.
+     * fontstash owns the top-left 1024x1024; the corner sits past it. */
+    gl->page_index = s->corner_page_index;
+    gl->tex = s->atlas_pages.a[gl->page_index].tex_id;
     return 1;
 }
 
@@ -47,33 +52,29 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
     if (y + h > GE_FONT_ATLAS_SIZE) return; 
 
     ge_pipeline_flush_primitives();
-    size_t needed = (size_t)(w * h * 4);
+    size_t needed = (size_t)(w * h);
     if (gl->scratch_size < needed) {
         gl->scratch = realloc(gl->scratch, needed); gl->scratch_size = needed;
     }
     for (int row = 0; row < h; row++) {
         const unsigned char* src = data + (y + row) * gl->width + x;
-        unsigned char* dst = (unsigned char*)gl->scratch + row * w * 4;
-        for (int col = 0; col < w; col++) {
-            dst[col*4+0] = 255; dst[col*4+1] = 255; dst[col*4+2] = 255; dst[col*4+3] = src[col];
-        }
+        memcpy((unsigned char*)gl->scratch + row * w, src, w);
     }
-    glBindTexture(GL_TEXTURE_2D, s->atlas_pages.a[0].tex_id);
+    glBindTexture(GL_TEXTURE_2D, gl->tex);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, gl->scratch);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_ALPHA, GL_UNSIGNED_BYTE, gl->scratch);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     s->atlas_dirty = true;
 }
 
 static void glfons__renderDraw(void* userPtr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts) {
     if (nverts == 0) return;
-    GLBackendState *s = geogl_get_state();
-    (void)userPtr;
+    GLFONScontext* gl = (GLFONScontext*)userPtr;
     for (int i = 0; i < nverts; i++) {
-        // Texture coords for Page 0 are relative to GE_ATLAS_SIZE (2048)
+        // fontstash atlas is GE_FONT_ATLAS_SIZE; the alpha8 page is GE_ATLAS_SIZE.
         float u = tcoords[i*2]   * (float)GE_FONT_ATLAS_SIZE / (float)GE_ATLAS_SIZE;
         float v = tcoords[i*2+1] * (float)GE_FONT_ATLAS_SIZE / (float)GE_ATLAS_SIZE;
-        ge_batch_add_vertex_tex((int16_t)verts[i*2], (int16_t)verts[i*2+1], u, v, colors[i], false, 0);
+        ge_batch_add_vertex_alpha((int16_t)verts[i*2], (int16_t)verts[i*2+1], u, v, colors[i], gl->page_index);
     }
 }
 

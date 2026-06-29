@@ -94,24 +94,24 @@ static gamely_img_decoded_t driver_qr_decoder(const uint8_t *data, size_t len) {
                               qrcodegen_Mask_AUTO, true))
         return out;
 
-    int       qrsize = qrcodegen_getSize(qr);
-    uint16_t *px     = malloc((size_t)req->w * (size_t)req->h * sizeof(uint16_t));
+    int      qrsize = qrcodegen_getSize(qr);
+    uint8_t *px     = malloc((size_t)req->w * (size_t)req->h);
 
     if (!px) return out;
     for (int y = 0; y < req->h; y++) {
         int my = y * qrsize / req->h;
         for (int x = 0; x < req->w; x++) {
             int mx = x * qrsize / req->w;
-            px[y * req->w + x] = qrcodegen_getModule(qr, mx, my) ? 0x0001 : 0xFFFF;
+            px[y * req->w + x] = qrcodegen_getModule(qr, mx, my) ? 0x00: 0xFF;
         }
     }
 
-    out.pixels       = (uint8_t *)px;
-    out.len          = (size_t)req->w * (size_t)req->h * sizeof(uint16_t);
+    out.pixels       = px;
+    out.len          = (size_t)req->w * (size_t)req->h;
     out.w            = req->w;
     out.h            = req->h;
-    out.color_format = GECND_PIX_FMT_RGBA5551;
-    
+    out.color_format = GECND_PIX_FMT_ALPHA8;
+
     return out;
 }
 
@@ -119,5 +119,5 @@ __attribute__((constructor))
 static void init() {
     gecnd_registry("set", "image_resolver:qr+$l+$i16+$i16$0",     driver_qr_parser, NULL);
     gecnd_registry("set", "image_resolver:qr+$l+$i16+$i16+$l$0",  driver_qr_parser, NULL);
-    gecnd_registry("set", "image_decoder_sync:qrcode:rgba5551",   driver_qr_decoder, NULL);
+    gecnd_registry("set", "image_decoder_sync:qrcode:alpha8",   driver_qr_decoder, NULL);
 }

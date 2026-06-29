@@ -30,6 +30,7 @@ static bool scan_opaque(const uint8_t *data, int w, int h, GECNDColorFormat fmt)
             if ((px[i] & 1) == 0) return false;
         return true;
     }
+    if (fmt == GECND_PIX_FMT_ALPHA8) return false;  /* coverage mask */
     return true;  /* yuv420p / etc1: no alpha */
 }
 
@@ -88,7 +89,7 @@ static void gl_upload(int32_t id, void **backend_data,
             glBindTexture(GL_TEXTURE_2D, p->tex_v);
             glTexSubImage2D(GL_TEXTURE_2D, 0, ox / 2, oy / 2, cw, ch, GL_ALPHA, GL_UNSIGNED_BYTE, pv);
         } else {
-            GLenum fmt  = GL_RGBA;
+            GLenum fmt  = (color_format == GECND_PIX_FMT_ALPHA8) ? GL_ALPHA : GL_RGBA;
             GLenum type = (color_format == GECND_PIX_FMT_RGBA5551)
                         ? GL_UNSIGNED_SHORT_5_5_5_1 : GL_UNSIGNED_BYTE;
             glBindTexture(GL_TEXTURE_2D, p->tex_id);
@@ -136,6 +137,13 @@ static void gl_draw(int32_t id, void *backend_data, int16_t x, int16_t y) {
         ge_batch_add_vertex_yuv(x,      y,      u1, v1, color, t->page_index);
         ge_batch_add_vertex_yuv(x + iw, y + ih, u2, v2, color, t->page_index);
         ge_batch_add_vertex_yuv(x + iw, y,      u2, v1, color, t->page_index);
+    } else if (t->color_format == GECND_PIX_FMT_ALPHA8) {
+        ge_batch_add_vertex_alpha(x,      y,      u1, v1, color, t->page_index);
+        ge_batch_add_vertex_alpha(x,      y + ih, u1, v2, color, t->page_index);
+        ge_batch_add_vertex_alpha(x + iw, y + ih, u2, v2, color, t->page_index);
+        ge_batch_add_vertex_alpha(x,      y,      u1, v1, color, t->page_index);
+        ge_batch_add_vertex_alpha(x + iw, y + ih, u2, v2, color, t->page_index);
+        ge_batch_add_vertex_alpha(x + iw, y,      u2, v1, color, t->page_index);
     } else {
         ge_batch_add_vertex_tex(x,      y,      u1, v1, color, t->is_opaque, t->page_index);
         ge_batch_add_vertex_tex(x,      y + ih, u1, v2, color, t->is_opaque, t->page_index);
@@ -187,6 +195,7 @@ void gamely_daemon_img_opengl_register(void) {
      * target (the decoded result carries the actual format). */
     gecnd_registry("set", "image_backend:rgba8888", (void *)&s_backend, NULL);
     gecnd_registry("set", "image_backend:rgba5551", (void *)&s_backend, NULL);
+    gecnd_registry("set", "image_backend:alpha8",   (void *)&s_backend, NULL);
     gecnd_registry("set", "image_backend:yuv420",   (void *)&s_backend, NULL);
 #if defined(GECND_OPENGLES) && GECND_OPENGLES == 1
     if (geogl_get_state()->etc1_supported)

@@ -11,6 +11,7 @@
 #include <gecnd/shadder_es_texture_vert.h>
 #include <gecnd/shadder_es_texture_frag.h>
 #include <gecnd/shadder_es_texture_yuv_frag.h>
+#include <gecnd/shadder_es_alpha_frag.h>
 #include <gecnd/shadder_es_video_vert.h>
 #include <gecnd/shadder_es_video_yuv_frag.h>
 #include <gecnd/shadder_es_post_vert.h>
@@ -24,6 +25,7 @@
 #include <gecnd/shadder_gl_texture_vert.h>
 #include <gecnd/shadder_gl_texture_frag.h>
 #include <gecnd/shadder_gl_texture_yuv_frag.h>
+#include <gecnd/shadder_gl_alpha_frag.h>
 #include <gecnd/shadder_gl_video_vert.h>
 #include <gecnd/shadder_gl_video_yuv_frag.h>
 #include <gecnd/shadder_gl_post_vert.h>
@@ -66,7 +68,7 @@ static GLuint create_prog(const shader_src_t* vs, const shader_src_t* fs, int pr
         glBindAttribLocation(p, 3, "a_size");
         glBindAttribLocation(p, 4, "a_mode");
         glBindAttribLocation(p, 5, "a_radius");
-    } else if (prog_type == GE_PROG_ATLAS || prog_type == GE_PROG_ATLAS_YUV) {
+    } else if (prog_type == GE_PROG_ATLAS || prog_type == GE_PROG_ATLAS_YUV || prog_type == GE_PROG_ALPHA8) {
         glBindAttribLocation(p, 2, "a_uv");
     } else if (prog_type == GE_PROG_VIDEO) {
         glBindAttribLocation(p, 2, "a_texCoord");
@@ -132,6 +134,13 @@ void init_all_shaders(bool gles) {
     yp->loc_tex_y = glGetUniformLocation(yp->id, "tex_y");
     yp->loc_tex_u = glGetUniformLocation(yp->id, "tex_u");
     yp->loc_tex_v = glGetUniformLocation(yp->id, "tex_v");
+
+    // Alpha8 coverage (reuses the atlas vertex shader; rgb=tint, a=tex.a*tint.a)
+    shader_src_t alpha_fs_gl = SHADER(shadder_gl_alpha_frag);
+    shader_src_t alpha_fs_es = SHADER(shadder_es_alpha_frag);
+    s->programs[GE_PROG_ALPHA8].id = create_prog(pick(gles, &atlas_vs_gl, &atlas_vs_es), pick(gles, &alpha_fs_gl, &alpha_fs_es), GE_PROG_ALPHA8);
+    s->programs[GE_PROG_ALPHA8].loc_proj = glGetUniformLocation(s->programs[GE_PROG_ALPHA8].id, "u_proj");
+    s->programs[GE_PROG_ALPHA8].loc_tex  = glGetUniformLocation(s->programs[GE_PROG_ALPHA8].id, "u_tex");
 
     // Video YUV (3-plane GL_LUMINANCE + color filters)
     shader_src_t video_vs_gl  = SHADER(shadder_gl_video_vert);

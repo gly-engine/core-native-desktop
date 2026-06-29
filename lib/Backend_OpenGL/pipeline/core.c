@@ -102,12 +102,15 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     s->white_uv[0] = ((float)wx + 0.5f) / (float)GE_ATLAS_SIZE;
     s->white_uv[1] = ((float)wy + 0.5f) / (float)GE_ATLAS_SIZE;
 
-    // Corner mask (64x64)
-    int cx = p0->cursor_x; int cy = p0->cursor_y;
-    p0->cursor_x += 64;
-    if (p0->row_height < 64) p0->row_height = 64;
-
-    unsigned char *pixels = malloc(64 * 64 * 4);
+    // Shared UI alpha8 page: fontstash glyphs (top-left 1024x1024) + this corner mask,
+    // so text and rounded-rect corners batch under GE_PROG_ALPHA8 with one texture.
+    // Reserved from the shelf allocator (laid out by hand + fontstash).
+    int cp = ge_atlas_create_page(GECND_PIX_FMT_ALPHA8, false);
+    GEAtlasPage *up = &s->atlas_pages.a[cp];
+    up->cursor_x = up->reset_cursor_x = GE_ATLAS_SIZE;
+    up->cursor_y = up->reset_cursor_y = GE_ATLAS_SIZE;
+    int cx = GE_FONT_ATLAS_SIZE, cy = 0;  /* corner sits past fontstash's region */
+    unsigned char *pixels = malloc(64 * 64);
     for (int y = 0; y < 64; y++) {
         for (int x = 0; x < 64; x++) {
             float dx = (float)x + 0.5f;
@@ -116,18 +119,20 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
             uint8_t alpha = 255;
             if (dist > 64.0f) alpha = 0;
             else if (dist > 63.0f) alpha = (uint8_t)((64.0f - dist) * 255.0f);
-            int idx = (y * 64 + x) * 4;
-            pixels[idx] = 255; pixels[idx+1] = 255; pixels[idx+2] = 255; pixels[idx+3] = alpha;
+            pixels[y * 64 + x] = alpha;
         }
     }
-    glTexSubImage2D(GL_TEXTURE_2D, 0, cx, cy, 64, 64, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glBindTexture(GL_TEXTURE_2D, up->tex_id);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, cx, cy, 64, 64, GL_ALPHA, GL_UNSIGNED_BYTE, pixels);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     free(pixels);
 
     s->corner_uv[0] = (float)cx / (float)GE_ATLAS_SIZE;
     s->corner_uv[1] = (float)cy / (float)GE_ATLAS_SIZE;
     s->corner_uv[2] = (float)(cx + 64) / (float)GE_ATLAS_SIZE;
     s->corner_uv[3] = (float)(cy + 64) / (float)GE_ATLAS_SIZE;
-    s->corner_page_index = 0;
+    s->corner_page_index = cp;
 
     /* Snapshot post-init cursors so ge_atlas_reset_images() can restore them */
     for (int i = 0; i < (int)kv_size(s->atlas_pages); i++) {
@@ -145,6 +150,7 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     init_batch(&s->transparent_batches[GE_PROG_SIMPLE], sizeof(GESimpleShapeVertex));
     init_batch(&s->transparent_batches[GE_PROG_COMPLEX], sizeof(GEDShapeComplexVertex));
     init_batch(&s->transparent_batches[GE_PROG_ATLAS], sizeof(GEAtlasVertex));
+    init_batch(&s->transparent_batches[GE_PROG_ALPHA8], sizeof(GEAtlasVertex));
 }
 
 bool ge_detect_etc1_support(void) {
@@ -279,7 +285,7 @@ static void flush_batch(GEProgramType type, bool transparent) {
         glDisableVertexAttribArray(4); // Mode removed
         
         glDisableVertexAttribArray(6);
-    } else if (type == GE_PROG_ATLAS) {
+    } else if (type == GE_PROG_ATLAS || type == GE_PROG_ALPHA8) {
         vbo = s->vbo_atlas;
         stride = sizeof(GEAtlasVertex);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -339,6 +345,7 @@ void ge_pipeline_flush_primitives(void) {
     // Flush Transparent
     flush_batch(GE_PROG_SIMPLE, true);
     flush_batch(GE_PROG_ATLAS, true);
+    flush_batch(GE_PROG_ALPHA8, true);
     flush_batch(GE_PROG_COMPLEX, true);
 }
 
