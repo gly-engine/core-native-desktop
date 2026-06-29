@@ -225,7 +225,7 @@ bool gecnd_lang_rdsl_iterator(gecnd_lang_rdsl_t *const ctx,
 
     if (ctx->ptr == NULL) {
         p = pattern;
-        ctx->keyidx = -1;
+        ctx->keyidx = 0;
         ctx->plusidx = -1;
         ctx->typeidx = -1;
         ctx->tptr = text;
@@ -242,6 +242,7 @@ bool gecnd_lang_rdsl_iterator(gecnd_lang_rdsl_t *const ctx,
 
     if (*p == ':') {
         p++;
+        ctx->keyidx++;
     }
     if (*p == '+') {
         ctx->plusidx++;
@@ -259,7 +260,6 @@ bool gecnd_lang_rdsl_iterator(gecnd_lang_rdsl_t *const ctx,
     ctx->error = false;
 
     if (*p != '$') {
-        ctx->keyidx++;
         ctx->plusidx = -1;
         ctx->typeidx = -1;
         ctx->kind = GECND_TYPE_VOID;

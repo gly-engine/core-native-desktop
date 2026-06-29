@@ -18,8 +18,6 @@ gamely_img_decoded_t gamely_driver_decoder_tga(const uint8_t *data, size_t len);
 gamely_img_decoded_t gamely_driver_decoder_etc1(const uint8_t *data, size_t len);
 void gamely_resolver_image_file(const char *url, void *schema_usr, gamely_img_on_fetch_cb on_done, void *usr);
 void gamely_resolver_image_http(const char *url, void *schema_usr, gamely_img_on_fetch_cb on_done, void *usr);
-extern gamely_media_player_t gamely_player_ffmpeg;
-extern gamely_media_player_t gamely_player_color;
 void coreopen_alsa_gecnd();
 
 static gecnd_display_t g_display;
@@ -56,30 +54,6 @@ void gamely_hypervisor_init(gecnd_t *gly) {
     gamely_daemon_img_start(gly->loop);
 
     gamely_daemon_img_opengl_register();
-    gamely_daemon_img_register_decoder("etc1:etc1",     true, gamely_driver_decoder_etc1);
-    gamely_daemon_img_register_decoder("tga:rgba8888",  true, gamely_driver_decoder_tga);
-    gamely_daemon_img_register_decoder("tga:rgba5551",  true, gamely_driver_decoder_tga);
-    gamely_daemon_img_register_decoder("jpeg:rgba8888", true, gamely_driver_decoder_stb);
-    gamely_daemon_img_register_decoder("jpg:rgba8888",  true, gamely_driver_decoder_stb);
-    gamely_daemon_img_register_decoder("bmp:rgba8888",  true, gamely_driver_decoder_stb);
-    gamely_daemon_img_register_decoder("gif:rgba8888",  true, gamely_driver_decoder_stb);
-    gamely_daemon_img_register_decoder("png:rgba8888",  true, gamely_driver_decoder_stb);
-
-#if defined(GECND_USE_SPNG)
-    gamely_daemon_img_register_decoder("png:rgba8888",  true, gamely_driver_decoder_spng);
-#endif
-
-#if defined(GECND_USE_WUFFS)
-    gamely_daemon_img_register_decoder("jpeg:rgba8888", true, gamely_driver_decoder_wuffs_jpeg);
-    gamely_daemon_img_register_decoder("jpg:rgba8888",  true, gamely_driver_decoder_wuffs_jpeg);
-    gamely_daemon_img_register_decoder("png:rgba8888",  true, gamely_driver_decoder_wuffs_png);
-    gamely_daemon_img_register_decoder("bmp:rgba8888",  true, gamely_driver_decoder_wuffs_bmp);
-#endif
-
-#if defined(GECND_USE_JPEGTURBO)
-    gamely_daemon_img_register_decoder("jpeg:yuv420",   true, gamely_driver_decoder_jpegturbo);
-    gamely_daemon_img_register_decoder("jpg:yuv420",    true, gamely_driver_decoder_jpegturbo);
-#endif
 
     /* Formats the file resolver may substitute for a requested .png, in
      * priority order (GPU-native first, then small lossy, then raw). Each is
@@ -96,30 +70,10 @@ void gamely_hypervisor_init(gecnd_t *gly) {
     gamely_daemon_img_register_schema("http://",  gamely_resolver_image_http, NULL);
     gamely_daemon_img_register_schema("https://", gamely_resolver_image_http, NULL);
 
-/**
- * @todo microslop??
- */
-#if !defined(_WIN32)
-    gamely_daemon_media_register_player(""             , &gamely_player_ffmpeg, NULL);
-    gamely_daemon_media_register_player("file"         , &gamely_player_ffmpeg, NULL);
-    gamely_daemon_media_register_player("http"         , &gamely_player_ffmpeg, NULL);
-    gamely_daemon_media_register_player("https"        , &gamely_player_ffmpeg, NULL);
-    gamely_daemon_media_register_player("rtsp"         , &gamely_player_ffmpeg, NULL);
-    gamely_daemon_media_register_player("rtmp"         , &gamely_player_ffmpeg, NULL);
-    gamely_daemon_media_register_player("udp"          , &gamely_player_ffmpeg, NULL);
-    gamely_daemon_media_register_player("ffmpeg+file"  , &gamely_player_ffmpeg, NULL);
-    gamely_daemon_media_register_player("ffmpeg+http"  , &gamely_player_ffmpeg, NULL);
-    gamely_daemon_media_register_player("ffmpeg+https" , &gamely_player_ffmpeg, NULL);
-    gamely_daemon_media_register_player("ffmpeg+rtsp"  , &gamely_player_ffmpeg, NULL);
-    gamely_daemon_media_register_player("ffmpeg+rtmp"  , &gamely_player_ffmpeg, NULL);
-    gamely_daemon_media_register_player("ffmpeg+udp"   , &gamely_player_ffmpeg, NULL);
-#endif
 
 #if defined(__linux__)
     coreopen_alsa_gecnd();
 #endif
-
-    gamely_daemon_media_register_player("background", &gamely_player_color, NULL);
 
     gamely_input_add_cb("@code", gecnd_dispatch_key_event, gly);
 }

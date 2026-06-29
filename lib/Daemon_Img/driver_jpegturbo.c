@@ -70,7 +70,7 @@ static void resample_chroma(uint8_t *dst, const uint8_t *src,
     }
 }
 
-gamely_img_decoded_t gamely_driver_decoder_jpegturbo(const uint8_t *data, size_t len) {
+static gamely_img_decoded_t driver_decoder_jpegturbo(const uint8_t *data, size_t len) {
     gamely_img_decoded_t out = {0};
 
     tjhandle tj = tjInitDecompress();
@@ -175,4 +175,10 @@ gamely_img_decoded_t gamely_driver_decoder_jpegturbo(const uint8_t *data, size_t
     free(nat);
     tjDestroy(tj);
     return out;
+}
+
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "image_decoder_async:jpeg:yuv420", driver_decoder_jpegturbo, NULL);
+    gecnd_registry("set", "image_decoder_async:jpg:yuv420", driver_decoder_jpegturbo, NULL);
 }

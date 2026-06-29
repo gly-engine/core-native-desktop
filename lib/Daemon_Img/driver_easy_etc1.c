@@ -15,10 +15,9 @@
  *  [14..15] original height           — visible
  *   [16..]  block payload, (ext_w/4)*(ext_h/4) * 8 bytes
  *
- * Owner: daemon frees the input `data` after this returns, so we must
- * memcpy the payload into a fresh heap buffer that the upload step takes
- * ownership of (freed via release_free after glCompressedTexSubImage2D). */
-gamely_img_decoded_t gamely_driver_decoder_etc1(const uint8_t *data, size_t len) {
+ * Zero-copy: pixels alias the payload inside `data`; GECND_FLAG_IMG_MOVE makes
+ * the daemon keep `data` alive until unload instead of freeing it after decode. */
+static gamely_img_decoded_t driver_decoder_etc1(const uint8_t *data, size_t len) {
     gamely_img_decoded_t out = {0};
     if (!data || len < 16) return out;
     if (memcmp(data, "PKM 10", 6) != 0) return out;
@@ -35,14 +34,17 @@ gamely_img_decoded_t gamely_driver_decoder_etc1(const uint8_t *data, size_t len)
     size_t payload = ((size_t)ext_w / 4) * ((size_t)ext_h / 4) * 8;
     if (len < 16 + payload)                        return out;
 
-    uint8_t *buf = malloc(payload);
-    if (!buf) return out;
-    memcpy(buf, data + 16, payload);
-
-    out.pixels       = buf;
+    out.pixels       = (uint8_t *)(data + 16);
     out.len          = payload;
     out.w            = (int16_t)orig_w;
     out.h            = (int16_t)orig_h;
     out.color_format = GECND_PIX_FMT_ETC1;
+    out.flags        = GECND_FLAG_IMG_MOVE;
     return out;
+}
+
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "image_decoder_sync:pkm:etc1", driver_decoder_etc1, NULL);
+    gecnd_registry("set", "image_decoder_sync:etc1:etc1", driver_decoder_etc1, NULL);
 }

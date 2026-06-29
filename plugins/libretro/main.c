@@ -354,7 +354,7 @@ void coreopen_libretro_gecnd(gecnd_api_t *const api) {
     api->registry("set", "lua_global_ffi:native_libretro_exit+$0+$0", lua_native_libretro_exit, NULL);
     api->registry("set", "lua_global_ffi:native_libretro_error+$0+$s", lua_native_libretro_error, NULL);
     api->registry("set", "lua_global_ffi:native_libretro_is_running+$0+$b", lua_native_libretro_is_running, NULL);
-    api->registry("set", "media_player:libretro+$s", &libretro_file_player, NULL);
-    api->registry("set", "media_player:libretro+$s+http", &libretro_http_player, NULL);
-    api->registry("set", "media_player:libretro+$s+https", &libretro_http_player, NULL);
+    api->registry("set", "media_player:libretro+$l$0", &libretro_file_player, NULL);
+    api->registry("set", "media_player:libretro+$l+http$0", &libretro_http_player, NULL);
+    api->registry("set", "media_player:libretro+$l+https$0", &libretro_http_player, NULL);
 }

@@ -331,8 +331,14 @@ static gdmsp_value_t av_get(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
     return value;
 }
 
-gamely_media_player_t gamely_player_ffmpeg = {
+static gamely_media_player_t media_player = {
     .src = av_source,
     .set = av_set,
     .get = av_get,
 };
+
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "media_player:$s", &media_player, NULL);
+    gecnd_registry("set", "media_player:ffmpeg+$0", &media_player, NULL);
+}

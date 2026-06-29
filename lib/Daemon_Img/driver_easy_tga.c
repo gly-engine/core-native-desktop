@@ -137,7 +137,7 @@ static inline const uint8_t *cmap_sample(const uint8_t *unit, int colormapped,
     return cmap + (size_t)idx * (size_t)cesz;
 }
 
-gamely_img_decoded_t gamely_driver_decoder_tga(const uint8_t *data, size_t len) {
+static gamely_img_decoded_t driver_decoder_tga(const uint8_t *data, size_t len) {
     gamely_img_decoded_t out = {0};
     if (!data || len < 18) return out;
 
@@ -244,4 +244,10 @@ gamely_img_decoded_t gamely_driver_decoder_tga(const uint8_t *data, size_t len) 
     out.h            = (int16_t)height;
     out.color_format = out5551 ? GECND_PIX_FMT_RGBA5551 : GECND_PIX_FMT_RGBA8888;
     return out;
+}
+
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "image_decoder_sync:tga:rgba8888", driver_decoder_tga, NULL);
+    gecnd_registry("set", "image_decoder_sync:tga:rgba5551", driver_decoder_tga, NULL);
 }

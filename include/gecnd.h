@@ -8,6 +8,7 @@
 
 #define GLY_REGISTRYINDEX ((uint32_t)(uintptr_t)(gecnd_new))
 #define GECND_FLAG_NONE   (0u)
+#define GECND_FLAG_IMG_MOVE (1u << 0)
 #define GECND_FLAG_TIMER_FIXED          (0u)
 #define GECND_FLAG_TIMER_INTERNAL       (1u)
 #define GECND_FLAG_TIMER_BACKEND        (2u)
@@ -173,7 +174,8 @@ typedef union {
  * @var tptr       text cursor (match mode only).
  * @var val        concrete value captured from `text` for the current token.
  * @var kind       token type; void/string depend on whether `text` was given.
- * @var keyidx     index of the current keyword (literal) token.
+ * @var keyidx     namespace depth: number of ':' separators consumed; a literal
+ *                 not introduced by ':' does not advance it.
  * @var plusidx    index of the current '+' group.
  * @var typeidx    index of the current '$' type within the group; -1 on keywords.
  * @var score      match weight of the current token.
@@ -358,6 +360,7 @@ typedef struct {
     size_t           len;        /* bytes in `pixels` — backend may rely on this */
     int16_t          w, h;
     GECNDColorFormat color_format;  /* the format the decoder actually produced */
+    uint8_t          flags;
 } gamely_img_decoded_t;
 
 typedef gamely_img_decoded_t (*gamely_img_decoder_cb)(const uint8_t *data, size_t len);
@@ -396,11 +399,6 @@ void gamely_daemon_img_stop (void);
 
 void gamely_daemon_img_register_schema (const char *prefix,
                                          gamely_img_schema_cb  cb, void *usr);
-/* `fromto` is "from:to", e.g. "tga:rgba5551" — `from` is the source hint, `to`
- * the produced color format. The decoder may override the real format in the
- * decoded result's color_format. */
-void gamely_daemon_img_register_decoder(const char *fromto,
-                                         bool use_thread, gamely_img_decoder_cb cb);
 void gamely_daemon_img_register_backend(const char *fmt,
                                          const gamely_img_backend_t *cbs);
 
@@ -609,10 +607,6 @@ typedef struct {
     gdmsp_fsm_t (*set)(uint8_t channel, gdmsp_cmd_t cmd, gdmsp_value_t value, void *usr);
     gdmsp_value_t (*get)(uint8_t channel, gdmsp_cmd_t cmd, void *usr);
 } gamely_media_player_t;
-
-void gamely_daemon_media_register_player(const char                  *schema,
-                                          const gamely_media_player_t *cbs,
-                                          void                        *usr);
 
 void gamely_daemon_media_playback_source  (uint8_t channel, const char *url);
 void gamely_daemon_media_playback_command (uint8_t channel, gdmsp_cmd_t cmd);

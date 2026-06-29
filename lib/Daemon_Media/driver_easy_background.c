@@ -157,8 +157,13 @@ static gdmsp_value_t color_get(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
     return value;
 }
 
-gamely_media_player_t gamely_player_color = {
+static gamely_media_player_t media_player = {
     .src = color_source,
     .set = color_set,
     .get = color_get,
 };
+
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "media_player:background$0", &media_player, NULL);
+}
