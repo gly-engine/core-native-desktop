@@ -35,14 +35,17 @@ static void on_found(const char *path, void *usr) {
     }
 }
 
-/* schema_usr is a NULL-terminated list of "from:to" fallbacks (same notation as
- * the decoder registry, e.g. {"etc1:etc1","tga:rgba5551","jpeg:yuv420p",NULL})
- * the resolver may substitute for a requested .png, in priority order. We search
- * a sibling file by `from` (the extension); the dispatcher then picks the actual
- * decoder. NULL disables substitution. */
+static const char *const s_fallbacks[] = {
+    "etc1:etc1", "tga:rgba5551", "tga:rgba8888", "jpg:yuv420p", "jpeg:yuv420p", NULL
+};
+
+/* For a requested .png we may substitute a sibling in one of the fallback
+ * formats (searched by `from`, the extension), in priority order; the
+ * dispatcher then picks the actual decoder. */
 void gamely_resolver_image_file(const char *url, void *schema_usr,
                           gamely_img_on_fetch_cb on_done, void *on_done_usr) {
-    const char *const *alts = (const char *const *)schema_usr;
+    (void)schema_usr;
+    const char *const *alts = s_fallbacks;
 
     /* strip file:// prefix */
     const char *path = strncmp(url, "file://", 7) == 0 ? url + 7 : url;
@@ -113,4 +116,10 @@ void gamely_resolver_image_file(const char *url, void *schema_usr,
     printf("[io-resolver] not found '%s' (cwd=%s)\n", path, cwd);
     on_done(NULL, 0, NULL, on_done_usr);
     free(ctx);
+}
+
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "image_resolver:file$0", gamely_resolver_image_file, NULL);
+    gecnd_registry("set", "image_resolver:$s",     gamely_resolver_image_file, NULL);
 }

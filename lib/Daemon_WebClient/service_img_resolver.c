@@ -84,3 +84,9 @@ void gamely_resolver_image_http(const char *url, void *schema_usr,
 
     gamely_daemon_webclient_http(url, NULL, on_status, on_data, on_done, on_error, ctx);
 }
+
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("set", "image_resolver:http$0",  gamely_resolver_image_http, NULL);
+    gecnd_registry("set", "image_resolver:https$0", gamely_resolver_image_http, NULL);
+}

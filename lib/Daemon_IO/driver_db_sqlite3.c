@@ -165,7 +165,7 @@ void gamely_daemon_db_start(void) {
              "  id   INTEGER PRIMARY KEY AUTOINCREMENT,"
              "  data BLOB NOT NULL,"
              "  hint TEXT);");
-    gamely_daemon_img_register_schema("db://", db_schema_cb, NULL);
+    gecnd_registry("set", "image_resolver:db$0", db_schema_cb, NULL);
 }
 
 void gamely_daemon_db_stop(void) {

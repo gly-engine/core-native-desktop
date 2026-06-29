@@ -5,7 +5,6 @@
 #include "gecnd.h"
 
 #define IMG_CAP     256
-#define SCHEMA_CAP  16
 #define BACKEND_CAP 16
 
 /* ── image entry ──────────────────────────────────────────────────── */
@@ -27,10 +26,8 @@ static int32_t     s_next_id = 1;
 
 /* ── registries ───────────────────────────────────────────────────── */
 
-typedef struct { char prefix[32]; gamely_img_schema_cb  cb; void *usr; } schema_t;
 typedef struct { char fmt[16]; gamely_img_backend_t cbs; } backend_t;
 
-static schema_t  s_schemas [SCHEMA_CAP];  static int s_schema_n  = 0;
 static backend_t s_backends[BACKEND_CAP]; static int s_backend_n = 0;
 static uv_loop_t *s_loop = NULL;
 
@@ -64,19 +61,6 @@ static void entry_free(img_entry_t *e) {
 }
 
 /* ── registry helpers ─────────────────────────────────────────────── */
-
-static schema_t *find_schema(const char *url) {
-    schema_t *best     = NULL;
-    size_t    best_len = 0;
-    for (int i = 0; i < s_schema_n; i++) {
-        size_t l = strlen(s_schemas[i].prefix);
-        if (l >= best_len && strncmp(url, s_schemas[i].prefix, l) == 0) {
-            best     = &s_schemas[i];
-            best_len = l;
-        }
-    }
-    return best;
-}
 
 static gamely_img_decoder_cb find_decoder(const char *from, const char *to, bool *threaded) {
     char  key[96];
@@ -229,14 +213,29 @@ static void on_fetch(const uint8_t *data, size_t len,
     set_ready(e);
 }
 
+typedef struct { gamely_img_schema_cb cb; const char *key; } resolver_pick_t;
+
+static void resolver_pick(const char *key, void *value, void *usr) {
+    resolver_pick_t *p = (resolver_pick_t *)usr;
+    p->cb  = (gamely_img_schema_cb)value;
+    p->key = key;
+}
+
 static void dispatch_url(img_entry_t *e, const char *url) {
-    schema_t *schema = find_schema(url);
-    if (!schema) {
-        printf("[img] no schema for '%s'\n", url);
+    resolver_pick_t pick = { NULL, NULL };
+    char *key = malloc(strlen(url) + sizeof("image_resolver:()"));
+    if (key) {
+        sprintf(key, "image_resolver:(%s)", url);
+        gecnd_registry("get", key, (void *)resolver_pick, &pick);
+        free(key);
+    }
+    if (!pick.cb) {
+        printf("[img] no resolver for '%s'\n", url);
         set_error(e, "no schema handler");
         return;
     }
-    schema->cb(url, schema->usr, on_fetch, (void *)(intptr_t)e->id);
+    const char *pattern = pick.key ? pick.key + (sizeof("image_resolver:") - 1) : NULL;
+    pick.cb(url, (void *)pattern, on_fetch, (void *)(intptr_t)e->id);
 }
 
 /* ── public API ───────────────────────────────────────────────────── */
@@ -245,22 +244,13 @@ void gamely_daemon_img_start(void *loop) {
     s_loop = (uv_loop_t *)loop;
     memset(s_imgs, 0, sizeof(s_imgs));
     s_next_id  = 1;
-    s_schema_n = s_backend_n = 0;
+    s_backend_n = 0;
 }
 
 void gamely_daemon_img_stop(void) {
     for (int i = 0; i < IMG_CAP; i++)
         if (s_imgs[i].active) entry_free(&s_imgs[i]);
     s_loop = NULL;
-}
-
-void gamely_daemon_img_register_schema(const char *prefix,
-                                        gamely_img_schema_cb cb, void *usr) {
-    if (s_schema_n >= SCHEMA_CAP) return;
-    schema_t *s = &s_schemas[s_schema_n++];
-    strncpy(s->prefix, prefix, sizeof(s->prefix) - 1);
-    s->cb  = cb;
-    s->usr = usr;
 }
 
 void gamely_daemon_img_register_backend(const char *fmt,

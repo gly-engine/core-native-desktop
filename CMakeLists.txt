@@ -502,7 +502,6 @@ if(GECND_USE_WUFFS)
     target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE "${WUFFS_DIR}")
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Img/driver_wuffs.c")
     set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Img/driver_wuffs.c" PROPERTIES INCLUDE_DIRECTORIES "${WUFFS_DIR}/release/c")
-    set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/lib/Frontend_Core/hypervisor.c" PROPERTIES COMPILE_DEFINITIONS "GECND_USE_WUFFS=1")
 endif()
 
 if(GECND_USE_JPEGTURBO)
@@ -674,6 +673,7 @@ endif()
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/liblua.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/libffi.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/libqr.cmake)
 
 if(GECND_USE_PLUGIN_LIBRETRO)
     if(NOT EXISTS "${LIBRETRO_DIR}/libretro.h")

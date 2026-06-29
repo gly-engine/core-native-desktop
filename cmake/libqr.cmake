@@ -1,0 +1,15 @@
+option(GECND_USE_QRCODE "fetch qrcodegen" ON)
+
+set(QRCODE_VERSION "v1.8.0")
+set(QRCODE_DIR "${CMAKE_SOURCE_DIR}/vendor/qrcodegenerator")
+set(QRCODE_DOWNLOAD "https://github.com/nayuki/QR-Code-generator/archive/refs/tags/${QRCODE_VERSION}.tar.gz")
+
+if(GECND_USE_QRCODE)
+    if(NOT EXISTS "${QRCODE_DIR}")
+        FetchContent_Populate(qrcode URL "${QRCODE_DOWNLOAD}" SOURCE_DIR "${QRCODE_DIR}")
+    endif()
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../lib/Daemon_Img/driver_qrcode.c")
+    set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/../lib/Daemon_Img/driver_qrcode.c" PROPERTIES INCLUDE_DIRECTORIES "${QRCODE_DIR}/c")
+    add_library(qrcode-static STATIC "${QRCODE_DIR}/c/qrcodegen.c")
+    target_link_libraries(${PROJECT_NAME} PRIVATE qrcode-static)
+endif()

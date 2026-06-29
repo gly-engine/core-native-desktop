@@ -28,8 +28,9 @@ gecnd_display_t *gecnd_get_display(void) {
 
 static void gamely_resolver_image_base_url(const char *url, void *usr,
                                             gamely_img_on_fetch_cb on_done, void *on_done_usr) {
+    (void)usr;
     char full[768];
-    snprintf(full, sizeof(full), "%s%s", (const char *)usr, url);
+    snprintf(full, sizeof(full), "%s%s", g_display.game_base_url, url);
     gamely_resolver_image_http(full, NULL, on_done, on_done_usr);
 }
 
@@ -55,20 +56,8 @@ void gamely_hypervisor_init(gecnd_t *gly) {
 
     gamely_daemon_img_opengl_register();
 
-    /* Formats the file resolver may substitute for a requested .png, in
-     * priority order (GPU-native first, then small lossy, then raw). Each is
-     * only used if it has a decoder and a sibling file actually exists. */
-    static const char *const img_file_fallbacks[] = {
-        "etc1:etc1", "tga:rgba5551", "tga:rgba8888", "jpg:yuv420p", "jpeg:yuv420p", NULL
-    };
-
     if (g_display.game_base_url[0])
-        gamely_daemon_img_register_schema("", gamely_resolver_image_base_url, g_display.game_base_url);
-    else
-        gamely_daemon_img_register_schema("", gamely_resolver_image_file, (void *)img_file_fallbacks);
-    gamely_daemon_img_register_schema("file://",  gamely_resolver_image_file, (void *)img_file_fallbacks);
-    gamely_daemon_img_register_schema("http://",  gamely_resolver_image_http, NULL);
-    gamely_daemon_img_register_schema("https://", gamely_resolver_image_http, NULL);
+        gecnd_registry("set", "image_resolver:$s", gamely_resolver_image_base_url, NULL);
 
 
 #if defined(__linux__)
