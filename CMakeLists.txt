@@ -310,7 +310,7 @@ if(NOT (EXISTS "${CMAKE_BINARY_DIR}/lua" OR EXISTS "${CMAKE_BINARY_DIR}/lua.exe"
     FetchContent_Populate(lua54-host URL "${LUA54_DOWNLOAD}" SOURCE_DIR ${LUA54_HOST_DIR})
     if(TARGET)
         execute_process(
-            COMMAND ${ZIG_DIR}/zig-cc-host -DMAKE_LUA onelua.c -o ${CMAKE_BINARY_DIR}/lua -lm
+            COMMAND ${ZIG_BIN}/zig-cc-host -DMAKE_LUA onelua.c -o ${CMAKE_BINARY_DIR}/lua -lm
             WORKING_DIRECTORY ${LUA54_HOST_DIR}
         )
     else()
@@ -344,10 +344,10 @@ if(GECND_USE_LUAJIT)
         add_custom_command(
             OUTPUT ${LUAJIT_LIB2}
             COMMAND make
-                HOST_CC=${ZIG_DIR}/zig-cc-host
+                HOST_CC=${ZIG_BIN}/zig-cc-host
                 HOST_CFLAGS="--target=x86-linux-musl"
                 HOST_LDFLAGS="--target=x86-linux-musl"
-                CC=${ZIG_DIR}/zig-cc
+                CC=${ZIG_BIN}/zig-cc
                 XCFLAGS="-DLUAJIT_NO_UNWIND"
                 TARGET_SYS=Linux
                 TARGET_STRIP=eu-strip
@@ -722,6 +722,7 @@ if(GECND_USE_WARMCAT)
         SOURCE_DIR ${WARMCAT_DIR}
         CMAKE_ARGS
             -DCMAKE_INSTALL_PREFIX=${WARMCAT_BIN}
+            -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
             -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
             -DLWS_WITH_STATIC=ON
             -DLWS_WITH_SHARED=OFF
