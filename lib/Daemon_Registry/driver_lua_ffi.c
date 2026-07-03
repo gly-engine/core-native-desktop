@@ -109,8 +109,8 @@ static int lua_ffi_dispatch(lua_State *L) {
 }
 
 static void lua_global_ffi(const char *name, void *func, gecnd_t *const gly) {
-    lua_State        *L = gly->L;
-    gecnd_lang_rdsl_t ctx = {0};
+    lua_State   *L   = gly->L;
+    gecnd_lang_t ctx = {{ "rdsl", name }};
 
     const char  *fn_name = NULL;
     size_t       fn_len  = 0;
@@ -119,20 +119,20 @@ static void lua_global_ffi(const char *name, void *func, gecnd_t *const gly) {
     ffi_type    *arg_types[LUA_FFI_MAX_ARGS];
     unsigned     nargs = 0;
 
-    while (gecnd_lang_rdsl_iterator(&ctx, name, NULL)) {
-        if (ctx.typeidx == -1) {
-            if (ctx.keyidx == 1) {
-                fn_name = ctx.ptr;
-                fn_len  = ctx.len;
+    while (gecnd_lang(&ctx)) {
+        if (ctx.rdsl.typeidx == -1) {
+            if (ctx.rdsl.keyidx == 1) {
+                fn_name = ctx.rdsl.ptr;
+                fn_len  = ctx.rdsl.len;
             }
             continue;
         }
 
-        if (ctx.kind == GECND_TYPE_VOID) {
+        if (ctx.rdsl.kind == GECND_TYPE_VOID) {
             continue;
         }
 
-        ffi_type *type = lua_ffi_type(ctx.kind);
+        ffi_type *type = lua_ffi_type(ctx.rdsl.kind);
         if (!type) {
             gecnd_add_error(gly, "[%s] %s", name, "unsupported type!");
             return;
@@ -143,8 +143,8 @@ static void lua_global_ffi(const char *name, void *func, gecnd_t *const gly) {
             return;
         }
 
-        bool ret = (ctx.plusidx != LUA_FFI_GROUP_ARGS);
-        kinds[nargs]     = ctx.kind;
+        bool ret = (ctx.rdsl.plusidx != LUA_FFI_GROUP_ARGS);
+        kinds[nargs]     = ctx.rdsl.kind;
         is_ret[nargs]    = ret;
         arg_types[nargs] = ret ? &ffi_type_pointer : type;
         nargs++;

@@ -393,3 +393,8 @@ void gamely_daemon_input_close(void)
     g_initialized = 0;
 }
 
+__attribute__((constructor))
+static void register_keymap_functions(void) {
+    gecnd_registry("set", "function:gamely_daemon_input_add_keycode", (void *)gamely_daemon_input_add_keycode, NULL);
+}
+

@@ -356,3 +356,8 @@ void gamely_daemon_input_reset_port(int port)
             g_ttl[i] = g_ttl[--g_ttl_cnt];
     }
 }
+
+__attribute__((constructor))
+static void register_input_functions(void) {
+    gecnd_registry("set", "function:gamely_input_add_cb", (void *)gamely_input_add_cb, NULL);
+}

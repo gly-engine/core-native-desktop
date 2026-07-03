@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include "gecnd.h"
+#include "main.h"
 
 #define PATH_CAP 1024
 
@@ -28,6 +28,18 @@ static const char *s_rom_dirs[] = {
 };
 
 static char s_found[PATH_CAP];
+
+static struct {
+    typeof(gecnd_utils_get_cwd)     *get_cwd;
+    typeof(gecnd_utils_get_exe_cwd) *get_exe_cwd;
+} paths;
+
+static bool paths_bind(void) {
+    if (paths.get_cwd) return true;
+    api->registry("get", "function:gecnd_utils_get_cwd",     (void *)&paths.get_cwd,     NULL);
+    api->registry("get", "function:gecnd_utils_get_exe_cwd", (void *)&paths.get_exe_cwd, NULL);
+    return paths.get_cwd != NULL;
+}
 
 static int file_exists(const char *path) {
     struct stat st;
@@ -122,8 +134,11 @@ const char *scanner_resolve_core(const char *name) {
     const char *variants[] = { name, v1, v2 };
 
     char cwd[PATH_CAP], exedir[PATH_CAP], homedir[PATH_CAP];
-    gecnd_utils_get_cwd(cwd, PATH_CAP);
-    gecnd_utils_get_exe_cwd(exedir, PATH_CAP);
+    cwd[0] = exedir[0] = '\0';
+    if (paths_bind()) {
+        paths.get_cwd(cwd, PATH_CAP);
+        paths.get_exe_cwd(exedir, PATH_CAP);
+    }
     
     const char *home = getenv("HOME");
     if (home) strncpy(homedir, home, PATH_CAP - 1);
@@ -164,8 +179,11 @@ const char *scanner_resolve_rom(const char *name) {
         return name;
 
     char cwd[PATH_CAP], exedir[PATH_CAP], homedir[PATH_CAP];
-    gecnd_utils_get_cwd(cwd, PATH_CAP);
-    gecnd_utils_get_exe_cwd(exedir, PATH_CAP);
+    cwd[0] = exedir[0] = '\0';
+    if (paths_bind()) {
+        paths.get_cwd(cwd, PATH_CAP);
+        paths.get_exe_cwd(exedir, PATH_CAP);
+    }
     
     const char *home = getenv("HOME");
     if (home) strncpy(homedir, home, PATH_CAP - 1);

@@ -257,5 +257,6 @@ void native_text_terminate(void);
 void platform_swap_buffers(void);
 double platform_get_time(void);
 void* platform_get_proc_address(const char *name);
+void ge_hw_register(void);
 
 #endif

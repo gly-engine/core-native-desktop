@@ -36,17 +36,17 @@ static void driver_qr_parser(const char *url, void *pattern,
                        gamely_img_on_fetch_cb on_done, void *on_done_usr) {
                         
     struct { const char *ptr; size_t len; } str[3];
-    gecnd_lang_rdsl_t ctx = {0};
+    gecnd_lang_t ctx = {{ "rdsl", pattern, url }};
     int16_t dim[2] = {0, 0};
     int ndim   = 0;
     int nstr   = 0;
 
-    while (gecnd_lang_rdsl_iterator(&ctx, pattern, url)) {
-        if (ctx.kind == GECND_TYPE_I16 && ndim < 2) {
-            dim[ndim++] = ctx.val.i16;
-        } else if (ctx.kind == GECND_TYPE_STRING && nstr < 3) {
-            str[nstr].ptr = (const char *)ctx.val.ptr;
-            str[nstr].len = ctx.val.len;
+    while (gecnd_lang(&ctx)) {
+        if (ctx.rdsl.kind == GECND_TYPE_I16 && ndim < 2) {
+            dim[ndim++] = ctx.rdsl.val.i16;
+        } else if (ctx.rdsl.kind == GECND_TYPE_STRING && nstr < 3) {
+            str[nstr].ptr = (const char *)ctx.rdsl.val.ptr;
+            str[nstr].len = ctx.rdsl.val.len;
             nstr++;
         }
     }

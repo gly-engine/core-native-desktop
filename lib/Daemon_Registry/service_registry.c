@@ -3,9 +3,16 @@
 
 #include "gecnd.h"
 
+typedef struct hook_node {
+    gecnd_registry_handler handler;
+    void                  *usr;
+    struct hook_node      *next;
+} hook_node_t;
+
 typedef struct {
-    const char *key;
-    void       *value;
+    const char  *key;
+    void        *value;
+    hook_node_t *hooks;
 } gecnd_registry_entry_t;
 
 static gecnd_registry_entry_t *entries;
@@ -22,21 +29,40 @@ static size_t lower_bound(const char *key, size_t len) {
     return lo;
 }
 
+static size_t entry_intern(const char *key) {
+    size_t pos = lower_bound(key, strlen(key) + 1);
+    if (pos < count && strcmp(entries[pos].key, key) == 0) return pos;
+    if (count == capacity) {
+        capacity = capacity ? capacity * 2 : 16;
+        entries = realloc(entries, capacity * sizeof(*entries));
+    }
+    memmove(&entries[pos + 1], &entries[pos], (count - pos) * sizeof(*entries));
+    entries[pos].key   = key;
+    entries[pos].value = NULL;
+    entries[pos].hooks = NULL;
+    count++;
+    return pos;
+}
+
 int gecnd_registry(const char *cmd, const char *key, void *const value, void *const usr) {
     if (strcmp(cmd, "set") == 0) {
-        size_t pos = lower_bound(key, strlen(key) + 1);
-        if (pos < count && strcmp(entries[pos].key, key) == 0) {
-            entries[pos].value = value;
-            return 0;
-        }
-        if (count == capacity) {
-            capacity = capacity ? capacity * 2 : 16;
-            entries = realloc(entries, capacity * sizeof(*entries));
-        }
-        memmove(&entries[pos + 1], &entries[pos], (count - pos) * sizeof(*entries));
-        entries[pos].key = key;
+        size_t pos = entry_intern(key);
         entries[pos].value = value;
-        count++;
+        for (hook_node_t *h = entries[pos].hooks; h; h = h->next) {
+            h->handler(key, value, h->usr);
+        }
+        return 0;
+    }
+
+    if (strcmp(cmd, "hook") == 0) {
+        size_t pos = entry_intern(key);
+        hook_node_t *node = malloc(sizeof(*node));
+        if (!node) return -1;
+        node->handler = (gecnd_registry_handler)value;
+        node->usr     = usr;
+        node->next    = entries[pos].hooks;
+        entries[pos].hooks = node;
+        if (entries[pos].value) node->handler(key, entries[pos].value, usr);
         return 0;
     }
 
@@ -51,10 +77,10 @@ int gecnd_registry(const char *cmd, const char *key, void *const value, void *co
             int                    best_score = -1;
             for (size_t i = lower_bound(key, plen); i < count; i++) {
                 if (strncmp(entries[i].key, key, plen) != 0) break;
-                gecnd_lang_rdsl_t ctx = {0};
+                gecnd_lang_t ctx = {{ "rdsl", entries[i].key + plen, text }};
                 int score = 0;
-                while (gecnd_lang_rdsl_iterator(&ctx, entries[i].key + plen, text)) {
-                    score += ctx.score;
+                while (gecnd_lang(&ctx)) {
+                    score += ctx.rdsl.score;
                 }
                 if (ctx.error) continue;
                 if (score > best_score) {

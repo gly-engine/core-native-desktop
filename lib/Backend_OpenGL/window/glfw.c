@@ -113,6 +113,7 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
     s->last_frame_time = platform_get_time();
     gecnd_t *root = gecnd_get_root();
     if (root) root->internal |= GECND_INTERNAL_HW_GL_READY;
+    ge_hw_register();
 
     for (uint8_t i = 0; i < sizeof(keymap)/sizeof(*keymap); i++) {
         gamely_daemon_input_add_keycode("glfw", keymap[i].name, keymap[i].key);

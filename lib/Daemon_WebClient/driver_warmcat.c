@@ -466,3 +466,8 @@ void gamely_daemon_webclient_ws_close(gly_req_id_t id)
     lws_close_reason(c->wsi, LWS_CLOSE_STATUS_NORMAL, NULL, 0);
     lws_set_timeout(c->wsi, PENDING_TIMEOUT_CLOSE_SEND, LWS_TO_KILL_ASYNC);
 }
+
+__attribute__((constructor))
+static void register_webclient_functions(void) {
+    gecnd_registry("set", "function:gamely_daemon_webclient_http", (void *)gamely_daemon_webclient_http, NULL);
+}

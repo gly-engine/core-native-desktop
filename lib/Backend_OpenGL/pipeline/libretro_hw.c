@@ -85,3 +85,12 @@ void ge_hw_restore_context(void) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, s->window_width, s->window_height);
 }
+
+void ge_hw_register(void) {
+    gecnd_registry("set", "function:ge_hw_fbo_get",         (void *)ge_hw_fbo_get,         NULL);
+    gecnd_registry("set", "function:ge_hw_fbo_ensure",      (void *)ge_hw_fbo_ensure,      NULL);
+    gecnd_registry("set", "function:ge_hw_fbo_destroy",     (void *)ge_hw_fbo_destroy,     NULL);
+    gecnd_registry("set", "function:ge_hw_set_active",      (void *)ge_hw_set_active,      NULL);
+    gecnd_registry("set", "function:ge_hw_proc_address",    (void *)ge_hw_proc_address,    NULL);
+    gecnd_registry("set", "function:ge_hw_restore_context", (void *)ge_hw_restore_context, NULL);
+}

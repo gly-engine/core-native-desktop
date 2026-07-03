@@ -285,3 +285,8 @@ bool gamely_daemon_media_playback_active(void) {
     }
     return false;
 }
+
+__attribute__((constructor))
+static void register_playback_functions(void) {
+    gecnd_registry("set", "function:gamely_daemon_media_playback_source", (void *)gamely_daemon_media_playback_source, NULL);
+}

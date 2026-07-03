@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "gecnd.h"
+
 #if defined(_WIN32) || defined(__CYGWIN__)
 #include <windows.h>
 #elif defined(__linux__)
@@ -68,3 +70,9 @@ size_t gecnd_utils_get_cwd(char *buffer, size_t max_size) {
 #include <stdint.h>
 void native_text_font_previous() {}
 #endif
+
+__attribute__((constructor))
+static void register_cwd_functions(void) {
+    gecnd_registry("set", "function:gecnd_utils_get_cwd",     (void *)gecnd_utils_get_cwd,     NULL);
+    gecnd_registry("set", "function:gecnd_utils_get_exe_cwd", (void *)gecnd_utils_get_exe_cwd, NULL);
+}

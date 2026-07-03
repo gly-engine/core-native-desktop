@@ -10,7 +10,7 @@
 #include "gedll.h"
 
 #include "hw_render.h"
-#include "uri_query.h"
+#include "main.h"
 
 const char *scanner_resolve_core(const char *name);
 const char *scanner_resolve_rom(const char *name);
@@ -73,23 +73,46 @@ static void RETRO_CALLCONV core_log(enum retro_log_level level, const char *fmt,
     va_end(args);
 }
 
+static struct {
+    typeof(gamely_daemon_media_background_claim)         *claim;
+    typeof(gamely_daemon_media_background_release)       *release;
+    typeof(gamely_daemon_media_background_push_xrgb8888) *push_xrgb8888;
+    typeof(gamely_daemon_media_background_push_rgb565)   *push_rgb565;
+    typeof(gamely_daemon_media_background_get_frame)     *get_frame;
+    typeof(gamely_daemon_media_audio_configure)          *audio_configure;
+    typeof(gamely_daemon_media_audio_push)               *audio_push;
+} media;
+
+static bool media_bind(void) {
+    if (media.claim) return true;
+    api->registry("get", "function:gamely_daemon_media_background_claim",         (void *)&media.claim,           NULL);
+    api->registry("get", "function:gamely_daemon_media_background_release",       (void *)&media.release,         NULL);
+    api->registry("get", "function:gamely_daemon_media_background_push_xrgb8888", (void *)&media.push_xrgb8888,   NULL);
+    api->registry("get", "function:gamely_daemon_media_background_push_rgb565",   (void *)&media.push_rgb565,     NULL);
+    api->registry("get", "function:gamely_daemon_media_background_get_frame",     (void *)&media.get_frame,       NULL);
+    api->registry("get", "function:gamely_daemon_media_audio_configure",         (void *)&media.audio_configure, NULL);
+    api->registry("get", "function:gamely_daemon_media_audio_push",              (void *)&media.audio_push,      NULL);
+    return media.claim != NULL;
+}
+
 static void RETRO_CALLCONV core_video_refresh(const void *data, unsigned width, unsigned height, size_t pitch) {
     if (!data) return;
     if (libretro_hw_video_refresh(data, width, height, pitch)) return;
+    if (!media_bind()) return;
     if (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) {
-        gamely_daemon_media_background_push_xrgb8888((const uint8_t *)data, (int)width, (int)height, (int)pitch);
+        media.push_xrgb8888((const uint8_t *)data, (int)width, (int)height, (int)pitch);
     } else {
-        gamely_daemon_media_background_push_rgb565((const uint8_t *)data, (int)width, (int)height, (int)pitch);
+        media.push_rgb565((const uint8_t *)data, (int)width, (int)height, (int)pitch);
     }
 }
 
 static void RETRO_CALLCONV core_audio_sample(int16_t left, int16_t right) {
     int16_t buf[2] = { left, right };
-    gamely_daemon_media_audio_push(buf, 1);
+    if (media_bind()) media.audio_push(buf, 1);
 }
 
 static size_t RETRO_CALLCONV core_audio_sample_batch(const int16_t *data, size_t frames) {
-    gamely_daemon_media_audio_push(data, frames);
+    if (media_bind()) media.audio_push(data, frames);
     return frames;
 }
 
@@ -122,7 +145,7 @@ static bool core_environment(unsigned cmd, void *data) {
         case RETRO_ENVIRONMENT_GET_VARIABLE:
             if (data) {
                 struct retro_variable *var = (struct retro_variable*)data;
-                var->value = uri_query_get(var->key);
+                var->value = url_env_get(var->key);
                 core_log(RETRO_LOG_INFO, "GET_VARIABLE: %s = %s\n", var->key, var->value ? var->value : "(not set)");
                 return var->value != NULL;
             }
@@ -198,7 +221,7 @@ bool native_libretro_url(const char *url) {
     char *query = strchr(rom, '?');
     if (query) *query++ = '\0';
 
-    uri_query_parse(query);
+    url_env_set(url);
 
     const char *resolved_core = scanner_resolve_core(core);
     if (!resolved_core) {
@@ -223,13 +246,22 @@ bool native_libretro_url(const char *url) {
     return true;
 }
 
+static typeof(gecnd_utils_get_exe_cwd) *fn_exe_cwd;
+
+static void exe_cwd(char *buf, size_t cap) {
+    if (!fn_exe_cwd)
+        api->registry("get", "function:gecnd_utils_get_exe_cwd", (void *)&fn_exe_cwd, NULL);
+    if (fn_exe_cwd) fn_exe_cwd(buf, cap);
+    else buf[0] = '\0';
+}
+
 bool native_libretro_load(const char *path) {
     if (core_handle) close_library(core_handle);
     core_handle = NULL;
     reset_pointers();
 
     char exe_dir[512];
-    gecnd_utils_get_exe_cwd(exe_dir, sizeof(exe_dir));
+    exe_cwd(exe_dir, sizeof(exe_dir));
     strncpy(system_dir, exe_dir[0] ? exe_dir : ".", sizeof(system_dir));
 
     core_handle = load_library(path);
@@ -278,7 +310,7 @@ bool native_libretro_game_load_only(const char *path) {
     char full_path[1024];
     if (path[0] != '/' && path[0] != '.' && !(path[0] != '\0' && path[1] == ':')) {
         char exe_dir[512];
-        gecnd_utils_get_exe_cwd(exe_dir, sizeof(exe_dir));
+        exe_cwd(exe_dir, sizeof(exe_dir));
         snprintf(full_path, sizeof(full_path), "%s/%s", exe_dir, path);
     } else {
         strncpy(full_path, path, sizeof(full_path));
@@ -348,7 +380,7 @@ void native_libretro_game_finalize(void) {
     if (!s_pending_finalize) return;
     s_pending_finalize = false;
 
-    gamely_daemon_media_audio_configure((unsigned)s_pending_av_info.timing.sample_rate, 2);
+    if (media_bind()) media.audio_configure((unsigned)s_pending_av_info.timing.sample_rate, 2);
     if (libretro_hw_is_active()) {
         int fw = (s_pending_av_info.geometry.max_width  > 0)
             ? (int)s_pending_av_info.geometry.max_width
@@ -358,10 +390,9 @@ void native_libretro_game_finalize(void) {
             : (int)s_pending_av_info.geometry.base_height;
         libretro_hw_context_reset(fw, fh);
     }
-    gamely_daemon_media_background_claim();
+    if (media_bind()) media.claim();
     core_initialized = true;
-    gecnd_t *gly = gecnd_get_root();
-    if (gly) gecnd_set_state(gly, GECND_FSM_RUNNING_PERFORMANCE);
+    api->registry("set", "core:state", (void *)(uintptr_t)GECND_FSM_RUNNING_PERFORMANCE, NULL);
 }
 
 bool native_libretro_game_from_buffer(const uint8_t *data, size_t size) {
@@ -404,8 +435,7 @@ void native_libretro_exit(void) {
 }
 
 static void libretro_deinit_core(void) {
-    gecnd_t *gly = gecnd_get_root();
-    if (gly) gecnd_set_state(gly, GECND_FSM_RUNNING);
+    api->registry("set", "core:state", (void *)(uintptr_t)GECND_FSM_RUNNING, NULL);
     if (core_initialized) {
         if (p_retro_unload_game) p_retro_unload_game();
     }
@@ -414,27 +444,27 @@ static void libretro_deinit_core(void) {
         if (p_retro_deinit) p_retro_deinit();
     }
     if (core_handle) close_library(core_handle);
-    if (core_initialized) {
+    if (core_initialized && media_bind()) {
         static const uint8_t blank[4] = { 0, 0, 0, 0 };
         if (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888)
-            gamely_daemon_media_background_push_xrgb8888(blank, 1, 1, 4);
+            media.push_xrgb8888(blank, 1, 1, 4);
         else
-            gamely_daemon_media_background_push_rgb565(blank, 1, 1, 2);
+            media.push_rgb565(blank, 1, 1, 2);
     }
-    gamely_daemon_media_background_release();
+    if (media_bind()) media.release();
     core_initialized = core_init_done = false;
     core_handle = NULL;
     reset_pointers();
 }
 
 MediaFrame *libretro_get_frame(void) {
-    return gamely_daemon_media_background_get_frame();
+    return media_bind() ? media.get_frame() : NULL;
 }
 
 void libretro_run_frame(void) {
     if (!core_initialized || !p_retro_run) return;
     p_retro_run();
-    if (libretro_hw_is_active()) ge_hw_restore_context();
+    if (libretro_hw_is_active()) libretro_hw_restore_context();
 }
 
 bool libretro_is_running(void) {

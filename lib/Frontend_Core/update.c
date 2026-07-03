@@ -180,10 +180,18 @@ static bool init_check_exit(gecnd_t *gly) {
     return true;
 }
 
+static void on_core_state(const char *key, void *value, void *usr) {
+    (void)key;
+    gecnd_t *gly = (gecnd_t *)usr;
+    if (gly) gecnd_set_state(gly, (gecnd_fsm_t)(uintptr_t)value);
+}
+
 static bool state_boot(gecnd_t *gly) {
     gly_hook_display_init(gly->width, gly->height);
-    if (gecnd_is_root(gly))
+    if (gecnd_is_root(gly)) {
         gamely_hypervisor_init(gly);
+        gecnd_registry("hook", "core:state", on_core_state, gly);
+    }
     gly_hook_display_fps(gly->loop ? 0 : gly->target_fps);
     const char *e = gecnd_plugins_open_lua(gly->L);
     if (e) { gecnd_add_error(gly, "%s", e); return false; }

@@ -1,28 +1,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <lua.h>
-#ifdef LUAU_FASTMATH_BEGIN
-#include <lualib.h>
-#else
-#include <lauxlib.h>
-#endif
 
 #include "gecnd.h"
 #include "gedll.h"
 
-typedef int         (*fn_luaopen)(lua_State *L);
-typedef void        (*fn_gecnd_open)(void);
-typedef const char *(*fn_plugin_name)(void);
+typedef void (*fn_gecnd_open)(gecnd_plugin_t *plugin);
 
-typedef struct gecnd_plugin_t {
-    LIB_HANDLE          handle;
-    fn_luaopen          luaopen;
-    char                name[64];
-    struct gecnd_plugin_t *next;
-} gecnd_plugin_t;
+static gecnd_api_t *plugin_require(const char *abi);
+static bool         plugin_load(const char *module);
 
-static gecnd_plugin_t *plugin_head = NULL;
+static gecnd_api_t PLUGIN_API = {
+    .lang     = gecnd_lang,
+    .registry = gecnd_registry,
+};
+
+static gecnd_plugin_t PLUGIN = {
+    .require = plugin_require,
+    .load    = plugin_load,
+};
+
+static LIB_HANDLE g_handle = NULL;
+static char       g_base[64];
 
 static void extract_module_name(const char *path, char *out, size_t out_size) {
     const char *base = strrchr(path, '/');
@@ -38,6 +37,23 @@ static void extract_module_name(const char *path, char *out, size_t out_size) {
         i++;
     }
     out[i] = '\0';
+}
+
+static gecnd_api_t *plugin_require(const char *abi) {
+    (void)abi;
+    return &PLUGIN_API;
+}
+
+static bool plugin_load(const char *module) {
+    char sym[128];
+    snprintf(sym, sizeof(sym), "coreopen_%s_%s", g_base, module);
+    fn_gecnd_open open_fn = (fn_gecnd_open)get_symbol(g_handle, sym);
+    if (!open_fn) {
+        fprintf(stderr, "[plugin] module not found: %s\n", sym);
+        return false;
+    }
+    open_fn(&PLUGIN);
+    return true;
 }
 
 bool gecnd_plugin_load(gecnd_t *gly, const char *path) {
@@ -56,37 +72,22 @@ bool gecnd_plugin_load(gecnd_t *gly, const char *path) {
     char name[64];
     extract_module_name(path, name, sizeof(name));
 
+    g_handle = lib;
+    strncpy(g_base, name, sizeof(g_base) - 1);
+    g_base[sizeof(g_base) - 1] = '\0';
+    char *us = strrchr(g_base, '_');
+    if (us) *us = '\0';
+
     char sym[128];
     snprintf(sym, sizeof(sym), "coreopen_%s", name);
     fn_gecnd_open open_fn = (fn_gecnd_open)get_symbol(lib, sym);
-    if (open_fn) open_fn();
-
-    snprintf(sym, sizeof(sym), "luaopen_%s", name);
-    fn_luaopen lua_fn = (fn_luaopen)get_symbol(lib, sym);
-
-    gecnd_plugin_t *node = malloc(sizeof(gecnd_plugin_t));
-    if (!node) {
-        gecnd_add_error(gly, "out of memory");
-        return false;
-    }
-    node->handle = lib;
-    node->luaopen = lua_fn;
-    strncpy(node->name, name, sizeof(node->name) - 1);
-    node->name[sizeof(node->name) - 1] = '\0';
-    node->next = plugin_head;
-    plugin_head = node;
+    if (open_fn) open_fn(&PLUGIN);
 
     printf("[plugin] loaded '%s'\n", name);
     return true;
 }
 
 const char *gecnd_plugins_open_lua(lua_State *L) {
-    for (gecnd_plugin_t *p = plugin_head; p; p = p->next) {
-        if (!p->luaopen) continue;
-        //lua_pushcfunction(L, p->luaopen);
-        //if (lua_pcall(L, 0, LUA_MULTRET, 0)) {
-        //    return luaL_checkstring(L, -1);
-        //}
-    }
+    (void)L;
     return NULL;
 }

@@ -6,7 +6,6 @@
 #include <sqlite3.h>
 
 #include "gecnd.h"
-#include "../Common_Utils/uri.h"
 
 #define WHERE_MAX  16
 #define KV_BUF_CAP 4096
@@ -28,8 +27,7 @@ typedef struct {
     int  n;
 } where_t;
 
-static void collect_kv(const char *k, size_t kl, const char *v, size_t vl, void *usr) {
-    where_t *w = (where_t *)usr;
+static void where_add(where_t *w, const char *k, size_t kl, const char *v, size_t vl) {
     if (w->n >= WHERE_MAX) return;
     size_t ki = kl < 63  ? kl : 63;
     size_t vi = vl < 255 ? vl : 255;
@@ -38,25 +36,55 @@ static void collect_kv(const char *k, size_t kl, const char *v, size_t vl, void 
     w->n++;
 }
 
+/* Walks a db:// URL once: host → table, first path segment → field, and every
+ * "key=value" query pair → a WHERE clause in `w`. */
+static void parse_db_uri(const char *uri, char *table, size_t table_sz,
+                         char *field, size_t field_sz, where_t *w) {
+    table[0] = '\0';
+    field[0] = '\0';
+    gecnd_lang_t it = {{ "url", uri }};
+    while (gecnd_lang(&it)) {
+        switch (it.url.kind) {
+        case GECND_URL_KIND_HOST: {
+            size_t n = it.url.len < table_sz - 1 ? it.url.len : table_sz - 1;
+            memcpy(table, it.url.ptr, n);
+            table[n] = '\0';
+            break;
+        }
+        case GECND_URL_KIND_PATH:
+            if (it.url.idx == 0) {   /* first path segment */
+                size_t n = it.url.len < field_sz - 1 ? it.url.len : field_sz - 1;
+                memcpy(field, it.url.ptr, n);
+                field[n] = '\0';
+            }
+            break;
+        case GECND_URL_KIND_PARAM:
+            if (it.url.val.ptr)
+                where_add(w, it.url.ptr, it.url.len,
+                          (const char *)it.url.val.ptr, it.url.val.len);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
 /* Executes SELECT <field> FROM <table> WHERE k=v [AND …] LIMIT 1.
  * Returns 0=found (out_data heap-alloc'd; caller frees), -1=not found.
  * out_type is filled with SQLITE_TEXT(3) / SQLITE_BLOB(4) / SQLITE_INTEGER(1). */
-static int run_query(const char *table, const char *field, const char *query_str,
+static int run_query(const char *table, const char *field, const where_t *w,
                      void **out_data, size_t *out_len, int *out_type) {
-    where_t w = {0};
-    gly_uri_query_each(query_str, collect_kv, &w);
-
     char sql[512];
     int  pos = snprintf(sql, sizeof(sql), "SELECT %s FROM %s", field, table);
-    for (int i = 0; i < w.n && pos < (int)sizeof(sql) - 1; i++)
+    for (int i = 0; i < w->n && pos < (int)sizeof(sql) - 1; i++)
         pos += snprintf(sql + pos, sizeof(sql) - (size_t)pos,
-                        i ? " AND %s=?" : " WHERE %s=?", w.keys[i]);
+                        i ? " AND %s=?" : " WHERE %s=?", w->keys[i]);
     snprintf(sql + pos, sizeof(sql) - (size_t)pos, " LIMIT 1;");
 
     sqlite3_stmt *st;
     if (sqlite3_prepare_v2(s_db, sql, -1, &st, NULL) != SQLITE_OK) return -1;
-    for (int i = 0; i < w.n; i++)
-        sqlite3_bind_text(st, i + 1, w.vals[i], -1, SQLITE_TRANSIENT);
+    for (int i = 0; i < w->n; i++)
+        sqlite3_bind_text(st, i + 1, w->vals[i], -1, SQLITE_TRANSIENT);
 
     int rc = -1;
     if (sqlite3_step(st) == SQLITE_ROW) {
@@ -111,19 +139,14 @@ static void db_schema_cb(const char *url, void *schema_usr,
     (void)schema_usr;
     if (!on_done) return;
 
-    char table[64], path_buf[128], field[64];
-    gly_uri_host(url, table, sizeof(table));
-    gly_uri_path(url, path_buf, sizeof(path_buf));
-    const char *fp = path_buf[0] == '/' ? path_buf + 1 : path_buf;
-    strncpy(field, fp, sizeof(field) - 1);
-    field[sizeof(field) - 1] = '\0';
-
-    const char *qs = gly_uri_query(url);
+    char    table[64], field[64];
+    where_t w = {0};
+    parse_db_uri(url, table, sizeof(table), field, sizeof(field), &w);
 
     void  *data = NULL;
     size_t len  = 0;
     int    type = 0;
-    if (run_query(table, field, qs ? qs : "", &data, &len, &type) != 0) {
+    if (run_query(table, field, &w, &data, &len, &type) != 0) {
         on_done(NULL, 0, NULL, on_done_usr);
         return;
     }
@@ -131,7 +154,7 @@ static void db_schema_cb(const char *url, void *schema_usr,
     if (type == SQLITE_BLOB) {
         /* also fetch hint for this row */
         void *hint_v = NULL;
-        run_query(table, "hint", qs ? qs : "", &hint_v, NULL, NULL);
+        run_query(table, "hint", &w, &hint_v, NULL, NULL);
         on_done((uint8_t *)data, len, (char *)hint_v, on_done_usr);
         free(hint_v);
         free(data);
@@ -299,17 +322,12 @@ char *gamely_daemon_db_media_json(const char *type) {
 void *gamely_daemon_db_query_uri(const char *uri, size_t *out_len) {
     if (!s_db || !uri) return NULL;
 
-    char table[64], path_buf[128], field[64];
-    gly_uri_host(uri, table, sizeof(table));
-    gly_uri_path(uri, path_buf, sizeof(path_buf));
-    const char *fp = path_buf[0] == '/' ? path_buf + 1 : path_buf;
-    strncpy(field, fp, sizeof(field) - 1);
-    field[sizeof(field) - 1] = '\0';
-
-    const char *qs = gly_uri_query(uri);
+    char    table[64], field[64];
+    where_t w = {0};
+    parse_db_uri(uri, table, sizeof(table), field, sizeof(field), &w);
 
     void *out = NULL;
-    if (run_query(table, field, qs ? qs : "", &out, out_len, NULL) == 0)
+    if (run_query(table, field, &w, &out, out_len, NULL) == 0)
         return out;
     return NULL;
 }

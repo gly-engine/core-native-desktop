@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "gecnd.h"
-#include "../Common_Utils/uri.h"
 
 /* ── per-request accumulation context ────────────────────────────── */
 
@@ -71,14 +70,26 @@ void gamely_resolver_image_http(const char *url, void *schema_usr,
     ctx->on_done     = img_on_done;
     ctx->on_done_usr = img_on_done_usr;
 
-    /* derive hint from URL extension */
-    const char *dot = strrchr(url, '.');
-    if (dot && dot[1] && !strchr(dot, '?') && !strchr(dot, '/')) {
-        const char *q = strchr(dot, '?');
-        size_t ext_len = q ? (size_t)(q - dot - 1) : strlen(dot + 1);
-        if (ext_len < sizeof(ctx->hint)) {
-            strncpy(ctx->hint, dot + 1, ext_len);
-            ctx->hint[ext_len] = '\0';
+    /* derive hint from the file extension of the last path segment */
+    gecnd_lang_t  it      = {{ "url", url }};
+    const char   *seg     = NULL;
+    size_t        seg_len = 0;
+    while (gecnd_lang(&it)) {
+        if (it.url.kind == GECND_URL_KIND_PATH) {
+            seg     = it.url.ptr;
+            seg_len = it.url.len;
+        }
+    }
+    if (seg) {
+        const char *dot = NULL;
+        for (size_t i = 0; i < seg_len; i++)
+            if (seg[i] == '.') dot = seg + i;
+        if (dot) {
+            size_t ext_len = seg_len - (size_t)(dot + 1 - seg);
+            if (ext_len && ext_len < sizeof(ctx->hint)) {
+                memcpy(ctx->hint, dot + 1, ext_len);
+                ctx->hint[ext_len] = '\0';
+            }
         }
     }
 

@@ -190,8 +190,8 @@ static const rdsl_spec_t *rdsl_spec_find(const char *tag, size_t n) {
                    sizeof(RDSL_SPECS[0]), rdsl_spec_cmp);
 }
 
-static void rdsl_text_token(gecnd_lang_rdsl_t *const ctx, const char **start, size_t *len) {
-    const char *q = ctx->tptr;
+static void rdsl_text_token(gecnd_lang_t *const ctx, const char **start, size_t *len) {
+    const char *q = ctx->rdsl.tptr;
     while (*q == ':' || *q == '+') {
         q++;
     }
@@ -201,11 +201,11 @@ static void rdsl_text_token(gecnd_lang_rdsl_t *const ctx, const char **start, si
     }
     *start = s;
     *len = (size_t)(q - s);
-    ctx->tptr = q;
+    ctx->rdsl.tptr = q;
 }
 
-static void rdsl_text_rest(gecnd_lang_rdsl_t *const ctx, const char **start, size_t *len) {
-    const char *q = ctx->tptr;
+static void rdsl_text_rest(gecnd_lang_t *const ctx, const char **start, size_t *len) {
+    const char *q = ctx->rdsl.tptr;
     if (*q == '+') {
         q++;
     }
@@ -215,26 +215,27 @@ static void rdsl_text_rest(gecnd_lang_rdsl_t *const ctx, const char **start, siz
     }
     *start = s;
     *len = (size_t)(q - s);
-    ctx->tptr = q;
+    ctx->rdsl.tptr = q;
 }
 
-bool gecnd_lang_rdsl_iterator(gecnd_lang_rdsl_t *const ctx,
-                              const char *pattern, const char *text) {
+bool gecnd_lang_rdsl_iterator(gecnd_lang_t *const ctx) {
+    const char *pattern = ctx->pattern;
+    const char *text    = ctx->text;
     const char *p;
     size_t      n;
 
-    if (ctx->ptr == NULL) {
+    if (ctx->rdsl.ptr == NULL) {
         p = pattern;
-        ctx->keyidx = 0;
-        ctx->plusidx = -1;
-        ctx->typeidx = -1;
-        ctx->tptr = text;
+        ctx->rdsl.keyidx  = 0;
+        ctx->rdsl.plusidx = -1;
+        ctx->rdsl.typeidx = -1;
+        ctx->rdsl.tptr    = text;
     } else {
-        p = ctx->ptr + ctx->len;
+        p = ctx->rdsl.ptr + ctx->rdsl.len;
     }
 
     if (*p == '\0') {
-        if (text && ctx->tptr && *ctx->tptr != '\0' && *ctx->tptr != ')') {
+        if (text && ctx->rdsl.tptr && *ctx->rdsl.tptr != '\0' && *ctx->rdsl.tptr != ')') {
             ctx->error = true;
         }
         return false;
@@ -242,11 +243,11 @@ bool gecnd_lang_rdsl_iterator(gecnd_lang_rdsl_t *const ctx,
 
     if (*p == ':') {
         p++;
-        ctx->keyidx++;
+        ctx->rdsl.keyidx++;
     }
     if (*p == '+') {
-        ctx->plusidx++;
-        ctx->typeidx = -1;
+        ctx->rdsl.plusidx++;
+        ctx->rdsl.typeidx = -1;
         p++;
     }
 
@@ -255,15 +256,15 @@ bool gecnd_lang_rdsl_iterator(gecnd_lang_rdsl_t *const ctx,
         n++;
     }
 
-    ctx->ptr = p;
-    ctx->len = (int8_t)n;
-    ctx->error = false;
+    ctx->rdsl.ptr = p;
+    ctx->rdsl.len = (int8_t)n;
+    ctx->error    = false;
 
     if (*p != '$') {
-        ctx->plusidx = -1;
-        ctx->typeidx = -1;
-        ctx->kind = GECND_TYPE_VOID;
-        ctx->score = RDSL_SCORE_LITERAL;
+        ctx->rdsl.plusidx = -1;
+        ctx->rdsl.typeidx = -1;
+        ctx->rdsl.kind    = GECND_TYPE_VOID;
+        ctx->rdsl.score   = RDSL_SCORE_LITERAL;
         if (text) {
             const char *ts;
             size_t      tn;
@@ -272,23 +273,23 @@ bool gecnd_lang_rdsl_iterator(gecnd_lang_rdsl_t *const ctx,
                 ctx->error = true;
                 return false;
             }
-            ctx->val.ptr = (void *)ts;
-            ctx->val.len = tn;
+            ctx->rdsl.val.ptr = (void *)ts;
+            ctx->rdsl.val.len = tn;
         }
         return true;
     }
 
-    ctx->typeidx++;
+    ctx->rdsl.typeidx++;
 
     const rdsl_spec_t *spec = rdsl_spec_find(p + 1, n - 1);
     if (!spec) {
-        ctx->error = true;
-        ctx->kind = GECND_TYPE_VOID;
+        ctx->error     = true;
+        ctx->rdsl.kind = GECND_TYPE_VOID;
         return text ? false : true;
     }
 
-    ctx->kind = text ? spec->kind_text : spec->kind_void;
-    ctx->score = spec->score;
+    ctx->rdsl.kind  = text ? spec->kind_text : spec->kind_void;
+    ctx->rdsl.score = spec->score;
 
     if (text) {
         const char *ts;
@@ -302,7 +303,7 @@ bool gecnd_lang_rdsl_iterator(gecnd_lang_rdsl_t *const ctx,
         } else {
             rdsl_text_token(ctx, &ts, &tn);
         }
-        if (!spec->match(ts, tn, ctx->kind, &ctx->val)) {
+        if (!spec->match(ts, tn, ctx->rdsl.kind, &ctx->rdsl.val)) {
             ctx->error = true;
             return false;
         }

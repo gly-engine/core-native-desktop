@@ -220,6 +220,15 @@ void gamely_daemon_media_background_push_yuv420(const uint8_t *y, const uint8_t 
     buffer_swap();
 }
 
+__attribute__((constructor))
+static void register_background_functions(void) {
+    gecnd_registry("set", "function:gamely_daemon_media_background_claim",         (void *)gamely_daemon_media_background_claim,         NULL);
+    gecnd_registry("set", "function:gamely_daemon_media_background_release",       (void *)gamely_daemon_media_background_release,       NULL);
+    gecnd_registry("set", "function:gamely_daemon_media_background_push_xrgb8888", (void *)gamely_daemon_media_background_push_xrgb8888, NULL);
+    gecnd_registry("set", "function:gamely_daemon_media_background_push_rgb565",   (void *)gamely_daemon_media_background_push_rgb565,   NULL);
+    gecnd_registry("set", "function:gamely_daemon_media_background_get_frame",     (void *)gamely_daemon_media_background_get_frame,     NULL);
+}
+
 void gamely_daemon_media_init(void) {
 }
 

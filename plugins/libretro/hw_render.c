@@ -2,34 +2,43 @@
 #include <string.h>
 #include "libretro.h"
 #include "hw_render.h"
+#include "main.h"
 
-// ---------------------------------------------------------------------------
-// Weak stubs – replaced by strong symbols in Backend_OpenGL/libretro_hw.c
-// when the GL backend is linked.
-// ---------------------------------------------------------------------------
-__attribute__((weak)) uintptr_t ge_hw_fbo_get(void)                          { return 0; }
-__attribute__((weak)) void      ge_hw_fbo_ensure(int w, int h)                { (void)w; (void)h; }
-__attribute__((weak)) void      ge_hw_fbo_destroy(void)                       {}
-__attribute__((weak)) void      ge_hw_set_active(bool on, bool bot_left)      { (void)on; (void)bot_left; }
-__attribute__((weak)) retro_proc_address_t ge_hw_proc_address(const char *s)  { (void)s; return NULL; }
-__attribute__((weak)) void ge_hw_restore_context(void)                        {}
+static struct {
+    uintptr_t            (*fbo_get)(void);
+    void                 (*fbo_ensure)(int, int);
+    void                 (*fbo_destroy)(void);
+    void                 (*set_active)(bool, bool);
+    retro_proc_address_t (*proc_address)(const char *);
+    void                 (*restore_context)(void);
+} hw;
 
-// ---------------------------------------------------------------------------
-// Internal state
-// ---------------------------------------------------------------------------
+static bool hw_bind(void) {
+    if (hw.fbo_ensure) return true;
+    api->registry("get", "function:ge_hw_fbo_get",         (void *)&hw.fbo_get,         NULL);
+    api->registry("get", "function:ge_hw_fbo_ensure",      (void *)&hw.fbo_ensure,      NULL);
+    api->registry("get", "function:ge_hw_fbo_destroy",     (void *)&hw.fbo_destroy,     NULL);
+    api->registry("get", "function:ge_hw_set_active",      (void *)&hw.set_active,      NULL);
+    api->registry("get", "function:ge_hw_proc_address",    (void *)&hw.proc_address,    NULL);
+    api->registry("get", "function:ge_hw_restore_context", (void *)&hw.restore_context, NULL);
+    return hw.fbo_ensure != NULL;
+}
+
 static struct retro_hw_render_callback s_cb = {0};
 static bool s_active   = false;
-static int  s_pending_w = 0, s_pending_h = 0; // deferred until GL is ready
+static int  s_pending_w = 0, s_pending_h = 0;
 
 // ---------------------------------------------------------------------------
 // Callbacks given to the core
 // ---------------------------------------------------------------------------
 static uintptr_t RETRO_CALLCONV cb_get_current_framebuffer(void) {
-    return ge_hw_fbo_get();
+    hw_bind();
+    return hw.fbo_get ? hw.fbo_get() : 0;
 }
 
 static retro_proc_address_t RETRO_CALLCONV cb_get_proc_address(const char *sym) {
-    return ge_hw_proc_address(sym);
+    hw_bind();
+    return hw.proc_address ? hw.proc_address(sym) : NULL;
 }
 
 // ---------------------------------------------------------------------------
@@ -96,8 +105,9 @@ void libretro_hw_context_reset(int w, int h) {
 
 void libretro_hw_gl_ready(void) {
     if (!s_active || s_pending_w == 0) return;
-    ge_hw_fbo_ensure(s_pending_w, s_pending_h);
-    ge_hw_set_active(false, s_cb.bottom_left_origin); // cleared until first HW frame
+    if (!hw_bind()) return;
+    hw.fbo_ensure(s_pending_w, s_pending_h);
+    hw.set_active(false, s_cb.bottom_left_origin);
     if (s_cb.context_reset) {
         fprintf(stderr, "Libretro HW: context_reset (%dx%d)\n", s_pending_w, s_pending_h);
         s_cb.context_reset();
@@ -115,8 +125,7 @@ bool libretro_hw_video_refresh(const void *data, unsigned width, unsigned height
     if (!s_active) return false;
     if (data != RETRO_HW_FRAME_BUFFER_VALID) return false;
 
-    // Core rendered into the HW FBO – signal the display backend.
-    ge_hw_set_active(true, s_cb.bottom_left_origin);
+    if (hw.set_active) hw.set_active(true, s_cb.bottom_left_origin);
     (void)width; (void)height; // display backend reads size from FBO directly
     return true;
 }
@@ -125,10 +134,14 @@ bool libretro_hw_is_active(void) {
     return s_active;
 }
 
+void libretro_hw_restore_context(void) {
+    if (hw.restore_context) hw.restore_context();
+}
+
 void libretro_hw_cleanup(void) {
     libretro_hw_context_destroy();
-    ge_hw_fbo_destroy();
-    ge_hw_set_active(false, false);
+    if (hw.fbo_destroy) hw.fbo_destroy();
+    if (hw.set_active)  hw.set_active(false, false);
     memset(&s_cb, 0, sizeof(s_cb));
     s_active    = false;
     s_pending_w = s_pending_h = 0;

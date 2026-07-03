@@ -12,6 +12,9 @@
 #include "gecnd.h"
 #include "gehook.h"
 
+static bool option_mojibake = false;
+static float option_font_factor = 1.0;
+
 static const uint16_t cp1252_high[32] = {
     0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
     0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
@@ -45,19 +48,21 @@ static char *mojibake_dup(const char *src) {
 
 static int lua_native_text_print(lua_State *L) {
     const char *text = luaL_checkstring(L, 3);
-    char *fake = gecnd_get_display()->mojibake ? mojibake_dup(text) : NULL;
-    native_text_print((int16_t)luaL_checknumber(L, 1), (int16_t)luaL_checknumber(L, 2), fake ? fake : text);
-    free(fake);
+    int16_t x = (int16_t) luaL_checknumber(L, 1);
+    int16_t y = (int16_t) luaL_checknumber(L, 2);
+    if (option_mojibake) text = mojibake_dup(text);
+    native_text_print(x, y, text);
+    if (option_mojibake) free(text);
     lua_settop(L, 0);
     return 0;
 }
 
 static int lua_native_text_mensure(lua_State *L) {
-    int16_t w = 1, h = 1;
+    int16_t w = 0, h = 0;
     const char *text = luaL_checkstring(L, 1);
-    char *fake = gecnd_get_display()->mojibake ? mojibake_dup(text) : NULL;
-    native_text_mensure(fake ? fake : text, &w, &h);
-    free(fake);
+    if (option_mojibake) text = mojibake_dup(text);
+    native_text_mensure(text, &w, &h);
+    if (option_mojibake) free(text);
     lua_settop(L, 0);
     lua_pushnumber(L, w);
     lua_pushnumber(L, h);
@@ -65,21 +70,22 @@ static int lua_native_text_mensure(lua_State *L) {
 }
 
 static int lua_native_text_font_size(lua_State *L) {
-    float factor = gecnd_get_display()->font_factor;
-    if (factor <= 0.0f) factor = 1.0f;
-    native_text_font_size(floorf((int16_t)luaL_checknumber(L, 1) * factor));
+    int16_t font_size = (int16_t) (floorf(luaL_checknumber(L, 1)) * option_font_factor);
+    native_text_font_size(font_size);
     lua_settop(L, 0);
     return 0;
 }
 
 static int lua_native_text_font_name(lua_State *L) {
-    native_text_font_name(luaL_checkstring(L, 1));
+    const char *font_name = luaL_checkstring(L, 1);
+    native_text_font_name(font_name);
     lua_settop(L, 0);
     return 0;
 }
 
 static int lua_native_text_font_default(lua_State *L) {
-    native_text_font_default(luaL_checkinteger(L, 1));
+    int16_t font_default = luaL_checkinteger(L, 1);
+    native_text_font_default(font_default);
     lua_settop(L, 0);
     return 0;
 }
@@ -90,6 +96,16 @@ static int lua_native_text_font_previous(lua_State *L) {
     return 0;
 }
 
+static void set_font_factor(const char* key, void* value, void *usr) {
+    (void) key; (void) usr;
+    option_font_factor = *(float*) value;
+}
+
+static void set_mojibake(const char* key, void* value, void *usr) {
+    (void) key; (void) usr;
+    option_mojibake = *(bool *) value;
+}
+
 __attribute__((constructor))
 static void init() {
     gecnd_registry("set", "lua_global_func:native_text_print", lua_native_text_print, NULL);
@@ -98,6 +114,8 @@ static void init() {
     gecnd_registry("set", "lua_global_func:native_text_font_name", lua_native_text_font_name, NULL);
     gecnd_registry("set", "lua_global_func:native_text_font_default", lua_native_text_font_default, NULL);
     gecnd_registry("set", "lua_global_func:native_text_font_previous", lua_native_text_font_previous, NULL);
+    gecnd_registry("hook", "option:font_factor", set_font_factor, NULL);
+    gecnd_registry("hook", "option:mojibake", set_mojibake, NULL);
 }
 
 __attribute__((destructor))

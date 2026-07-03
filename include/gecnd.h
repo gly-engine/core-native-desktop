@@ -168,49 +168,61 @@ typedef union {
     };
 } gly_any_t;
 
-/**
- * @brief Iterator state for one walk over an rdsl pattern.
- *
- * @var ptr,len    current pattern token slice.
- * @var tptr       text cursor (match mode only).
- * @var val        concrete value captured from `text` for the current token.
- * @var kind       token type; void/string depend on whether `text` was given.
- * @var keyidx     namespace depth: number of ':' separators consumed; a literal
- *                 not introduced by ':' does not advance it.
- * @var plusidx    index of the current '+' group.
- * @var typeidx    index of the current '$' type within the group; -1 on keywords.
- * @var score      match weight of the current token.
- * @var error      syntax error, or (match mode) the pattern did not match `text`.
- */
-typedef struct {
-    const char  *ptr;
-    const char  *tptr;
-    gly_any_t    val;
-    gecnd_type_t kind;
-    int8_t       len;
-    int8_t       keyidx;
-    int8_t       plusidx;
-    int8_t       typeidx;
-    uint8_t      score;
-    bool         error;
-} gecnd_lang_rdsl_t;
+typedef enum {
+    GECND_URL_KIND_NONE = 0,
+    GECND_URL_KIND_SCHEME,
+    GECND_URL_KIND_HOST,
+    GECND_URL_KIND_PORT,
+    GECND_URL_KIND_PATH,
+    GECND_URL_KIND_PARAM,
+    GECND_URL_KIND_FRAGMENT,
+} gecnd_lang_url_kind_t;
 
-/**
- * @brief Walks one token of an rdsl pattern per call.
- *
- * @param[in,out] ctx     zero-initialised on the first call; carries cursors.
- * @param[in]     pattern the rdsl pattern (e.g. "media_player:libretro+$l$0").
- * @param[in]     text    concrete string to match against, or NULL to only
- *                        parse the pattern.
- * @return true while a token was produced, false at the end of the pattern.
- *
- * @pre on the first call `*ctx` must be all-zero.
- * @note when `text` is NULL behaviour is pure parsing and `val`/`tptr` are
- *       untouched; when `text` is given each token is matched and `val` is
- *       filled, `error` is raised on mismatch or on leftover text.
- */
-bool gecnd_lang_rdsl_iterator(gecnd_lang_rdsl_t *const ctx,
-                              const char *pattern, const char *text);
+/* Unified iterator state; see lib/Common_Language/{util,rdsl,url_iterator}.c.
+ * Brace-init the header: gecnd_lang_t ctx = {{ "rdsl", pattern, text }};
+ * then walk with gecnd_lang(&ctx). The small header survives across calls; the
+ * per-engine states share storage through the union. */
+typedef struct gecnd_lang {
+    struct {
+        union {
+            const char *_lang;   /* selector before the first call */
+            bool      (*_fn)(struct gecnd_lang *);   /* resolved engine after */
+        };
+        const char *pattern;
+        const char *text;
+        struct {
+            uint8_t error    : 1;
+            uint8_t started  : 1;
+            uint8_t finished : 1;
+            uint8_t reset    : 1;   /* keep lang/pattern/text, rewind the rest */
+        };
+    };
+    union {
+        struct {
+            const char  *ptr;
+            const char  *tptr;      /* text cursor (match mode) */
+            gly_any_t    val;
+            gecnd_type_t kind;
+            int8_t       len;
+            int8_t       keyidx;    /* ':' namespace depth */
+            int8_t       plusidx;   /* current '+' group */
+            int8_t       typeidx;   /* '$' type in group; -1 on keywords */
+            uint8_t      score;
+        } rdsl;
+        struct {
+            const char           *ptr;
+            const char           *cur;    /* internal parse cursor */
+            gly_any_t             val;
+            size_t                len;
+            gecnd_lang_url_kind_t kind;
+            int8_t                idx;    /* ordinal within the current kind */
+            uint8_t               phase;  /* internal parse phase */
+        } url;
+        gly_any_t result;   /* one-shot alias output (url:param, file:ext, …) */
+    };
+} gecnd_lang_t;
+
+bool gecnd_lang(gecnd_lang_t *const ctx);
 
 typedef void (*gecnd_registry_handler)(const char *key, void *value, void *usr);
 
@@ -634,5 +646,16 @@ void gamely_daemon_media_audio_push     (const int16_t *data, size_t frames);
 
 void gamely_daemon_media_init    (void);
 void gamely_daemon_media_shutdown(void);
+
+typedef struct {
+    typeof(gecnd_lang) *const lang;
+    typeof(gecnd_registry) *const registry;
+} gecnd_api_t;
+
+typedef struct gecnd_plugin gecnd_plugin_t;
+struct gecnd_plugin {
+    gecnd_api_t *(*require)(const char *abi);
+    bool (*load)(const char *module);
+};
 
 #endif
