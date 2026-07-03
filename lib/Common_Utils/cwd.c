@@ -72,7 +72,7 @@ void native_text_font_previous() {}
 #endif
 
 __attribute__((constructor))
-static void register_cwd_functions(void) {
+static void init(void) {
     gecnd_registry("set", "function:gecnd_utils_get_cwd",     (void *)gecnd_utils_get_cwd,     NULL);
     gecnd_registry("set", "function:gecnd_utils_get_exe_cwd", (void *)gecnd_utils_get_exe_cwd, NULL);
 }

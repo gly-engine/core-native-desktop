@@ -23,7 +23,7 @@ void gamely_daemon_media_audio_push(const int16_t *data, size_t frames) {
 }
 
 __attribute__((constructor))
-static void register_audio_functions(void) {
+static void init(void) {
     gecnd_registry("set", "function:gamely_daemon_media_audio_configure", (void *)gamely_daemon_media_audio_configure, NULL);
     gecnd_registry("set", "function:gamely_daemon_media_audio_push",      (void *)gamely_daemon_media_audio_push,      NULL);
 }

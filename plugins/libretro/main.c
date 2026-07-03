@@ -29,14 +29,16 @@ const char *scanner_resolve_rom (const char *name);
 gecnd_api_t *api = NULL;
 
 static struct {
-    typeof(gamely_daemon_webclient_http)        *webclient_http;
-    typeof(gamely_daemon_media_playback_source) *playback_source;
+    typeof(gamely_daemon_webclient_http)         *webclient_http;
+    typeof(gamely_daemon_media_playback_source)  *playback_source;
+    typeof(gamely_daemon_media_playback_command) *playback_command;
 } host;
 
 static bool host_bind(void) {
     if (host.playback_source) return true;
-    api->registry("get", "function:gamely_daemon_webclient_http",        (void *)&host.webclient_http,  NULL);
-    api->registry("get", "function:gamely_daemon_media_playback_source", (void *)&host.playback_source, NULL);
+    api->registry("get", "function:gamely_daemon_webclient_http",         (void *)&host.webclient_http,   NULL);
+    api->registry("get", "function:gamely_daemon_media_playback_source",  (void *)&host.playback_source,  NULL);
+    api->registry("get", "function:gamely_daemon_media_playback_command", (void *)&host.playback_command, NULL);
     return host.playback_source != NULL;
 }
 
@@ -307,32 +309,26 @@ static gamely_media_player_t libretro_http_player = {
     .get = libretro_get,
 };
 
-/* ── Lua API ──────────────────────────────────────────────────────── */
-
-static int lua_native_libretro_url(lua_State *L) {
-    const char *url = lua_tostring(L, 1);
-    if (!url) { lua_pushboolean(L, 0); return 1; }
+static char* lua_native_libretro_url(char* url) {
     char media_url[2048];
     snprintf(media_url, sizeof(media_url), "libretro+%s", url);
     if (host_bind()) host.playback_source(0, media_url);
-    lua_pushboolean(L, 1);
-    return 1;
+    return NULL;
 }
 
-static int lua_native_libretro_exit(lua_State *L) {
-    (void)L;
-    //gamely_daemon_media_playback_command(0, GDMSP_CMD_STOP);
-    return 0;
+static char* lua_native_libretro_exit(void) {
+    if (host_bind()) host.playback_command(0, GDMSP_CMD_STOP);
+    return NULL;
 }
 
-static int lua_native_libretro_error(lua_State *L) {
-    //lua_pushstring(L, native_libretro_error());
-    return 1;
+static char* lua_native_libretro_error(const char **const ret) {
+    *ret = native_libretro_error();
+    return NULL;
 }
 
-static int lua_native_libretro_is_running(lua_State *L) {
-    //lua_pushboolean(L, libretro_is_running());
-    return 1;
+static char* lua_native_libretro_is_running(bool *const ret) {
+    *ret = libretro_is_running();
+    return NULL;
 }
 
 void coreopen_libretro_gecnd(gecnd_plugin_t *const plugin) {

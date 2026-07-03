@@ -468,6 +468,6 @@ void gamely_daemon_webclient_ws_close(gly_req_id_t id)
 }
 
 __attribute__((constructor))
-static void register_webclient_functions(void) {
+static void init(void) {
     gecnd_registry("set", "function:gamely_daemon_webclient_http", (void *)gamely_daemon_webclient_http, NULL);
 }

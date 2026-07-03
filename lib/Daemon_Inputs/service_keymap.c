@@ -394,7 +394,7 @@ void gamely_daemon_input_close(void)
 }
 
 __attribute__((constructor))
-static void register_keymap_functions(void) {
+static void init(void) {
     gecnd_registry("set", "function:gamely_daemon_input_add_keycode", (void *)gamely_daemon_input_add_keycode, NULL);
 }
 
