@@ -80,7 +80,6 @@ void gecnd_destroy(gecnd_t *gly) {
         free(gly->engine_source.fetch.buf);
         free(gly->game_source.fetch.buf);
         free(gly->error_buf);
-        gly_hook_luaclose_storage(gly->L);
         free(gly);
     }
 }

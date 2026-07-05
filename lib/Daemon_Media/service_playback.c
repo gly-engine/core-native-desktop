@@ -5,6 +5,7 @@
 #include <stdatomic.h>
 #include <uv.h>
 #include "gecnd.h"
+#include "gdmsp.h"
 
 #include "gefilter.h"
 
@@ -13,15 +14,15 @@
 /* ── player selection (registry-backed) ───────────────────────────── */
 
 typedef struct {
-    const gamely_media_player_t *player;
+    const gdmsp_player_t *player;
 } select_ctx_t;
 
 static void select_handler(const char *key, void *value, void *usr) {
     (void)key;
-    ((select_ctx_t *)usr)->player = (const gamely_media_player_t *)value;
+    ((select_ctx_t *)usr)->player = (const gdmsp_player_t *)value;
 }
 
-static const gamely_media_player_t *select_player(const char *url) {
+static const gdmsp_player_t *select_player(const char *url) {
     select_ctx_t ctx = { NULL };
     char        *key = malloc(strlen(url) + sizeof("media_player:()"));
     if (!key) return NULL;
@@ -34,7 +35,7 @@ static const gamely_media_player_t *select_player(const char *url) {
 /* ── channel state ────────────────────────────────────────────────── */
 
 typedef struct {
-    const gamely_media_player_t *player;
+    const gdmsp_player_t *player;
     char         *url;
     char         *pending_src;  /* próxima URL a abrir (NULL = nenhuma) */
     gdmsp_cmd_t   pending_cmd;  /* último comando solicitado (NONE = nada a despachar) */
@@ -74,9 +75,9 @@ static bool gate_running(gecnd_fsm_t s) {
         || s == GECND_FSM_RUNNING_NOGAME;
 }
 
-/* ── public API ───────────────────────────────────────────────────── */
+/* ── control ──────────────────────────────────────────────────────── */
 
-void gamely_daemon_media_playback_source(uint8_t channel, const char *url) {
+static void pb_source(uint8_t channel, const char *url) {
     if (channel >= CHANNEL_CAP) return;
     channel_t *ch = &s_channels[channel];
     free(ch->pending_src);
@@ -91,40 +92,47 @@ void gamely_daemon_media_playback_source(uint8_t channel, const char *url) {
     }
 }
 
-void gamely_daemon_media_playback_command(uint8_t channel, gdmsp_cmd_t cmd) {
+static void pb_command(uint8_t channel, gdmsp_cmd_t cmd) {
     if (channel >= CHANNEL_CAP) return;
     s_channels[channel].pending_cmd = cmd; /* last-write-wins */
     fprintf(stderr, "[media-pb] ch=%u command set cmd=%d\n", channel, (int)cmd);
 }
 
-gdmsp_fsm_t gamely_daemon_media_playback_get_status(uint8_t channel) {
+static gdmsp_fsm_t pb_status(uint8_t channel) {
     if (channel >= CHANNEL_CAP) return GDMSP_FSM_IDLE;
     channel_t *ch = &s_channels[channel];
     if (ch->pending_src || ch->src_active) return GDMSP_FSM_OPENING;
     return ch->player ? ch_st(ch) : GDMSP_FSM_IDLE;
 }
 
-int64_t gamely_daemon_media_playback_get_integer(uint8_t channel, gdmsp_cmd_t cmd) {
-    if (channel >= CHANNEL_CAP) return -1;
-    channel_t *ch = &s_channels[channel];
-    if (!ch->player || !ch->player->get) return -1;
-    return ch->player->get(channel, cmd, NULL).i64;
-}
-
-gdmsp_fsm_t gamely_daemon_media_playback_set_integer(uint8_t channel, gdmsp_cmd_t cmd,
-                                                     int64_t value_integer) {
+static gdmsp_fsm_t pb_get(uint8_t channel, gdmsp_cmd_t cmd, gdmsp_value_t *value) {
     if (channel >= CHANNEL_CAP) return GDMSP_FSM_IDLE;
     channel_t *ch = &s_channels[channel];
+    if (value) {
+        value->i64 = -1;
+        if (ch->player && ch->player->get)
+            *value = ch->player->get(channel, cmd, NULL);
+    }
+    return pb_status(channel);
+}
+
+static gdmsp_fsm_t pb_set(uint8_t channel, gdmsp_cmd_t cmd, const gdmsp_value_t *value) {
+    if (channel >= CHANNEL_CAP) return GDMSP_FSM_IDLE;
+    if (cmd == GDMSP_CMD_PLAY || cmd == GDMSP_CMD_PAUSE || cmd == GDMSP_CMD_STOP) {
+        pb_command(channel, cmd);
+        return pb_status(channel);
+    }
+    channel_t *ch = &s_channels[channel];
     if (!ch->player || !ch->player->set) return GDMSP_FSM_IDLE;
-    gdmsp_value_t value = { value_integer };
-    gdmsp_fsm_t r = ch->player->set(channel, cmd, value, NULL);
+    gdmsp_value_t v = value ? *value : (gdmsp_value_t){0};
+    gdmsp_fsm_t r = ch->player->set(channel, cmd, v, NULL);
     atomic_store(&ch->st, (int)r);
     return r;
 }
 
-void gamely_daemon_media_playback_position(uint8_t channel,
-                                            int16_t x, int16_t y,
-                                            int16_t w, int16_t h) {
+static void pb_position(uint8_t channel,
+                        int16_t x, int16_t y,
+                        int16_t w, int16_t h) {
     if (channel >= CHANNEL_CAP) return;
     channel_t *ch = &s_channels[channel];
     if (!ch->player || !ch->player->set) return;
@@ -132,7 +140,7 @@ void gamely_daemon_media_playback_position(uint8_t channel,
     ch->player->set(channel, GDMSP_CMD_POSITION, value, NULL);
 }
 
-void gamely_daemon_media_playback_tick(void) {
+static void pb_tick(void) {
     gecnd_t *root = gecnd_get_root();
     gecnd_fsm_t gs = root ? gecnd_get_state(root) : GECND_FSM_BOOT;
 
@@ -194,7 +202,7 @@ void gamely_daemon_media_playback_tick(void) {
                         i, (int)st);
                 free(ch->pending_src); ch->pending_src = NULL;
             } else {
-                const gamely_media_player_t *new_p = select_player(ch->pending_src);
+                const gdmsp_player_t *new_p = select_player(ch->pending_src);
                 if (!new_p) {
                     fprintf(stderr, "[media-pb] ch=%d no player for '%s'\n",
                             i, ch->pending_src);
@@ -277,7 +285,7 @@ void gamely_daemon_media_playback_tick(void) {
     }
 }
 
-bool gamely_daemon_media_playback_active(void) {
+static bool pb_active(void) {
     for (int i = 0; i < CHANNEL_CAP; i++) {
         channel_t *ch = &s_channels[i];
         if (ch->pending_src || ch->src_active) return true;
@@ -286,7 +294,21 @@ bool gamely_daemon_media_playback_active(void) {
     return false;
 }
 
+static const gdmsp_control_t s_control = {
+    .source    = pb_source,
+    .status    = pb_status,
+    .set       = pb_set,
+    .get       = pb_get,
+    .position  = pb_position,
+    .tick      = pb_tick,
+    .is_active = pb_active,
+};
+
+const gdmsp_control_t *gdmsp_control(void) {
+    return &s_control;
+}
+
 __attribute__((constructor))
 static void register_playback_functions(void) {
-    gecnd_registry("set", "function:gamely_daemon_media_playback_source", (void *)gamely_daemon_media_playback_source, NULL);
+    gecnd_registry("set", "function:gdmsp_control", (void *)gdmsp_control, NULL);
 }

@@ -3,6 +3,7 @@
 #include <math.h>
 
 #include "gecnd.h"
+#include "gdmsp.h"
 #include "gefilter.h"
 #include "gehook.h"
 #include "geopengl.h"
@@ -28,7 +29,7 @@ void native_draw_color(uint32_t color)
 }
 
 void native_draw_clear(uint32_t color) {
-    if (gamely_daemon_media_playback_active()) return;
+    if (gdmsp_control()->is_active()) return;
     GLBackendState *s = geogl_get_state();
     native_draw_color(color);
     native_draw_rect(0, 0, 0, s->window_width, s->window_height, 0);

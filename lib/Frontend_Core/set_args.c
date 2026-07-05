@@ -4,6 +4,7 @@
 #include <ketopt.h>
 
 #include "gecnd.h"
+#include "gdmsp.h"
 #include "gehook.h"
 #include "gemetrics.h"
 
@@ -104,7 +105,7 @@ void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
         gly->engine_source.uri = opt.arg;
     }
     if (c == 1307) {
-        gamely_daemon_media_playback_source(0, opt.arg);
+        gdmsp_control()->source(0, opt.arg);
     }
     if (c == 1309) {
         gecnd_get_display()->disable_radius = true;

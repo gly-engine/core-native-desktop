@@ -9,6 +9,7 @@
 
 #include "gehook.h"
 #include "gecnd.h"
+#include "gdmsp.h"
 
 
 static int lua_native_media_bootstrap(lua_State *L) {
@@ -19,7 +20,7 @@ static int lua_native_media_bootstrap(lua_State *L) {
 static int lua_native_media_source(lua_State *L) {
     uint8_t channel = (uint8_t)luaL_checkinteger(L, 1);
     const char *url = luaL_checkstring(L, 2);
-    gamely_daemon_media_playback_source(channel, url);
+    gdmsp_control()->source(channel, url);
     lua_settop(L, 0);
     return 0;
 }
@@ -30,28 +31,28 @@ static int lua_native_media_position(lua_State *L) {
     int16_t  y       = (int16_t) luaL_checknumber(L, 3);
     int16_t  w       = (int16_t) luaL_checknumber(L, 4);
     int16_t  h       = (int16_t) luaL_checknumber(L, 5);
-    gamely_daemon_media_playback_position(channel, x, y, w, h);
+    gdmsp_control()->position(channel, x, y, w, h);
     lua_settop(L, 0);
     return 0;
 }
 
 static int lua_native_media_play(lua_State *L) {
     uint8_t channel = (uint8_t)luaL_checkinteger(L, 1);
-    gamely_daemon_media_playback_command(channel, GDMSP_CMD_PLAY);
+    gdmsp_control()->set(channel, GDMSP_CMD_PLAY, NULL);
     lua_settop(L, 0);
     return 0;
 }
 
 static int lua_native_media_pause(lua_State *L) {
     uint8_t channel = (uint8_t)luaL_checkinteger(L, 1);
-    gamely_daemon_media_playback_command(channel, GDMSP_CMD_PAUSE);
+    gdmsp_control()->set(channel, GDMSP_CMD_PAUSE, NULL);
     lua_settop(L, 0);
     return 0;
 }
 
 static int lua_native_media_stop(lua_State *L) {
     uint8_t channel = (uint8_t)luaL_checkinteger(L, 1);
-    gamely_daemon_media_playback_command(channel, GDMSP_CMD_STOP);
+    gdmsp_control()->set(channel, GDMSP_CMD_STOP, NULL);
     lua_settop(L, 0);
     return 0;
 }
@@ -71,26 +72,27 @@ static const char *fsm_to_str(gdmsp_fsm_t st) {
 
 static int lua_native_media_get_status(lua_State *L) {
     uint8_t channel = (uint8_t)luaL_checkinteger(L, 1);
-    gdmsp_fsm_t st  = gamely_daemon_media_playback_get_status(channel);
+    gdmsp_fsm_t st  = gdmsp_control()->status(channel);
     lua_settop(L, 0);
     lua_pushstring(L, fsm_to_str(st));
     return 1;
 }
 
 static int lua_native_media_get_integer(lua_State *L) {
-    uint8_t     channel = (uint8_t)luaL_checkinteger(L, 1);
-    gdmsp_cmd_t cmd     = (gdmsp_cmd_t)luaL_checkinteger(L, 2);
-    int64_t     value   = gamely_daemon_media_playback_get_integer(channel, cmd);
+    uint8_t       channel = (uint8_t)luaL_checkinteger(L, 1);
+    gdmsp_cmd_t   cmd     = (gdmsp_cmd_t)luaL_checkinteger(L, 2);
+    gdmsp_value_t value   = { -1 };
+    gdmsp_control()->get(channel, cmd, &value);
     lua_settop(L, 0);
-    lua_pushinteger(L, (lua_Integer)value);
+    lua_pushinteger(L, (lua_Integer)value.i64);
     return 1;
 }
 
 static int lua_native_media_set_integer(lua_State *L) {
-    uint8_t     channel = (uint8_t)luaL_checkinteger(L, 1);
-    gdmsp_cmd_t cmd     = (gdmsp_cmd_t)luaL_checkinteger(L, 2);
-    int64_t     value   = (int64_t)luaL_checkinteger(L, 3);
-    gdmsp_fsm_t st      = gamely_daemon_media_playback_set_integer(channel, cmd, value);
+    uint8_t       channel = (uint8_t)luaL_checkinteger(L, 1);
+    gdmsp_cmd_t   cmd     = (gdmsp_cmd_t)luaL_checkinteger(L, 2);
+    gdmsp_value_t value   = { (int64_t)luaL_checkinteger(L, 3) };
+    gdmsp_fsm_t   st      = gdmsp_control()->set(channel, cmd, &value);
     lua_settop(L, 0);
     lua_pushstring(L, fsm_to_str(st));
     return 1;

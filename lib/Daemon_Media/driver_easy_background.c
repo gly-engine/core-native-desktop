@@ -5,6 +5,7 @@
 #include <stdatomic.h>
 
 #include "gecnd.h"
+#include "gdmsp.h"
 
 #define COLOR_CHANNEL_CAP 4
 
@@ -157,7 +158,7 @@ static gdmsp_value_t color_get(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
     return value;
 }
 
-static gamely_media_player_t media_player = {
+static gdmsp_player_t media_player = {
     .src = color_source,
     .set = color_set,
     .get = color_get,

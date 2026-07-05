@@ -52,16 +52,6 @@ typedef enum __attribute__((packed)) {
 } gecnd_fsm_t;
 
 typedef enum {
-    GDMSP_FSM_IDLE = 0,
-    GDMSP_FSM_OPENING,    /* service thread executando .source() */
-    GDMSP_FSM_LOADING,
-    GDMSP_FSM_PLAYING,
-    GDMSP_FSM_PAUSED,
-    GDMSP_FSM_STOPPING,
-    GDMSP_FSM_ERROR,
-} gdmsp_fsm_t;
-
-typedef enum {
     GECND_LUA_SOURCE_NONE = 0,    /* nada definido — usa fallback FS */
     GECND_LUA_SOURCE_FILE,
     GECND_LUA_SOURCE_HTTP,
@@ -587,46 +577,6 @@ void        gamely_daemon_media_background_push_rgb565  (const uint8_t *data,
 
 MediaFrame *gamely_daemon_media_background_get_frame   (void);
 bool        gamely_daemon_media_background_check_update(atomic_int *local_counter);
-
-typedef union {
-    int64_t i64;
-    struct {
-        int16_t x;
-        int16_t y;
-        int16_t w;
-        int16_t h;
-    };
-} gdmsp_value_t;
-
-typedef enum {
-    GDMSP_CMD_NONE = 0,
-    GDMSP_CMD_RESOURCE,
-    GDMSP_CMD_PLAY,
-    GDMSP_CMD_PAUSE,
-    GDMSP_CMD_STOP,
-    GDMSP_CMD_TICK,
-    GDMSP_CMD_CURRENT_TIME,
-    GDMSP_CMD_DURATION,
-    GDMSP_CMD_POSITION,
-} gdmsp_cmd_t;
-
-typedef struct {
-    gdmsp_fsm_t (*src)(uint8_t channel, const char *url, void *usr);
-    gdmsp_fsm_t (*set)(uint8_t channel, gdmsp_cmd_t cmd, gdmsp_value_t value, void *usr);
-    gdmsp_value_t (*get)(uint8_t channel, gdmsp_cmd_t cmd, void *usr);
-} gamely_media_player_t;
-
-void gamely_daemon_media_playback_source  (uint8_t channel, const char *url);
-void gamely_daemon_media_playback_command (uint8_t channel, gdmsp_cmd_t cmd);
-gdmsp_fsm_t gamely_daemon_media_playback_get_status (uint8_t channel);
-int64_t     gamely_daemon_media_playback_get_integer(uint8_t channel, gdmsp_cmd_t cmd);
-gdmsp_fsm_t gamely_daemon_media_playback_set_integer(uint8_t channel, gdmsp_cmd_t cmd,
-                                                     int64_t value);
-void gamely_daemon_media_playback_position(uint8_t channel,
-                                            int16_t x, int16_t y,
-                                            int16_t w, int16_t h);
-void gamely_daemon_media_playback_tick    (void);
-bool gamely_daemon_media_playback_active  (void);
 
 typedef void (*gamely_transmit_cb_t)(const uint8_t *buf, int size, int64_t pts);
 

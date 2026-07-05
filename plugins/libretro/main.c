@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include "gecnd.h"
+#include "gdmsp.h"
 #include "main.h"
 
 /* Protótipos de open_libretro.c */
@@ -29,17 +30,15 @@ const char *scanner_resolve_rom (const char *name);
 gecnd_api_t *api = NULL;
 
 static struct {
-    typeof(gamely_daemon_webclient_http)         *webclient_http;
-    typeof(gamely_daemon_media_playback_source)  *playback_source;
-    typeof(gamely_daemon_media_playback_command) *playback_command;
+    typeof(gamely_daemon_webclient_http) *webclient_http;
+    typeof(gdmsp_control)                *control;
 } host;
 
 static bool host_bind(void) {
-    if (host.playback_source) return true;
-    api->registry("get", "function:gamely_daemon_webclient_http",         (void *)&host.webclient_http,   NULL);
-    api->registry("get", "function:gamely_daemon_media_playback_source",  (void *)&host.playback_source,  NULL);
-    api->registry("get", "function:gamely_daemon_media_playback_command", (void *)&host.playback_command, NULL);
-    return host.playback_source != NULL;
+    if (host.control) return true;
+    api->registry("get", "function:gamely_daemon_webclient_http", (void *)&host.webclient_http, NULL);
+    api->registry("get", "function:gdmsp_control",                (void *)&host.control,        NULL);
+    return host.control != NULL;
 }
 
 /* ── estado compartilhado file + http ────────────────────────────── */
@@ -177,7 +176,7 @@ static gdmsp_value_t libretro_get(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
     return value;
 }
 
-static gamely_media_player_t libretro_file_player = {
+static gdmsp_player_t libretro_file_player = {
     .src = libretro_file_source,
     .set = libretro_set,
     .get = libretro_get,
@@ -303,7 +302,7 @@ static gdmsp_fsm_t libretro_http_source(uint8_t channel, const char *url, void *
     return GDMSP_FSM_LOADING;
 }
 
-static gamely_media_player_t libretro_http_player = {
+static gdmsp_player_t libretro_http_player = {
     .src = libretro_http_source,
     .set = libretro_set,
     .get = libretro_get,
@@ -312,12 +311,12 @@ static gamely_media_player_t libretro_http_player = {
 static char* lua_native_libretro_url(char* url) {
     char media_url[2048];
     snprintf(media_url, sizeof(media_url), "libretro+%s", url);
-    if (host_bind()) host.playback_source(0, media_url);
+    if (host_bind()) host.control()->source(0, media_url);
     return NULL;
 }
 
 static char* lua_native_libretro_exit(void) {
-    if (host_bind()) host.playback_command(0, GDMSP_CMD_STOP);
+    if (host_bind()) host.control()->set(0, GDMSP_CMD_STOP, NULL);
     return NULL;
 }
 

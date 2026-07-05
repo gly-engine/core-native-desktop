@@ -12,6 +12,7 @@
 #define GLY_HOOK_IMPL
 #include "gehook.h"
 #include "gecnd.h"
+#include "gdmsp.h"
 #include "gemetrics.h"
 
 #if defined(GECND_USE_VENDOR_ENGINE)
@@ -209,7 +210,7 @@ static bool state_lualib_load(gecnd_t *gly) {
 static bool state_daemons_up(gecnd_t *gly) {
 #if !defined(GECND_USE_VENDOR_GAME)
     if (gly->game_source.kind == GECND_LUA_SOURCE_NONE &&
-        gamely_daemon_media_playback_active()) {
+        gdmsp_control()->is_active()) {
         gly->state = GECND_FSM_RUNNING_NOGAME;
         return true;
     }
@@ -360,7 +361,7 @@ static void callback_draw(gecnd_t *gly) {
 
 static bool state_running(gecnd_t *gly) {
     gecnd_metrics_finish_wait();
-    gamely_daemon_media_playback_tick();
+    gdmsp_control()->tick();
     gamely_daemon_webserver_lua_tick();
 
     gecnd_metrics_start_input();
@@ -400,7 +401,7 @@ static bool state_running(gecnd_t *gly) {
 
     bool close_requested = false;
     gly_hook_should_close(&close_requested);
-    if (gly->state == GECND_FSM_RUNNING_NOGAME && !gamely_daemon_media_playback_active()) {
+    if (gly->state == GECND_FSM_RUNNING_NOGAME && !gdmsp_control()->is_active()) {
         gecnd_signal = 0;
         gly->state = GECND_FSM_EXITING;
     } else if (close_requested || gecnd_signal != 0) {
@@ -415,8 +416,8 @@ static bool state_exiting(gecnd_t *gly) {
         gly->state = GECND_FSM_EXITING_FORCE;
         return false;
     }
-    gamely_daemon_media_playback_tick();
-    return gamely_daemon_media_playback_active();
+    gdmsp_control()->tick();
+    return gdmsp_control()->is_active();
 }
 
 bool gecnd_update(gecnd_t *gly) {
