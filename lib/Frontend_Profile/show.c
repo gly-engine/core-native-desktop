@@ -1,5 +1,6 @@
 #include "gemetrics.h"
 #include "gehook.h"
+#include "genative.h"
 #include <stdio.h>
 #include <string.h>
 #include <lua.h>

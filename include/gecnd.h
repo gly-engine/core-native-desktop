@@ -14,6 +14,14 @@
 #define GECND_FLAG_TIMER_BACKEND        (2u)
 #define GECND_FLAG_TIMER_PREFER_BACKEND (3u)
 
+#define GECND_NATIVE_STUB(name, args);\
+    static void stub_##name args {}   \
+    void (*name) args = stub_##name;
+
+#define GECND_NATIVE_DAEMON(name, args);\
+    static void daemon_##name args;     \
+    void (*name) args = daemon_##name;
+
 #ifndef DOXYGEN
 #define GECND_INTERNAL_HW_GL_READY      (16u)
 #endif

@@ -12,6 +12,7 @@
 #define GLY_HOOK_IMPL
 #include "gehook.h"
 #include "gecnd.h"
+#include "genative.h"
 #include "gdmsp.h"
 #include "gdweb.h"
 #include "gemetrics.h"

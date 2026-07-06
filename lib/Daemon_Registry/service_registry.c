@@ -19,6 +19,28 @@ static gecnd_registry_entry_t *entries;
 static size_t count;
 static size_t capacity;
 
+#define BIND_HANDLER(suffix, type)                                  \
+    static void bind_set_##suffix(const char *k, void *v, void *usr) { \
+        (void)k; *(type *)usr = *(type *)v;                         \
+    }
+
+static void bind_set_ptr(const char *k, void *v, void *usr) {
+    (void)k; *(void **)usr = v;
+}
+
+BIND_HANDLER(bool, bool)
+BIND_HANDLER(u8,  uint8_t)
+BIND_HANDLER(u16, uint16_t)
+BIND_HANDLER(u32, uint32_t)
+BIND_HANDLER(u64, uint64_t)
+BIND_HANDLER(i8,  int8_t)
+BIND_HANDLER(i16, int16_t)
+BIND_HANDLER(i32, int32_t)
+BIND_HANDLER(i64, int64_t)
+BIND_HANDLER(f32, float)
+BIND_HANDLER(f64, double)
+#undef BIND_HANDLER
+
 static size_t lower_bound(const char *key, size_t len) {
     size_t lo = 0, hi = count;
     while (lo < hi) {
@@ -64,6 +86,27 @@ int gecnd_registry(const char *cmd, const char *key, void *const value, void *co
         entries[pos].hooks = node;
         if (entries[pos].value) node->handler(key, entries[pos].value, usr);
         return 0;
+    }
+
+    if (strcmp(cmd, "bind") == 0) {
+        gecnd_registry_handler handler;
+        switch ((gecnd_type_t)(intptr_t)usr) {
+            case GECND_TYPE_VOID:
+            case GECND_TYPE_STRING:  handler = bind_set_ptr;  break;
+            case GECND_TYPE_BOOLEAN: handler = bind_set_bool; break;
+            case GECND_TYPE_U8:      handler = bind_set_u8;   break;
+            case GECND_TYPE_U16:     handler = bind_set_u16;  break;
+            case GECND_TYPE_U32:     handler = bind_set_u32;  break;
+            case GECND_TYPE_U64:     handler = bind_set_u64;  break;
+            case GECND_TYPE_I8:      handler = bind_set_i8;   break;
+            case GECND_TYPE_I16:     handler = bind_set_i16;  break;
+            case GECND_TYPE_I32:     handler = bind_set_i32;  break;
+            case GECND_TYPE_I64:     handler = bind_set_i64;  break;
+            case GECND_TYPE_F32:     handler = bind_set_f32;  break;
+            case GECND_TYPE_F64:     handler = bind_set_f64;  break;
+            default:                 return -1;
+        }
+        return gecnd_registry("hook", key, (void *)handler, value);
     }
 
     if (strcmp(cmd, "get") == 0) {

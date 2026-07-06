@@ -15,6 +15,13 @@
 static bool option_mojibake = false;
 static float option_font_factor = 1.0;
 
+GECND_NATIVE_STUB(native_text_print, (int16_t, int16_t, const char *));
+GECND_NATIVE_STUB(native_text_mensure, (const char *, int16_t *, int16_t *));
+GECND_NATIVE_STUB(native_text_font_size, (uint8_t));
+GECND_NATIVE_STUB(native_text_font_name, (const char *));
+GECND_NATIVE_STUB(native_text_font_default, (uint8_t));
+GECND_NATIVE_STUB(native_text_font_previous, ());
+
 static const uint16_t cp1252_high[32] = {
     0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
     0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
@@ -96,16 +103,6 @@ static int lua_native_text_font_previous(lua_State *L) {
     return 0;
 }
 
-static void set_font_factor(const char* key, void* value, void *usr) {
-    (void) key; (void) usr;
-    option_font_factor = *(float*) value;
-}
-
-static void set_mojibake(const char* key, void* value, void *usr) {
-    (void) key; (void) usr;
-    option_mojibake = *(bool *) value;
-}
-
 __attribute__((constructor))
 static void init() {
     gecnd_registry("set", "lua_global_func:native_text_print", lua_native_text_print, NULL);
@@ -114,8 +111,14 @@ static void init() {
     gecnd_registry("set", "lua_global_func:native_text_font_name", lua_native_text_font_name, NULL);
     gecnd_registry("set", "lua_global_func:native_text_font_default", lua_native_text_font_default, NULL);
     gecnd_registry("set", "lua_global_func:native_text_font_previous", lua_native_text_font_previous, NULL);
-    gecnd_registry("hook", "option:font_factor", set_font_factor, NULL);
-    gecnd_registry("hook", "option:mojibake", set_mojibake, NULL);
+    gecnd_registry("bind", "backend_func:native_text_print", &native_text_print, GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_text_mensure", &native_text_mensure, GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_text_font_size", &native_text_font_size, GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_text_font_name", &native_text_font_name, GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_text_font_default", &native_text_font_default, GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_text_font_previous", &native_text_font_previous, GECND_TYPE_VOID);
+    gecnd_registry("bind", "option:font_factor", &option_font_factor, GECND_TYPE_F32);
+    gecnd_registry("bind", "option:mojibake", &option_mojibake, GECND_TYPE_BOOLEAN);
 }
 
 __attribute__((destructor))

@@ -8,7 +8,9 @@
 #include "gehook.h"
 #include "geopengl.h"
 
-void native_draw_start(void) {
+static void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r);
+
+static void native_draw_start(void) {
     gecnd_t *gly = gecnd_get_root();
     if (gly->state != GECND_FSM_RUNNING_PERFORMANCE &&
         gly->state != GECND_FSM_RUNNING_BACKGROUND) {
@@ -23,19 +25,19 @@ void native_draw_flush() {
     platform_swap_buffers();
 }
 
-void native_draw_color(uint32_t color)
+static void native_draw_color(uint32_t color)
 {
     geogl_get_state()->current_color.u32 = __builtin_bswap32(color);
 }
 
-void native_draw_clear(uint32_t color) {
+static void native_draw_clear(uint32_t color) {
     if (gdmsp_control()->is_active()) return;
     GLBackendState *s = geogl_get_state();
     native_draw_color(color);
     native_draw_rect(0, 0, 0, s->window_width, s->window_height, 0);
 }
 
-void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r) {
+static void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r) {
     GLBackendState *s = geogl_get_state();
     uint32_t color = s->current_color.u32;
 
@@ -170,7 +172,7 @@ void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, 
     }
 }
 
-void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
+static void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
     GLBackendState *s = geogl_get_state();
     uint32_t color = s->current_color.u32;
     float dx = (float)(x2 - x1), dy = (float)(y2 - y1);
@@ -187,4 +189,13 @@ void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
     ge_batch_add_vertex_shape((int16_t)px[0], (int16_t)py[0], -32767, -32767, 0, color, 0, false);
     ge_batch_add_vertex_shape((int16_t)px[2], (int16_t)py[2], 32767, 32767, 0, color, 0, false);
     ge_batch_add_vertex_shape((int16_t)px[3], (int16_t)py[3], 32767, -32767, 0, color, 0, false);
+}
+
+__attribute__((constructor))
+static void init(void) {
+    gecnd_registry("set", "backend_func:native_draw_start", (void *)native_draw_start, NULL);
+    gecnd_registry("set", "backend_func:native_draw_color", (void *)native_draw_color, NULL);
+    gecnd_registry("set", "backend_func:native_draw_clear", (void *)native_draw_clear, NULL);
+    gecnd_registry("set", "backend_func:native_draw_rect",  (void *)native_draw_rect,  NULL);
+    gecnd_registry("set", "backend_func:native_draw_line",  (void *)native_draw_line,  NULL);
 }

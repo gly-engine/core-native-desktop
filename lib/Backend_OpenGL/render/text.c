@@ -143,7 +143,7 @@ void native_text_set_default_font_mem(const void *data, size_t size) {
     default_font_size = size;
 }
 
-void native_text_print(int16_t x, int16_t y, const char *text) {
+static void native_text_print(int16_t x, int16_t y, const char *text) {
     if (!text || !initialized) return;
     ensure_font_loaded();
     if (fs_font == FONS_INVALID) return;
@@ -156,7 +156,7 @@ void native_text_print(int16_t x, int16_t y, const char *text) {
     fonsDrawText(fs, (float)x, (float)y, text, NULL);
 }
 
-void native_text_mensure(const char *text, int16_t *w, int16_t *h)
+static void native_text_mensure(const char *text, int16_t *w, int16_t *h)
 {
     ensure_font_loaded();
     fonsSetSize(fs, current_size);
@@ -173,14 +173,23 @@ void native_text_mensure(const char *text, int16_t *w, int16_t *h)
     }
 }
 
-void native_text_font_size(uint8_t size) {
+static void native_text_font_size(uint8_t size) {
     current_size = size ? (float)size : 16.0f;
 }
 
-void native_text_font_name(const char *path) { (void)path; }
+static void native_text_font_name(const char *path) { (void)path; }
 
-void native_text_font_default(uint8_t index) {
+static void native_text_font_default(uint8_t index) {
     (void)index;
     if (!initialized) ensure_init();
     ensure_font_loaded();
+}
+
+__attribute__((constructor))
+static void init(void) {
+    gecnd_registry("set", "backend_func:native_text_print",        (void *)native_text_print,        NULL);
+    gecnd_registry("set", "backend_func:native_text_mensure",      (void *)native_text_mensure,      NULL);
+    gecnd_registry("set", "backend_func:native_text_font_size",    (void *)native_text_font_size,    NULL);
+    gecnd_registry("set", "backend_func:native_text_font_name",    (void *)native_text_font_name,    NULL);
+    gecnd_registry("set", "backend_func:native_text_font_default", (void *)native_text_font_default, NULL);
 }
