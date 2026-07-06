@@ -566,14 +566,14 @@ if(GECND_USE_WARMCAT)
     add_dependencies(libwebsockets libwebsockets_proj)
     add_dependencies(${PROJECT_NAME} libwebsockets)
     target_link_libraries(${PROJECT_NAME} PRIVATE libwebsockets)
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_WebServer/driver_warmcat.c")
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_WebClient/driver_warmcat.c")
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Web/driver_server_uv_warmcat.c")
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Web/driver_client_uv_warmcat.c")
 endif()
 
 if((GECND_USE_WARMCAT) AND GECND_USE_MBEDTLS)
     target_link_libraries(${PROJECT_NAME} PRIVATE mbedtls mbedx509 mbedcrypto)
-    set_source_files_properties(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_WebServer/driver_warmcat.c" PROPERTIES COMPILE_DEFINITIONS "GECND_HAS_SSL=1")
-    set_source_files_properties(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_WebClient/driver_warmcat.c" PROPERTIES COMPILE_DEFINITIONS "GECND_HAS_SSL=1")
+    set_source_files_properties(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Web/driver_server_uv_warmcat.c" PROPERTIES COMPILE_DEFINITIONS "GECND_HAS_SSL=1")
+    set_source_files_properties(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Web/driver_client_uv_warmcat.c" PROPERTIES COMPILE_DEFINITIONS "GECND_HAS_SSL=1")
 endif()
 
 # todo: lirc only linux

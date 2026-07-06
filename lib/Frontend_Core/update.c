@@ -13,7 +13,7 @@
 #include "gehook.h"
 #include "gecnd.h"
 #include "gdmsp.h"
-#include "gdwsl.h"
+#include "gdweb.h"
 #include "gemetrics.h"
 
 #if defined(GECND_USE_VENDOR_ENGINE)
@@ -102,13 +102,13 @@ static const char *load_via_resolver(gecnd_t *gly, const gecnd_lua_source_t *src
 
 /* ── HTTP fetch callbacks (user = gecnd_lua_source_t *src) ──────── */
 
-static void on_fetch_status(gly_req_id_t id, int status, void *user) {
+static void on_fetch_status(gdweb_id_t id, int status, void *user) {
     (void)id;
     if (status < 200 || status >= 300)
         ((gecnd_lua_source_t *)user)->fetch.error = true;
 }
 
-static void on_fetch_data(gly_req_id_t id, const char *data, size_t len, void *user) {
+static void on_fetch_data(gdweb_id_t id, const char *data, size_t len, void *user) {
     (void)id;
     gecnd_lua_source_t *src = (gecnd_lua_source_t *)user;
     if (src->fetch.error) return;
@@ -119,12 +119,12 @@ static void on_fetch_data(gly_req_id_t id, const char *data, size_t len, void *u
     src->fetch.len += len;
 }
 
-static void on_fetch_done(gly_req_id_t id, void *user) {
+static void on_fetch_done(gdweb_id_t id, void *user) {
     (void)id;
     ((gecnd_lua_source_t *)user)->fetch.done = true;
 }
 
-static void on_fetch_error(gly_req_id_t id, const char *msg, void *user) {
+static void on_fetch_error(gdweb_id_t id, const char *msg, void *user) {
     (void)id; (void)msg;
     gecnd_lua_source_t *src = (gecnd_lua_source_t *)user;
     src->fetch.error = true;
@@ -137,7 +137,7 @@ static void fetch_start(gecnd_lua_source_t *src) {
     src->fetch.len   = 0;
     src->fetch.done  = false;
     src->fetch.error = false;
-    if (!gdwsl_control_client()->http(src->uri, NULL,
+    if (!gdweb_control_client()->http(src->uri, NULL,
             on_fetch_status, on_fetch_data, on_fetch_done, on_fetch_error, src)) {
         src->fetch.error = true;
         src->fetch.done  = true;
@@ -363,7 +363,7 @@ static void callback_draw(gecnd_t *gly) {
 static bool state_running(gecnd_t *gly) {
     gecnd_metrics_finish_wait();
     gdmsp_control()->tick();
-    gamely_daemon_webserver_lua_tick();
+    gdweb_lua_tick();
 
     gecnd_metrics_start_input();
     if (gecnd_is_root(gly)) gamely_hypervisor_tick();

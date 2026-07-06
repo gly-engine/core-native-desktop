@@ -2,13 +2,13 @@
 #include <stdio.h>
 
 #include "gecnd.h"
-#include "gdwsl.h"
+#include "gdweb.h"
 
 
 #define MAX_SLOTS 8
 
 static struct {
-    gly_req_id_t conn_id;
+    gdweb_id_t conn_id;
     int          active;
 } g_slots[MAX_SLOTS];
 
@@ -23,7 +23,7 @@ static void on_ts_packet(const uint8_t *buf, int size, int64_t pts)
     (void)pts;
     for (int i = 0; i < MAX_SLOTS; i++) {
         if (!g_slots[i].active) continue;
-        gdwsl_control_server()->send(g_slots[i].conn_id, (const char *)buf, (size_t)size);
+        gdweb_control_server()->send(g_slots[i].conn_id, (const char *)buf, (size_t)size);
     }
 }
 
@@ -31,7 +31,7 @@ static void on_ts_packet(const uint8_t *buf, int size, int64_t pts)
  * on_stream_client — chamado pelo driver HTTP ao conectar/desconectar.
  * Ao conectar: envia IDR cache para início imediato ou força IDR.
  * ---------------------------------------------------------------------- */
-static void service_stream_client_cb(gly_req_id_t conn_id, bool connected)
+static void service_stream_client_cb(gdweb_id_t conn_id, bool connected)
 {
     if (connected) {
         for (int i = 0; i < MAX_SLOTS; i++) {
@@ -52,7 +52,7 @@ static void service_stream_client_cb(gly_req_id_t conn_id, bool connected)
             const uint8_t *idr = NULL;
             int idr_len = gamely_daemon_media_transmit_get_idr_cache(&idr);
             if (idr_len > 0) {
-                gdwsl_control_server()->send(conn_id, (const char *)idr, (size_t)idr_len);
+                gdweb_control_server()->send(conn_id, (const char *)idr, (size_t)idr_len);
             } else {
                 /* stream ainda sem IDR — força keyframe no próximo frame */
                 gamely_daemon_media_transmit_force_idr();

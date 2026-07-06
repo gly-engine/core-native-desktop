@@ -7,7 +7,7 @@
 #include <uv.h>
 
 #include "gecnd.h"
-#include "gdwsl.h"
+#include "gdweb.h"
 
 #define DEVTOOLS_RETRY     500
 #define DEVTOOLS_RETRY_MAX 5
@@ -36,7 +36,7 @@ static uv_timer_t           retry_timer;
 static bool                 timer_active  = false;
 static bool                 http_pending  = false;
 static bool                 ws_connecting = false;
-static gly_req_id_t         ws_id         = 0;
+static gdweb_id_t         ws_id         = 0;
 static char                 http_buf[4096];
 static size_t               http_buf_len  = 0;
 static uint32_t             cdp_msg_id    = 0;
@@ -46,31 +46,31 @@ static int                  ws_fail_count = 0;
 static void on_handle_close(uv_handle_t *handle) { (void)handle; }
 static void try_connect_devtools(uv_timer_t *t);
 
-static void on_ws_open(gly_req_id_t id, void *user) {
+static void on_ws_open(gdweb_id_t id, void *user) {
     ws_id         = id;
     ws_connecting = false;
     ws_fail_count = 0;
     uv_timer_stop(&retry_timer);
 }
 
-static void on_ws_msg(gly_req_id_t id, const char *data, size_t len, void *user) {
+static void on_ws_msg(gdweb_id_t id, const char *data, size_t len, void *user) {
     (void)id; (void)user;
-    gdwsl_control_server()->send_all(DEVTOOLS_WS_PATH, data, len, 0);
+    gdweb_control_server()->send_all(DEVTOOLS_WS_PATH, data, len, 0);
 }
 
-static void ws_dev_tools(const gly_ws_req_t *req) {
-    if (req->event != GLY_WS_MESSAGE || !ws_id) return;
-    gdwsl_control_client()->send(ws_id, req->data, req->len);
+static void ws_dev_tools(const gdweb_ws_req_t *req) {
+    if (req->event != GDWEB_WS_MESSAGE || !ws_id) return;
+    gdweb_control_client()->send(ws_id, req->data, req->len);
 }
 
-static void on_ws_close(gly_req_id_t id, void *user) {
+static void on_ws_close(gdweb_id_t id, void *user) {
     ws_id         = 0;
     ws_connecting = false;
     if (timer_active)
         uv_timer_start(&retry_timer, try_connect_devtools, DEVTOOLS_RETRY, DEVTOOLS_RETRY);
 }
 
-static void on_ws_error(gly_req_id_t id, const char *msg, void *user) {
+static void on_ws_error(gdweb_id_t id, const char *msg, void *user) {
     ws_connecting = false;
     if (ws_id != id) return;
     ws_id = 0;
@@ -100,10 +100,10 @@ static void on_key(const char *name, bool pressed, int port, void *usr) {
         pressed ? "rawKeyDown" : "keyUp",
         e->cdp_key, e->cdp_code, e->vk, e->vk);
 
-    gdwsl_control_client()->send(ws_id, buf, (size_t)len);
+    gdweb_control_client()->send(ws_id, buf, (size_t)len);
 }
 
-static void on_http_done(gly_req_id_t id, void *user) {
+static void on_http_done(gdweb_id_t id, void *user) {
     http_pending = false;
 
     const char *p = strstr(http_buf, "webSocketDebuggerUrl");
@@ -121,7 +121,7 @@ static void on_http_done(gly_req_id_t id, void *user) {
     ws_path[len] = '\0';
 }
 
-static void on_http_data(gly_req_id_t id, const char *data, size_t len, void *user) {
+static void on_http_data(gdweb_id_t id, const char *data, size_t len, void *user) {
     if (http_buf_len + len < sizeof(http_buf)) {
         memcpy(http_buf + http_buf_len, data, len);
         http_buf_len += len;
@@ -129,11 +129,11 @@ static void on_http_data(gly_req_id_t id, const char *data, size_t len, void *us
     }
 }
 
-static void on_http_status(gly_req_id_t id, int status, void *user) {
+static void on_http_status(gdweb_id_t id, int status, void *user) {
     http_buf_len = 0;
 }
 
-static void on_http_error(gly_req_id_t id, const char *msg, void *user) {
+static void on_http_error(gdweb_id_t id, const char *msg, void *user) {
     http_pending = false;
 }
 
@@ -145,7 +145,7 @@ static void try_connect_devtools(uv_timer_t *t) {
         snprintf(ws_url, sizeof(ws_url),
             "ws://" DEVTOOLS_HOST ":%d%s", DEVTOOLS_PORT, ws_path);
         ws_connecting = true;
-        if (!gdwsl_control_client()->ws_connect(ws_url, NULL,
+        if (!gdweb_control_client()->ws_connect(ws_url, NULL,
                 on_ws_open, on_ws_msg, on_ws_close, on_ws_error, NULL))
             ws_connecting = false;
         return;
@@ -158,8 +158,8 @@ static void try_connect_devtools(uv_timer_t *t) {
 
     http_pending  = true;
     http_buf_len  = 0;
-    gly_http_req_t req = {0};
-    if (!gdwsl_control_client()->http(url, &req,
+    gdweb_http_req_t req = {0};
+    if (!gdweb_control_client()->http(url, &req,
             on_http_status, on_http_data, on_http_done, on_http_error, NULL))
         http_pending = false;
 }
@@ -169,7 +169,7 @@ static void on_browser_exit(uv_process_t *p, int64_t status, int signal) {
     if (gly) gecnd_set_state(gly, GECND_FSM_RUNNING);
 
     if (ws_id) {
-        gdwsl_control_client()->close(ws_id);
+        gdweb_control_client()->close(ws_id);
         ws_id = 0;
     }
 

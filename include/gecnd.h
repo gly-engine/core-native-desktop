@@ -416,7 +416,7 @@ bool               gamely_daemon_img_has_backend(const char *fmt);
 bool               gamely_daemon_img_can_decode (const char *from);
 int32_t            gamely_daemon_img_loading_count(void);
 
-/* ---- Web Daemons: include/gdwsl.h ---- */
+/* ---- Web Daemons: include/gdweb.h ---- */
 
 /* ---- Backends ---- */
 

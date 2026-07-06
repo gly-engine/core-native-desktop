@@ -8,7 +8,7 @@
 #include <sys/wait.h>
 
 #include "gecnd.h"
-#include "gdwsl.h"
+#include "gdweb.h"
 
 static char s_iface[64];
 
@@ -172,15 +172,15 @@ static bool wpa_cli_ok_argv(const char *const *args, size_t argc,
     return ok;
 }
 
-static void send_json(const gly_http_req_t *req, int status, const char *json) {
-    gdwsl_value_t v = { .i64 = status };
-    gdwsl_control_server()->http(req->id, GDWSL_HTTP_STATUS, &v);
+static void send_json(const gdweb_http_req_t *req, int status, const char *json) {
+    gdweb_value_t v = { .i64 = status };
+    gdweb_control_server()->http(req->id, GDWEB_HTTP_STATUS, &v);
     v.str = "application/json";
-    gdwsl_control_server()->http(req->id, GDWSL_HTTP_CONTENT_TYPE, &v);
-    gdwsl_control_server()->send(req->id, json, strlen(json));
+    gdweb_control_server()->http(req->id, GDWEB_HTTP_CONTENT_TYPE, &v);
+    gdweb_control_server()->send(req->id, json, strlen(json));
 }
 
-static void send_error(const gly_http_req_t *req, int status,
+static void send_error(const gdweb_http_req_t *req, int status,
                        const char *msg, const char *detail) {
     char json[512];
     if (detail && *detail)
@@ -319,7 +319,7 @@ static bool parse_bss_line(char *line, char *json_out, size_t json_sz) {
     return true;
 }
 
-static void http_wifi_status(const gly_http_req_t *req) {
+static void http_wifi_status(const gdweb_http_req_t *req) {
     char raw[2048] = {0};
     wpa_cli_run("status", raw, sizeof(raw));
 
@@ -364,7 +364,7 @@ static void http_wifi_status(const gly_http_req_t *req) {
     send_json(req, 200, json);
 }
 
-static void http_wifi_scan(const gly_http_req_t *req) {
+static void http_wifi_scan(const gdweb_http_req_t *req) {
     char out[256] = {0};
     wpa_cli_run("scan", out, sizeof(out));
     if (wpa_out_ok(out) || strstr(out, "FAIL-BUSY")) {
@@ -376,7 +376,7 @@ static void http_wifi_scan(const gly_http_req_t *req) {
     send_error(req, 500, "scan failed", detail);
 }
 
-static void http_wifi_scan_results(const gly_http_req_t *req) {
+static void http_wifi_scan_results(const gdweb_http_req_t *req) {
     char raw[8192] = {0};
     wpa_cli_run("scan_results", raw, sizeof(raw));
 
@@ -404,7 +404,7 @@ static void http_wifi_scan_results(const gly_http_req_t *req) {
     send_json(req, 200, json);
 }
 
-static void http_wifi_connect(const gly_http_req_t *req) {
+static void http_wifi_connect(const gdweb_http_req_t *req) {
     char ssid[128] = {0}, pass[128] = {0};
     if (!get_param(req->path, "ssid", ssid, sizeof(ssid))) {
         send_json(req, 400, "{\"error\":\"missing ssid\"}");
@@ -417,7 +417,7 @@ static void http_wifi_connect(const gly_http_req_t *req) {
     else    send_error(req, 500, "connect failed", detail);
 }
 
-static void http_wifi_disconnect(const gly_http_req_t *req) {
+static void http_wifi_disconnect(const gdweb_http_req_t *req) {
     char detail[256] = {0};
     bool ok = wpa_cli_ok("disconnect", detail, sizeof(detail));
     if (ok) send_json(req, 200, "{\"ok\":true}");

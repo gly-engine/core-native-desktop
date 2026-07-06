@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "gecnd.h"
-#include "gdwsl.h"
+#include "gdweb.h"
 
 /* ── per-request accumulation context ────────────────────────────── */
 
@@ -15,13 +15,13 @@ typedef struct {
     int                     failed;
 } fetch_ctx_t;
 
-static void on_status(gly_req_id_t id, int status, void *usr) {
+static void on_status(gdweb_id_t id, int status, void *usr) {
     (void)id;
     fetch_ctx_t *ctx = (fetch_ctx_t *)usr;
     if (status < 200 || status >= 300) ctx->failed = 1;
 }
 
-static void on_data(gly_req_id_t id, const char *data, size_t len, void *usr) {
+static void on_data(gdweb_id_t id, const char *data, size_t len, void *usr) {
     (void)id;
     fetch_ctx_t *ctx = (fetch_ctx_t *)usr;
     if (ctx->failed) return;
@@ -37,7 +37,7 @@ static void on_data(gly_req_id_t id, const char *data, size_t len, void *usr) {
     ctx->len += len;
 }
 
-static void on_done(gly_req_id_t id, void *usr) {
+static void on_done(gdweb_id_t id, void *usr) {
     (void)id;
     fetch_ctx_t *ctx = (fetch_ctx_t *)usr;
     if (ctx->failed || !ctx->buf) {
@@ -52,7 +52,7 @@ static void on_done(gly_req_id_t id, void *usr) {
     free(ctx);
 }
 
-static void on_error(gly_req_id_t id, const char *msg, void *usr) {
+static void on_error(gdweb_id_t id, const char *msg, void *usr) {
     (void)id; (void)msg;
     fetch_ctx_t *ctx = (fetch_ctx_t *)usr;
     free(ctx->buf);
@@ -94,7 +94,7 @@ void gamely_resolver_image_http(const char *url, void *schema_usr,
         }
     }
 
-    gdwsl_control_client()->http(url, NULL, on_status, on_data, on_done, on_error, ctx);
+    gdweb_control_client()->http(url, NULL, on_status, on_data, on_done, on_error, ctx);
 }
 
 __attribute__((constructor))

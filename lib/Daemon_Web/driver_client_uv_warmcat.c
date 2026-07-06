@@ -7,15 +7,7 @@
 #include <uv.h>
 
 #include "gecnd.h"
-#include "gdwsl.h"
-
-extern gly_req_id_t webloop_http_request(const char *path, const char *method,
-                                          const char *body, size_t body_len,
-                                          gly_wc_status_cb, gly_wc_data_cb,
-                                          gly_wc_done_cb, gly_wc_error_cb, void *);
-extern gly_req_id_t webloop_ws_connect  (const char *path,
-                                          gly_wc_ws_open_cb, gly_wc_ws_msg_cb,
-                                          gly_wc_ws_close_cb, gly_wc_error_cb, void *);
+#include "gdweb.h"
 
 #define MAX_CONNS 64
 #define BUF_SIZE  8192
@@ -23,19 +15,19 @@ extern gly_req_id_t webloop_ws_connect  (const char *path,
 typedef enum { CONN_HTTP, CONN_WS } conn_type_t;
 
 typedef struct {
-    gly_req_id_t        id;
+    gdweb_id_t        id;
     conn_type_t        type;
     int                active;
     int                http_status;
 
-    gly_wc_status_cb   on_status;
-    gly_wc_data_cb     on_data;
-    gly_wc_done_cb     on_done;
-    gly_wc_error_cb    on_error;
+    gdweb_status_cb_t   on_status;
+    gdweb_data_cb_t     on_data;
+    gdweb_done_cb_t     on_done;
+    gdweb_error_cb_t    on_error;
 
-    gly_wc_ws_open_cb  on_ws_open;
-    gly_wc_ws_msg_cb   on_ws_msg;
-    gly_wc_ws_close_cb on_ws_close;
+    gdweb_ws_open_cb_t  on_ws_open;
+    gdweb_ws_msg_cb_t   on_ws_msg;
+    gdweb_ws_close_cb_t on_ws_close;
 
     unsigned char  ws_pending[LWS_PRE + BUF_SIZE];
     size_t         ws_pending_len;
@@ -51,7 +43,7 @@ typedef struct {
 static struct {
     struct lws_context *ctx;
     conn_t              pool[MAX_CONNS];
-    gly_req_id_t         next_id;
+    gdweb_id_t         next_id;
     int                 started;
 } g;
 
@@ -69,7 +61,7 @@ static conn_t *conn_alloc(void)
     return NULL;
 }
 
-static conn_t *conn_by_id(gly_req_id_t id)
+static conn_t *conn_by_id(gdweb_id_t id)
 {
     for (int i = 0; i < MAX_CONNS; i++)
         if (g.pool[i].active && g.pool[i].id == id)
@@ -152,8 +144,8 @@ static int callback_wc(struct lws *wsi,
 
     case LWS_CALLBACK_COMPLETED_CLIENT_HTTP: {
         if (!c || !c->active) break;
-        gly_wc_done_cb  cb  = c->on_done;
-        gly_req_id_t    cid = c->id;
+        gdweb_done_cb_t  cb  = c->on_done;
+        gdweb_id_t    cid = c->id;
         void           *usr = c->user;
         c->on_done  = NULL;
         c->on_error = NULL;
@@ -211,8 +203,8 @@ static int callback_wc(struct lws *wsi,
     case LWS_CALLBACK_CLIENT_CONNECTION_ERROR: {
         if (!c || !c->active) break;
         const char     *msg = in ? (const char *)in : "connection error";
-        gly_wc_error_cb cb  = c->on_error;
-        gly_req_id_t    cid = c->id;
+        gdweb_error_cb_t cb  = c->on_error;
+        gdweb_id_t    cid = c->id;
         void           *usr = c->user;
         c->on_error    = NULL;
         c->on_status   = NULL;
@@ -228,8 +220,8 @@ static int callback_wc(struct lws *wsi,
 
     case LWS_CALLBACK_CLIENT_CLOSED: {
         if (!c || !c->active) break;
-        gly_wc_ws_close_cb cb  = c->on_ws_close;
-        gly_req_id_t       cid = c->id;
+        gdweb_ws_close_cb_t cb  = c->on_ws_close;
+        gdweb_id_t       cid = c->id;
         void              *usr = c->user;
         int                ws  = c->type == CONN_WS;
         conn_free(c);
@@ -304,13 +296,13 @@ static void wc_stop(void)
     memset(&g, 0, sizeof(g));
 }
 
-static gly_req_id_t wc_http(
+static gdweb_id_t wc_http(
     const char      *url,
-    gly_http_req_t  *req,
-    gly_wc_status_cb on_status,
-    gly_wc_data_cb   on_data,
-    gly_wc_done_cb   on_done,
-    gly_wc_error_cb  on_error,
+    gdweb_http_req_t  *req,
+    gdweb_status_cb_t on_status,
+    gdweb_data_cb_t   on_data,
+    gdweb_done_cb_t   on_done,
+    gdweb_error_cb_t  on_error,
     void            *user)
 {
     if (!url) return 0;
@@ -318,15 +310,6 @@ static gly_req_id_t wc_http(
     const char *method   = req && req->method   ? req->method   : "GET";
     const char *body     = req ? req->body     : NULL;
     size_t      body_len = req ? req->body_len : 0;
-
-    if (strncmp(url, "self://", 7) == 0) {
-        const char *path = url + 7;
-        if (*path != '/') path--;
-        gly_req_id_t id = webloop_http_request(path, method, body, body_len,
-                                                on_status, on_data, on_done, on_error, user);
-        if (req) req->id = id;
-        return id;
-    }
 
     if (!g.started) return 0;
 
@@ -375,21 +358,15 @@ static gly_req_id_t wc_http(
     return c->id;
 }
 
-static gly_req_id_t wc_ws_connect(
+static gdweb_id_t wc_ws_connect(
     const char        *url,
     const char        *protocol,
-    gly_wc_ws_open_cb  on_open,
-    gly_wc_ws_msg_cb   on_msg,
-    gly_wc_ws_close_cb on_close,
-    gly_wc_error_cb    on_error,
+    gdweb_ws_open_cb_t  on_open,
+    gdweb_ws_msg_cb_t   on_msg,
+    gdweb_ws_close_cb_t on_close,
+    gdweb_error_cb_t    on_error,
     void              *user)
 {
-    if (strncmp(url, "self://", 7) == 0) {
-        const char *path = url + 7;
-        if (*path != '/') path--;
-        return webloop_ws_connect(path, on_open, on_msg, on_close, on_error, user);
-    }
-
     if (!g.started) return 0;
 
     conn_t *c = conn_alloc();
@@ -429,15 +406,8 @@ static gly_req_id_t wc_ws_connect(
     return c->id;
 }
 
-extern void webloop_client_ws_send (gly_req_id_t id, const char *data, size_t len);
-extern void webloop_client_ws_close(gly_req_id_t id);
-
-static void wc_send(gly_req_id_t id, const char *data, size_t len)
+static void wc_send(gdweb_id_t id, const char *data, size_t len)
 {
-    if (id & 0x80000000u) {
-        webloop_client_ws_send(id, data, len);
-        return;
-    }
     conn_t *c = conn_by_id(id);
     if (!c || !c->wsi) return;
     size_t n = len < BUF_SIZE ? len : BUF_SIZE;
@@ -447,33 +417,20 @@ static void wc_send(gly_req_id_t id, const char *data, size_t len)
     lws_callback_on_writable(c->wsi);
 }
 
-static void wc_close(gly_req_id_t id)
+static void wc_close(gdweb_id_t id)
 {
-    if (id & 0x80000000u) {
-        webloop_client_ws_close(id);
-        return;
-    }
     conn_t *c = conn_by_id(id);
     if (!c || !c->wsi) return;
     lws_close_reason(c->wsi, LWS_CLOSE_STATUS_NORMAL, NULL, 0);
     lws_set_timeout(c->wsi, PENDING_TIMEOUT_CLOSE_SEND, LWS_TO_KILL_ASYNC);
 }
 
-static const gdwsl_client_t s_client = {
-    .http       = wc_http,
-    .ws_connect = wc_ws_connect,
-    .send       = wc_send,
-    .close      = wc_close,
-    .start      = wc_start,
-    .stop       = wc_stop,
-};
-
-const gdwsl_client_t *gdwsl_control_client(void)
-{
-    return &s_client;
-}
-
 __attribute__((constructor))
 static void init(void) {
-    gecnd_registry("set", "function:gdwsl_control_client", (void *)gdwsl_control_client, NULL);
+    gecnd_registry("set", "web_driver:client_http",  (void *)wc_http,       NULL);
+    gecnd_registry("set", "web_driver:client_ws",    (void *)wc_ws_connect, NULL);
+    gecnd_registry("set", "web_driver:client_send",  (void *)wc_send,       NULL);
+    gecnd_registry("set", "web_driver:client_close", (void *)wc_close,      NULL);
+    gecnd_registry("set", "web_driver:client_start", (void *)wc_start,      NULL);
+    gecnd_registry("set", "web_driver:client_stop",  (void *)wc_stop,       NULL);
 }

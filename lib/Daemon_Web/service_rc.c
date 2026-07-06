@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 #include "gecnd.h"
-#include "gdwsl.h"
+#include "gdweb.h"
 
 static const char s_html[] =
 "<!DOCTYPE html>"
@@ -77,18 +77,18 @@ static const char s_html[] =
 "</body>"
 "</html>";
 
-static void http_rc(const gly_http_req_t *req)
+static void http_rc(const gdweb_http_req_t *req)
 {
-    gdwsl_value_t ct = { .str = "text/html; charset=utf-8" };
-    gdwsl_control_server()->http(req->id, GDWSL_HTTP_CONTENT_TYPE, &ct);
-    gdwsl_control_server()->send(req->id, s_html, sizeof(s_html) - 1);
+    gdweb_value_t ct = { .str = "text/html; charset=utf-8" };
+    gdweb_control_server()->http(req->id, GDWEB_HTTP_CONTENT_TYPE, &ct);
+    gdweb_control_server()->send(req->id, s_html, sizeof(s_html) - 1);
 }
 
-static void ws_rc(const gly_ws_req_t *req)
+static void ws_rc(const gdweb_ws_req_t *req)
 {
-    if (req->event == GLY_WS_OPEN)  { *req->usr = 0; return; }
-    if (req->event == GLY_WS_CLOSE) { gamely_daemon_input_reset_port((int)(intptr_t)*req->usr); return; }
-    if (req->event != GLY_WS_MESSAGE || req->len < 1) return;
+    if (req->event == GDWEB_WS_OPEN)  { *req->usr = 0; return; }
+    if (req->event == GDWEB_WS_CLOSE) { gamely_daemon_input_reset_port((int)(intptr_t)*req->usr); return; }
+    if (req->event != GDWEB_WS_MESSAGE || req->len < 1) return;
 
     const char *data = req->data;
     size_t      len  = req->len;

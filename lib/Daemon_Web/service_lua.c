@@ -10,13 +10,13 @@
 #endif
 
 #include "gecnd.h"
-#include "gdwsl.h"
+#include "gdweb.h"
 
 #define LUA_QUEUE_CAP 16
 #define LUA_OUT_CAP   16384
 
 typedef struct {
-    gly_req_id_t id;
+    gdweb_id_t id;
     char        *code;
 } lua_job_t;
 
@@ -135,20 +135,20 @@ static const char s_html[] =
 "log('> '+inp.value,'in');if(ws.readyState===1)ws.send(inp.value);inp.value='';}});"
 "</script></body></html>";
 
-static void http_lua(const gly_http_req_t *req)
+static void http_lua(const gdweb_http_req_t *req)
 {
-    gdwsl_value_t ct = { .str = "text/html; charset=utf-8" };
-    gdwsl_control_server()->http(req->id, GDWSL_HTTP_CONTENT_TYPE, &ct);
-    gdwsl_control_server()->send(req->id, s_html, sizeof(s_html) - 1);
+    gdweb_value_t ct = { .str = "text/html; charset=utf-8" };
+    gdweb_control_server()->http(req->id, GDWEB_HTTP_CONTENT_TYPE, &ct);
+    gdweb_control_server()->send(req->id, s_html, sizeof(s_html) - 1);
 }
 
-static void ws_lua(const gly_ws_req_t *req)
+static void ws_lua(const gdweb_ws_req_t *req)
 {
-    if (req->event != GLY_WS_MESSAGE || req->len < 1) return;
+    if (req->event != GDWEB_WS_MESSAGE || req->len < 1) return;
 
     if (queue_count() >= LUA_QUEUE_CAP - 1) {
         static const char busy[] = "error: lua queue full";
-        gdwsl_control_server()->send(req->id, busy, sizeof(busy) - 1);
+        gdweb_control_server()->send(req->id, busy, sizeof(busy) - 1);
         return;
     }
 
@@ -162,7 +162,7 @@ static void ws_lua(const gly_ws_req_t *req)
     s_tail = (s_tail + 1) % LUA_QUEUE_CAP;
 }
 
-void gamely_daemon_webserver_lua_tick(void)
+void gdweb_lua_tick(void)
 {
     if (s_head == s_tail) return;
 
@@ -176,7 +176,7 @@ void gamely_daemon_webserver_lua_tick(void)
         s_head = (s_head + 1) % LUA_QUEUE_CAP;
 
         repl_exec(root->L, job.code, out, sizeof(out));
-        gdwsl_control_server()->send(job.id, out, strlen(out));
+        gdweb_control_server()->send(job.id, out, strlen(out));
         free(job.code);
     }
 }

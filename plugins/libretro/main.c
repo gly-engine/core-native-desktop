@@ -6,7 +6,7 @@
 
 #include "gecnd.h"
 #include "gdmsp.h"
-#include "gdwsl.h"
+#include "gdweb.h"
 #include "main.h"
 
 /* Protótipos de open_libretro.c */
@@ -31,13 +31,13 @@ const char *scanner_resolve_rom (const char *name);
 gecnd_api_t *api = NULL;
 
 static struct {
-    typeof(gdwsl_control_client) *client;
+    typeof(gdweb_control_client) *client;
     typeof(gdmsp_control)        *control;
 } host;
 
 static bool host_bind(void) {
     if (host.control) return true;
-    api->registry("get", "function:gdwsl_control_client", (void *)&host.client,  NULL);
+    api->registry("get", "function:gdweb_control_client", (void *)&host.client,  NULL);
     api->registry("get", "function:gdmsp_control",        (void *)&host.control, NULL);
     return host.control != NULL;
 }
@@ -193,13 +193,13 @@ typedef struct {
     size_t   buf_cap;
 } libretro_http_ctx_t;
 
-static void libretro_http_on_status(gly_req_id_t id, int status, void *user) {
+static void libretro_http_on_status(gdweb_id_t id, int status, void *user) {
     (void)id; (void)status;
     libretro_http_ctx_t *ctx = user;
     ctx->buf_len = 0;
 }
 
-static void libretro_http_on_data(gly_req_id_t id, const char *data, size_t len, void *user) {
+static void libretro_http_on_data(gdweb_id_t id, const char *data, size_t len, void *user) {
     (void)id;
     libretro_http_ctx_t *ctx = user;
     if (ctx->buf_len + len > ctx->buf_cap) {
@@ -214,7 +214,7 @@ static void libretro_http_on_data(gly_req_id_t id, const char *data, size_t len,
     ctx->buf_len += len;
 }
 
-static void libretro_http_on_done(gly_req_id_t id, void *user) {
+static void libretro_http_on_done(gdweb_id_t id, void *user) {
     (void)id;
     libretro_http_ctx_t *ctx = user;
 
@@ -238,7 +238,7 @@ static void libretro_http_on_done(gly_req_id_t id, void *user) {
     atomic_store(&s_http_fetching, false); /* desbloqueia source() */
 }
 
-static void libretro_http_on_error(gly_req_id_t id, const char *msg, void *user) {
+static void libretro_http_on_error(gdweb_id_t id, const char *msg, void *user) {
     (void)id;
     libretro_http_ctx_t *ctx = user;
     fprintf(stderr, "[libretro+http] fetch error: %s\n", msg ? msg : "");
@@ -269,7 +269,7 @@ static gdmsp_fsm_t libretro_http_source(uint8_t channel, const char *url, void *
     atomic_store(&s_http_ok,       false);
     atomic_store(&s_http_fetching, true);
 
-    gly_http_req_t req = {0};
+    gdweb_http_req_t req = {0};
     if (!host_bind()) {
         atomic_store(&s_http_fetching, false);
         free(ctx);
