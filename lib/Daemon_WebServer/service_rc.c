@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "gecnd.h"
+#include "gdwsl.h"
 
 static const char s_html[] =
 "<!DOCTYPE html>"
@@ -76,13 +77,14 @@ static const char s_html[] =
 "</body>"
 "</html>";
 
-void http_rc(const gly_http_req_t *req)
+static void http_rc(const gly_http_req_t *req)
 {
-    gamely_daemon_webserver_http_send(req->id, 200, "text/html; charset=utf-8",
-                                      s_html, sizeof(s_html) - 1);
+    gdwsl_value_t ct = { .str = "text/html; charset=utf-8" };
+    gdwsl_control_server()->http(req->id, GDWSL_HTTP_CONTENT_TYPE, &ct);
+    gdwsl_control_server()->send(req->id, s_html, sizeof(s_html) - 1);
 }
 
-void ws_rc(const gly_ws_req_t *req)
+static void ws_rc(const gly_ws_req_t *req)
 {
     if (req->event == GLY_WS_OPEN)  { *req->usr = 0; return; }
     if (req->event == GLY_WS_CLOSE) { gamely_daemon_input_reset_port((int)(intptr_t)*req->usr); return; }
@@ -118,5 +120,12 @@ void ws_rc(const gly_ws_req_t *req)
     else if (strcmp(keyname, "blue")   == 0) key = "d";
 
     gamely_daemon_input_push_name(key, pressed, (int)(intptr_t)*req->usr, 0);
+}
+
+__attribute__((constructor))
+static void register_rc_routes(void)
+{
+    gecnd_registry("set", "web_http_route:rc", (void *)http_rc, NULL);
+    gecnd_registry("set", "web_ws_route:rc",   (void *)ws_rc,   NULL);
 }
 

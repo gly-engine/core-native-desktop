@@ -7,6 +7,7 @@
 #include <uv.h>
 
 #include "gecnd.h"
+#include "gdwsl.h"
 
 #define DEVTOOLS_RETRY     500
 #define DEVTOOLS_RETRY_MAX 5
@@ -54,12 +55,12 @@ static void on_ws_open(gly_req_id_t id, void *user) {
 
 static void on_ws_msg(gly_req_id_t id, const char *data, size_t len, void *user) {
     (void)id; (void)user;
-    gamely_daemon_webserver_ws_send_all(DEVTOOLS_WS_PATH, data, len, 0);
+    gdwsl_control_server()->send_all(DEVTOOLS_WS_PATH, data, len, 0);
 }
 
 static void ws_dev_tools(const gly_ws_req_t *req) {
     if (req->event != GLY_WS_MESSAGE || !ws_id) return;
-    gamely_daemon_webclient_ws_send(ws_id, req->data, req->len);
+    gdwsl_control_client()->send(ws_id, req->data, req->len);
 }
 
 static void on_ws_close(gly_req_id_t id, void *user) {
@@ -99,7 +100,7 @@ static void on_key(const char *name, bool pressed, int port, void *usr) {
         pressed ? "rawKeyDown" : "keyUp",
         e->cdp_key, e->cdp_code, e->vk, e->vk);
 
-    gamely_daemon_webclient_ws_send(ws_id, buf, (size_t)len);
+    gdwsl_control_client()->send(ws_id, buf, (size_t)len);
 }
 
 static void on_http_done(gly_req_id_t id, void *user) {
@@ -144,7 +145,7 @@ static void try_connect_devtools(uv_timer_t *t) {
         snprintf(ws_url, sizeof(ws_url),
             "ws://" DEVTOOLS_HOST ":%d%s", DEVTOOLS_PORT, ws_path);
         ws_connecting = true;
-        if (!gamely_daemon_webclient_ws_connect(ws_url, NULL,
+        if (!gdwsl_control_client()->ws_connect(ws_url, NULL,
                 on_ws_open, on_ws_msg, on_ws_close, on_ws_error, NULL))
             ws_connecting = false;
         return;
@@ -158,7 +159,7 @@ static void try_connect_devtools(uv_timer_t *t) {
     http_pending  = true;
     http_buf_len  = 0;
     gly_http_req_t req = {0};
-    if (!gamely_daemon_webclient_http(url, &req,
+    if (!gdwsl_control_client()->http(url, &req,
             on_http_status, on_http_data, on_http_done, on_http_error, NULL))
         http_pending = false;
 }
@@ -168,7 +169,7 @@ static void on_browser_exit(uv_process_t *p, int64_t status, int signal) {
     if (gly) gecnd_set_state(gly, GECND_FSM_RUNNING);
 
     if (ws_id) {
-        gamely_daemon_webclient_ws_close(ws_id);
+        gdwsl_control_client()->close(ws_id);
         ws_id = 0;
     }
 
@@ -285,5 +286,5 @@ int luaopen_chromium_gecnd(lua_State *L) {
 
 void coreopen_chromium_gecnd(void) {
     gamely_input_add_cb("@code", on_key, NULL);
-    gamely_daemon_webloop_route_ws(DEVTOOLS_WS_PATH, ws_dev_tools);
+    gecnd_registry("set", "web_ws_route:api:dev-tools", (void *)ws_dev_tools, NULL);
 }

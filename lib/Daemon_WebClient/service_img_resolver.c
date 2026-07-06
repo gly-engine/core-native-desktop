@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "gecnd.h"
+#include "gdwsl.h"
 
 /* ── per-request accumulation context ────────────────────────────── */
 
@@ -93,7 +94,7 @@ void gamely_resolver_image_http(const char *url, void *schema_usr,
         }
     }
 
-    gamely_daemon_webclient_http(url, NULL, on_status, on_data, on_done, on_error, ctx);
+    gdwsl_control_client()->http(url, NULL, on_status, on_data, on_done, on_error, ctx);
 }
 
 __attribute__((constructor))

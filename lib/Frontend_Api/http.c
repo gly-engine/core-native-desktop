@@ -11,6 +11,7 @@
 #endif
 
 #include "gecnd.h"
+#include "gdwsl.h"
 
 static void cb_push(lua_State *L, int64_t req_id, const char *evt)
 {
@@ -167,7 +168,7 @@ static int lua_native_http_handler(lua_State *L)
             cb_error_immediate(L, "[core:error] libuv is not started!");
             return 0;
         }
-        gamely_daemon_webclient_start(gly->loop);
+        gdwsl_control_client()->start(gly->loop);
         g_started = 1;
     }
 
@@ -210,14 +211,14 @@ static int lua_native_http_handler(lua_State *L)
 
     gly_req_id_t wc_id;
     if (is_ws) {
-        wc_id = gamely_daemon_webclient_ws_connect(
+        wc_id = gdwsl_control_client()->ws_connect(
             url, upgrade,
             on_ws_open, on_ws_msg, on_ws_close, on_error,
             ctx
         );
     } else {
         gly_http_req_t req = { .method = method, .body = body, .body_len = body ? strlen(body) : 0 };
-        wc_id = gamely_daemon_webclient_http(
+        wc_id = gdwsl_control_client()->http(
             url, &req,
             on_status, on_data, on_done, on_error,
             ctx
@@ -250,14 +251,14 @@ static int lua_native_http_sock(lua_State *L)
         size_t      len  = 0;
         const char *data = luaL_checklstring(L, 3, &len);
         if (!ctx || !ctx->is_ws) { lua_pushboolean(L, 0); return 1; }
-        gamely_daemon_webclient_ws_send(ctx->wc_id, data, len);
+        gdwsl_control_client()->send(ctx->wc_id, data, len);
         lua_pushboolean(L, 1);
         return 1;
     }
     case 2:
         if (ctx) {
             ctx->lua_close = 1;
-            gamely_daemon_webclient_ws_close(ctx->wc_id);
+            gdwsl_control_client()->close(ctx->wc_id);
         }
         return 0;
     case 3:
@@ -278,7 +279,7 @@ static void init() {
 __attribute__((destructor))
 static void cleanup() {
     if (g_started) {
-        gamely_daemon_webclient_stop();
+        gdwsl_control_client()->stop();
         g_started = 0;
     }
 }

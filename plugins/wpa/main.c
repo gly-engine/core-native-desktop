@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 
 #include "gecnd.h"
+#include "gdwsl.h"
 
 static char s_iface[64];
 
@@ -172,8 +173,11 @@ static bool wpa_cli_ok_argv(const char *const *args, size_t argc,
 }
 
 static void send_json(const gly_http_req_t *req, int status, const char *json) {
-    gamely_daemon_webserver_http_send(req->id, status,
-        "application/json", json, strlen(json));
+    gdwsl_value_t v = { .i64 = status };
+    gdwsl_control_server()->http(req->id, GDWSL_HTTP_STATUS, &v);
+    v.str = "application/json";
+    gdwsl_control_server()->http(req->id, GDWSL_HTTP_CONTENT_TYPE, &v);
+    gdwsl_control_server()->send(req->id, json, strlen(json));
 }
 
 static void send_error(const gly_http_req_t *req, int status,
@@ -447,9 +451,9 @@ void coreopen_wpa_gecnd(void) {
     const char *ssid = getenv("wifi_ssid");
     if (ssid) do_connect(ssid, getenv("wifi_password"), NULL, 0);
 
-    gamely_daemon_webloop_route_http("/wifi/scan",         http_wifi_scan);
-    gamely_daemon_webloop_route_http("/wifi/scan-results", http_wifi_scan_results);
-    gamely_daemon_webloop_route_http("/wifi/connect",      http_wifi_connect);
-    gamely_daemon_webloop_route_http("/wifi/disconnect",   http_wifi_disconnect);
-    gamely_daemon_webloop_route_http("/wifi/status",       http_wifi_status);
+    gecnd_registry("set", "web_http_route:wifi:scan",         (void *)http_wifi_scan,         NULL);
+    gecnd_registry("set", "web_http_route:wifi:scan-results", (void *)http_wifi_scan_results, NULL);
+    gecnd_registry("set", "web_http_route:wifi:connect",      (void *)http_wifi_connect,      NULL);
+    gecnd_registry("set", "web_http_route:wifi:disconnect",   (void *)http_wifi_disconnect,   NULL);
+    gecnd_registry("set", "web_http_route:wifi:status",       (void *)http_wifi_status,       NULL);
 }

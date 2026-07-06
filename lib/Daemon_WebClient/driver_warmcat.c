@@ -7,6 +7,7 @@
 #include <uv.h>
 
 #include "gecnd.h"
+#include "gdwsl.h"
 
 extern gly_req_id_t webloop_http_request(const char *path, const char *method,
                                           const char *body, size_t body_len,
@@ -52,15 +53,7 @@ static struct {
     conn_t              pool[MAX_CONNS];
     gly_req_id_t         next_id;
     int                 started;
-    char                ca_override[512];
 } g;
-
-void gamely_daemon_webclient_set_ca_path(const char *path)
-{
-    if (!path || !*path) { g.ca_override[0] = '\0'; return; }
-    strncpy(g.ca_override, path, sizeof(g.ca_override) - 1);
-    g.ca_override[sizeof(g.ca_override) - 1] = '\0';
-}
 
 static conn_t *conn_alloc(void)
 {
@@ -256,7 +249,7 @@ static struct lws_protocols protocols[] = {
     { NULL, NULL, 0, 0, 0, NULL, 0 }
 };
 
-void gamely_daemon_webclient_start(void *loop)
+static void wc_start(void *loop)
 {
     if (g.started) return;
 
@@ -269,12 +262,14 @@ void gamely_daemon_webclient_start(void *loop)
         "/etc/ssl/ca-bundle.pem",
         NULL
     };
-    const char *ca_path = NULL;
-    if (g.ca_override[0]) {
-        if (access(g.ca_override, R_OK) == 0) {
-            ca_path = g.ca_override;
+    const char *ca_path     = NULL;
+    const char *ca_override = NULL;
+    gecnd_registry("get", "web_ca_path", (void *)&ca_override, NULL);
+    if (ca_override && ca_override[0]) {
+        if (access(ca_override, R_OK) == 0) {
+            ca_path = ca_override;
         } else {
-            fprintf(stderr, "[webclient] --ssl-crt nao legivel: %s\n", g.ca_override);
+            fprintf(stderr, "[webclient] --ssl-crt nao legivel: %s\n", ca_override);
         }
     }
     if (!ca_path) {
@@ -302,17 +297,14 @@ void gamely_daemon_webclient_start(void *loop)
     g.started = 1;
 }
 
-void gamely_daemon_webclient_stop(void)
+static void wc_stop(void)
 {
     if (!g.started) return;
     lws_context_destroy(g.ctx);
-    char saved_ca[sizeof(g.ca_override)];
-    memcpy(saved_ca, g.ca_override, sizeof(saved_ca));
     memset(&g, 0, sizeof(g));
-    memcpy(g.ca_override, saved_ca, sizeof(g.ca_override));
 }
 
-gly_req_id_t gamely_daemon_webclient_http(
+static gly_req_id_t wc_http(
     const char      *url,
     gly_http_req_t  *req,
     gly_wc_status_cb on_status,
@@ -383,7 +375,7 @@ gly_req_id_t gamely_daemon_webclient_http(
     return c->id;
 }
 
-gly_req_id_t gamely_daemon_webclient_ws_connect(
+static gly_req_id_t wc_ws_connect(
     const char        *url,
     const char        *protocol,
     gly_wc_ws_open_cb  on_open,
@@ -440,7 +432,7 @@ gly_req_id_t gamely_daemon_webclient_ws_connect(
 extern void webloop_client_ws_send (gly_req_id_t id, const char *data, size_t len);
 extern void webloop_client_ws_close(gly_req_id_t id);
 
-void gamely_daemon_webclient_ws_send(gly_req_id_t id, const char *data, size_t len)
+static void wc_send(gly_req_id_t id, const char *data, size_t len)
 {
     if (id & 0x80000000u) {
         webloop_client_ws_send(id, data, len);
@@ -455,7 +447,7 @@ void gamely_daemon_webclient_ws_send(gly_req_id_t id, const char *data, size_t l
     lws_callback_on_writable(c->wsi);
 }
 
-void gamely_daemon_webclient_ws_close(gly_req_id_t id)
+static void wc_close(gly_req_id_t id)
 {
     if (id & 0x80000000u) {
         webloop_client_ws_close(id);
@@ -467,7 +459,21 @@ void gamely_daemon_webclient_ws_close(gly_req_id_t id)
     lws_set_timeout(c->wsi, PENDING_TIMEOUT_CLOSE_SEND, LWS_TO_KILL_ASYNC);
 }
 
+static const gdwsl_client_t s_client = {
+    .http       = wc_http,
+    .ws_connect = wc_ws_connect,
+    .send       = wc_send,
+    .close      = wc_close,
+    .start      = wc_start,
+    .stop       = wc_stop,
+};
+
+const gdwsl_client_t *gdwsl_control_client(void)
+{
+    return &s_client;
+}
+
 __attribute__((constructor))
 static void init(void) {
-    gecnd_registry("set", "function:gamely_daemon_webclient_http", (void *)gamely_daemon_webclient_http, NULL);
+    gecnd_registry("set", "function:gdwsl_control_client", (void *)gdwsl_control_client, NULL);
 }

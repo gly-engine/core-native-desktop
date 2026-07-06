@@ -8,14 +8,17 @@
 #include <uv.h>
 
 #include "gecnd.h"
+#include "gdwsl.h"
 
 
 KHASH_MAP_INIT_INT(conn_map, struct lws *)
 
-extern gly_req_id_t webloop_alloc_req(uint32_t conn_id);
-extern void         webloop_free_req (uint32_t conn_id);
+extern gly_req_id_t    webloop_alloc_req   (uint32_t conn_id);
+extern void            webloop_free_req    (uint32_t conn_id);
+extern gly_http_cb_t   webloop_route_http  (const char *path);
+extern gly_ws_cb_t     webloop_route_ws    (const char *path);
+extern gly_stream_cb_t webloop_route_stream(const char *path);
 
-#define MAX_ROUTES         64
 #define MAX_WS_CLIENTS     64
 #define MAX_STREAM_CLIENTS  8
 #define MSG_BUF           4096
@@ -24,46 +27,32 @@ extern void         webloop_free_req (uint32_t conn_id);
 #define STREAM_MASK       (STREAM_RING - 1)
 
 /* -----------------------------------------------------------------------
- * Rotas
- * ---------------------------------------------------------------------- */
-typedef enum { ROUTE_HTTP, ROUTE_WS, ROUTE_STREAM } route_type_t;
-
-typedef struct {
-    char             path[128];
-    route_type_t     type;
-    gly_http_cb_t    http_cb;
-    gly_ws_cb_t      ws_cb;
-    gly_stream_cb_t  stream_cb;
-    char             content_type[64]; /* ROUTE_STREAM: Content-Type a enviar */
-    char             proxy_to[128];
-} route_t;
-
-/* -----------------------------------------------------------------------
  * Sessões HTTP
  * ---------------------------------------------------------------------- */
 typedef struct {
     uint32_t      conn_id;
     gly_req_id_t  req_id;
     int            has_response;
-    int            status;
-    char           content_type[64];
+    int            status;          /* 0 = 200 */
+    char           content_type[64]; /* vazio = default por tipo de resposta */
     unsigned char *body;
     size_t         body_len;
     /* stream-only */
-    int            is_stream;
-    int            headers_sent;
-    route_t       *stream_route;
-    uint8_t       *ring_buf;
-    unsigned int   ring_wr;
-    unsigned int   ring_rd;
-    int            waiting_for_idr; /* 1: overflow ocorreu — descartar até próximo IDR */
+    int             is_stream;
+    int             headers_sent;
+    gly_stream_cb_t stream_cb;
+    uint8_t        *ring_buf;
+    unsigned int    ring_wr;
+    unsigned int    ring_rd;
+    int             waiting_for_idr; /* 1: overflow ocorreu — descartar até próximo IDR */
 } http_session_t;
 
 typedef struct {
     unsigned char  pending[LWS_PRE + MSG_BUF];
     size_t         pending_len;
     int            has_pending;
-    route_t       *route;
+    gly_ws_cb_t    cb;
+    char           path[128];
     uint32_t      conn_id;
     gly_req_id_t  req_id;
     void          *usr;
@@ -75,9 +64,6 @@ typedef struct {
 static struct {
     struct lws_context  *ctx;
     struct lws_protocols protocols[3];
-
-    route_t              routes[MAX_ROUTES];
-    int                  route_count;
 
     khash_t(conn_map)   *conn_map;
 
@@ -163,78 +149,6 @@ static int ring_read(http_session_t *s, uint8_t *dst, int max)
 }
 
 /* -----------------------------------------------------------------------
- * Rotas — busca binária
- * ---------------------------------------------------------------------- */
-static int route_cmp_key(const void *key, const void *elem)
-{
-    const route_t *k = (const route_t *)key;
-    const route_t *e = (const route_t *)elem;
-    if (k->type != e->type) return (int)k->type - (int)e->type;
-    return strcmp(k->path, e->path);
-}
-
-static route_t *find_route(const char *path, route_type_t type)
-{
-    route_t key;
-    memset(&key, 0, sizeof(key));
-    key.type = type;
-    strncpy(key.path, path, sizeof(key.path) - 1);
-    route_t *r = (route_t *)bsearch(&key, g.routes, (size_t)g.route_count,
-                                    sizeof(route_t), route_cmp_key);
-    if (r) return r;
-
-    /* fallback wildcard: rota "/prefixo/*" casa qualquer path sob "/prefixo/". */
-    for (int i = 0; i < g.route_count; i++) {
-        route_t *e = &g.routes[i];
-        if (e->type != type) continue;
-        size_t n = strlen(e->path);
-        if (n >= 2 && e->path[n - 1] == '*' && e->path[n - 2] == '/'
-                && strncmp(path, e->path, n - 1) == 0)
-            return e;
-    }
-    return NULL;
-}
-
-static route_t *insert_route(const char *path, route_type_t type)
-{
-    if (g.route_count >= MAX_ROUTES) {
-        fprintf(stderr, "[webserver] MAX_ROUTES atingido\n");
-        return NULL;
-    }
-    int pos = g.route_count;
-    for (int i = 0; i < g.route_count; i++) {
-        int c = (int)type - (int)g.routes[i].type;
-        if (c == 0) c = strcmp(path, g.routes[i].path);
-        if (c < 0) { pos = i; break; }
-        if (c == 0) return &g.routes[i];
-    }
-    memmove(&g.routes[pos + 1], &g.routes[pos],
-            sizeof(route_t) * (size_t)(g.route_count - pos));
-    g.route_count++;
-    memset(&g.routes[pos], 0, sizeof(route_t));
-    strncpy(g.routes[pos].path, path, sizeof(g.routes[pos].path) - 1);
-    g.routes[pos].type = type;
-    return &g.routes[pos];
-}
-
-static route_t *resolve_route(route_t *r)
-{
-    uint64_t visited = 0;
-    while (r && r->proxy_to[0]) {
-        ptrdiff_t idx = r - g.routes;
-        if (idx < 0 || idx >= MAX_ROUTES) break;
-        uint64_t bit = (uint64_t)1 << idx;
-        if (visited & bit) {
-            fprintf(stderr, "[webserver] ciclo detectado em proxy '%s'\n", r->path);
-            return NULL;
-        }
-        visited |= bit;
-        r = find_route(r->proxy_to, r->type);
-    }
-    return r;
-}
-
-/* -----------------------------------------------------------------------
  * conn_map helpers
  * ---------------------------------------------------------------------- */
 static uint32_t alloc_id(void)
@@ -310,6 +224,44 @@ static int add_cors_headers(struct lws *wsi, unsigned char **p, unsigned char *e
 }
 
 /* -----------------------------------------------------------------------
+ * session_stream_upgrade — converte a conexão HTTP em stream chunked
+ * ---------------------------------------------------------------------- */
+static int session_stream_upgrade(struct lws *wsi, http_session_t *s,
+                                  gly_stream_cb_t cb)
+{
+    if (s->is_stream) return 0;
+    if (g.stream_count >= MAX_STREAM_CLIENTS) {
+        fprintf(stderr, "[webserver] MAX_STREAM_CLIENTS atingido\n");
+        return -1;
+    }
+    uint8_t *buf = malloc(STREAM_RING);
+    if (!buf) return -1;
+
+    s->is_stream       = 1;
+    s->headers_sent    = 0;
+    s->stream_cb       = cb;
+    s->ring_buf        = buf;
+    s->ring_wr         = 0;
+    s->ring_rd         = 0;
+    s->waiting_for_idr = 0;
+
+    g.stream_ids[g.stream_count]      = s->conn_id;
+    g.stream_sessions[g.stream_count] = s;
+    g.stream_count++;
+
+    /* desabilita o PENDING_TIMEOUT_HTTP_CONTENT (padrão 15 s do LWS)
+     * que encerraria streams chunked que nunca têm fim natural */
+    lws_set_timeout(wsi, NO_PENDING_TIMEOUT, 0);
+
+    /* notifica o serviço — pode já escrever IDR cache no ring */
+    if (cb) cb(s->req_id, true);
+
+    /* agenda envio imediato de headers (+ IDR cache se já no ring) */
+    lws_callback_on_writable(wsi);
+    return 0;
+}
+
+/* -----------------------------------------------------------------------
  * callback_http
  * ---------------------------------------------------------------------- */
 static int callback_http(struct lws *wsi,
@@ -346,51 +298,19 @@ static int callback_http(struct lws *wsi,
         }
 
         /* verifica rota stream */
-        route_t *r = find_route(path, ROUTE_STREAM);
-        if (r) {
-            route_t *real = resolve_route(r);
-            if (real && real->type == ROUTE_STREAM) {
-                uint8_t *buf = malloc(STREAM_RING);
-                if (!buf) { webloop_free_req(s->conn_id); conn_remove(s->conn_id); return -1; }
-
-                s->is_stream        = 1;
-                s->headers_sent     = 0;
-                s->stream_route     = real;
-                s->ring_buf         = buf;
-                s->ring_wr          = 0;
-                s->ring_rd          = 0;
-                s->waiting_for_idr  = 0;
-
-                if (g.stream_count < MAX_STREAM_CLIENTS) {
-                    g.stream_ids[g.stream_count]      = s->conn_id;
-                    g.stream_sessions[g.stream_count] = s;
-                    g.stream_count++;
-                } else {
-                    free(buf);
-                    s->ring_buf = NULL;
-                    fprintf(stderr, "[webserver] MAX_STREAM_CLIENTS atingido\n");
-                    webloop_free_req(s->conn_id);
-                    conn_remove(s->conn_id);
-                    return -1;
-                }
-
-                /* desabilita o PENDING_TIMEOUT_HTTP_CONTENT (padrão 15 s do LWS)
-                 * que encerraria streams chunked que nunca têm fim natural */
-                lws_set_timeout(wsi, NO_PENDING_TIMEOUT, 0);
-
-                /* notifica o serviço — pode já escrever IDR cache no ring */
-                if (real->stream_cb)
-                    real->stream_cb(s->req_id, true);
-
-                /* agenda envio imediato de headers (+ IDR cache se já no ring) */
-                lws_callback_on_writable(wsi);
-                return 0;
+        gly_stream_cb_t stream_cb = webloop_route_stream(path);
+        if (stream_cb) {
+            if (session_stream_upgrade(wsi, s, stream_cb) != 0) {
+                webloop_free_req(s->conn_id);
+                conn_remove(s->conn_id);
+                return -1;
             }
+            return 0;
         }
 
         /* rota HTTP normal */
-        r = resolve_route(find_route(path, ROUTE_HTTP));
-        if (r && r->http_cb) {
+        gly_http_cb_t http_cb = webloop_route_http(path);
+        if (http_cb) {
             const char *method = "GET";
             char *p_uri;
             int l_uri;
@@ -406,7 +326,7 @@ static int callback_http(struct lws *wsi,
                 case LWSHUMETH_CONNECT: method = "CONNECT"; break;
             }
             gly_http_req_t req = { .id = s->req_id, .path = full_path, .method = method };
-            r->http_cb(&req);
+            http_cb(&req);
         } else {
             s->status = 404;
             strncpy(s->content_type, "text/plain", sizeof(s->content_type) - 1);
@@ -428,9 +348,8 @@ static int callback_http(struct lws *wsi,
         /* --- streaming --- */
         if (s->is_stream) {
             if (!s->headers_sent) {
-                const char *ct = (s->stream_route && s->stream_route->content_type[0])
-                                     ? s->stream_route->content_type
-                                     : "video/mp2t";
+                const char *ct = s->content_type[0] ? s->content_type
+                                                    : "video/mp2t";
                 unsigned char hdr[512], *p = hdr, *end = hdr + sizeof(hdr);
                 if (lws_add_http_header_status(wsi, 200, &p, end) ||
                     lws_add_http_header_by_name(wsi,
@@ -482,12 +401,13 @@ static int callback_http(struct lws *wsi,
         /* --- HTTP normal --- */
         if (!s->has_response) break;
 
+        const char *ct = s->content_type[0] ? s->content_type : "text/plain";
         unsigned char hdr[512], *p = hdr, *end = hdr + sizeof(hdr);
-        if (lws_add_http_header_status(wsi, (unsigned int)s->status, &p, end) ||
+        if (lws_add_http_header_status(wsi, s->status ? (unsigned int)s->status : 200u, &p, end) ||
             lws_add_http_header_by_token(wsi,
                 WSI_TOKEN_HTTP_CONTENT_TYPE,
-                (unsigned char *)s->content_type,
-                (int)strlen(s->content_type), &p, end) ||
+                (unsigned char *)ct,
+                (int)strlen(ct), &p, end) ||
             lws_add_http_header_content_length(wsi, s->body_len, &p, end) ||
             add_cors_headers(wsi, &p, end) ||
             lws_finalize_http_header(wsi, &p, end))
@@ -530,9 +450,8 @@ static int callback_http(struct lws *wsi,
             s->ring_buf = NULL;
             free(to_free);
 
-            route_t *real = resolve_route(s->stream_route);
-            if (real && real->stream_cb)
-                real->stream_cb(s->req_id, false);
+            if (s->stream_cb)
+                s->stream_cb(s->req_id, false);
         }
         webloop_free_req(s->conn_id);
         conn_remove(s->conn_id);
@@ -559,7 +478,8 @@ static int callback_ws(struct lws *wsi,
     case LWS_CALLBACK_ESTABLISHED: {
         char path[128] = "/";
         lws_hdr_copy(wsi, path, sizeof(path), WSI_TOKEN_GET_URI);
-        s->route   = find_route(path, ROUTE_WS);
+        s->cb = webloop_route_ws(path);
+        strncpy(s->path, path, sizeof(s->path) - 1);
         s->conn_id = alloc_id();
         conn_register(s->conn_id, wsi);
         s->req_id  = webloop_alloc_req(s->conn_id);
@@ -581,8 +501,7 @@ static int callback_ws(struct lws *wsi,
         if (qlen > 0)
             lws_hdr_copy(wsi, qbuf, sizeof(qbuf), WSI_TOKEN_HTTP_URI_ARGS);
 
-        route_t *real = resolve_route(s->route);
-        if (real && real->ws_cb) {
+        if (s->cb) {
             gly_ws_req_t req = {
                 .id    = s->req_id,
                 .event = GLY_WS_OPEN,
@@ -590,7 +509,7 @@ static int callback_ws(struct lws *wsi,
                 .len   = (qlen > 0) ? strlen(qbuf) : 0,
                 .usr   = &s->usr
             };
-            real->ws_cb(&req);
+            s->cb(&req);
         }
         break;
     }
@@ -607,18 +526,16 @@ static int callback_ws(struct lws *wsi,
                 break;
             }
         }
-        route_t *real = resolve_route(s->route);
-        if (real && real->ws_cb) {
+        if (s->cb) {
             gly_ws_req_t req = { .id=s->req_id, .event=GLY_WS_CLOSE, .usr=&s->usr };
-            real->ws_cb(&req);
+            s->cb(&req);
         }
         memset(s, 0, sizeof(*s));
         break;
     }
 
     case LWS_CALLBACK_RECEIVE: {
-        route_t *real = resolve_route(s->route);
-        if (real && real->ws_cb) {
+        if (s->cb) {
             gly_ws_req_t req = {
                 .id    = s->req_id,
                 .event = GLY_WS_MESSAGE,
@@ -626,7 +543,7 @@ static int callback_ws(struct lws *wsi,
                 .len   = len,
                 .usr   = &s->usr
             };
-            real->ws_cb(&req);
+            s->cb(&req);
         }
         break;
     }
@@ -646,35 +563,9 @@ static int callback_ws(struct lws *wsi,
 }
 
 /* -----------------------------------------------------------------------
- * API pública — registro de rotas
+ * Lifecycle — expostos via gdwsl_control_server() (service_loopback.c)
  * ---------------------------------------------------------------------- */
-void gamely_daemon_webserver_route_http(const char *path, gly_http_cb_t cb)
-{
-    route_t *r = insert_route(path, ROUTE_HTTP);
-    if (!r) return;
-    r->http_cb = cb;
-}
-
-void gamely_daemon_webserver_route_ws(const char *path, gly_ws_cb_t cb)
-{
-    route_t *r = insert_route(path, ROUTE_WS);
-    if (!r) return;
-    r->ws_cb = cb;
-}
-
-void gamely_daemon_webserver_route_stream(const char *path,
-                                          const char *content_type,
-                                          gly_stream_cb_t cb)
-{
-    route_t *r = insert_route(path, ROUTE_STREAM);
-    if (!r) return;
-    r->stream_cb = cb;
-    strncpy(r->content_type,
-            (content_type && content_type[0]) ? content_type : "video/mp2t",
-            sizeof(r->content_type) - 1);
-}
-
-void gamely_daemon_webserver_start(void *loop, int port)
+void driver_server_start(void *loop, int port)
 {
     if (!loop || !port || g.started) return;
     lws_set_log_level(LLL_ERR | LLL_WARN, NULL);
@@ -717,7 +608,7 @@ void gamely_daemon_webserver_start(void *loop, int port)
     printf("[webserver] ouvindo 0.0.0.0:%d  (libuv foreign loop)\n", port);
 }
 
-void gamely_daemon_webserver_stop(void)
+void driver_server_stop(void)
 {
     if (!g.started) return;
 
@@ -734,40 +625,82 @@ void gamely_daemon_webserver_stop(void)
 }
 
 /* -----------------------------------------------------------------------
- * driver_http_send / driver_ws_send / driver_ws_send_all / driver_stream_write
+ * driver_http_set / driver_send / driver_ws_send_all
  * Internal transport functions — called by WebLoop (service_loopback.c) only.
+ * driver_send despacha pelo tipo da conexão: ws, stream ou resposta http.
  * ---------------------------------------------------------------------- */
-void driver_http_send(uint32_t conn_id, int status, const char *content_type,
-                      const char *body, size_t body_len)
+static ws_session_t *ws_session_by_conn_id(uint32_t conn_id)
+{
+    for (int i = 0; i < g.ws_count; i++)
+        if (g.ws_ids[i] == conn_id) return g.ws_sessions[i];
+    return NULL;
+}
+
+void driver_http_set(uint32_t conn_id, gdwsl_http_cmd_t cmd, const gdwsl_value_t *value)
 {
     if (!g.started) return;
+    struct lws *wsi = wsi_by_conn_id(conn_id);
+    if (!wsi || ws_session_by_conn_id(conn_id)) return;
+    http_session_t *s = (http_session_t *)lws_wsi_user(wsi);
+    if (!s) return;
+
+    switch (cmd) {
+        case GDWSL_HTTP_STATUS:
+            if (value) s->status = (int)value->i64;
+            break;
+
+        case GDWSL_HTTP_CONTENT_TYPE:
+            if (value && value->str) {
+                strncpy(s->content_type, value->str, sizeof(s->content_type) - 1);
+                s->content_type[sizeof(s->content_type) - 1] = '\0';
+            }
+            break;
+
+        case GDWSL_HTTP_STREAM:
+            session_stream_upgrade(wsi, s, NULL);
+            break;
+
+        default:
+            break;
+    }
+}
+
+void driver_send(uint32_t conn_id, const char *data, size_t len)
+{
+    if (!g.started || !conn_id) return;
+
+    ws_session_t *ws = ws_session_by_conn_id(conn_id);
+    if (ws) {
+        struct lws *wsi = wsi_by_conn_id(conn_id);
+        if (wsi && data && len) _ws_send_wsi(wsi, data, len);
+        return;
+    }
+
     struct lws *wsi = wsi_by_conn_id(conn_id);
     if (!wsi) return;
     http_session_t *s = (http_session_t *)lws_wsi_user(wsi);
     if (!s) return;
 
-    s->status = status;
-    strncpy(s->content_type, content_type ? content_type : "text/plain",
-            sizeof(s->content_type) - 1);
+    if (s->is_stream) {
+        if (s->ring_buf && data && len) {
+            ring_write(s, (const uint8_t *)data, (int)len);
+            lws_callback_on_writable(wsi);
+        }
+        return;
+    }
+
     free(s->body);
     s->body     = NULL;
     s->body_len = 0;
-    if (body && body_len) {
-        s->body = malloc(body_len);
+    if (data && len) {
+        s->body = malloc(len);
         if (s->body) {
-            memcpy(s->body, body, body_len);
-            s->body_len = body_len;
+            memcpy(s->body, data, len);
+            s->body_len = len;
         }
     }
     s->has_response = 1;
     lws_callback_on_writable(wsi);
-}
-
-void driver_ws_send(uint32_t conn_id, const char *data, size_t len)
-{
-    if (!g.started || !data || !len) return;
-    struct lws *wsi = wsi_by_conn_id(conn_id);
-    if (wsi) _ws_send_wsi(wsi, data, len);
 }
 
 void driver_ws_send_all(const char *path, const char *data, size_t len,
@@ -778,27 +711,9 @@ void driver_ws_send_all(const char *path, const char *data, size_t len,
         if (g.ws_ids[i] == exclude_conn_id) continue;
         if (path) {
             ws_session_t *s = g.ws_sessions[i];
-            if (!s || !s->route) continue;
-            const char *rpath = s->route->path;
-            const char *tpath = s->route->proxy_to[0] ? s->route->proxy_to : rpath;
-            if (strcmp(rpath, path) != 0 && strcmp(tpath, path) != 0) continue;
+            if (!s || strcmp(s->path, path) != 0) continue;
         }
         struct lws *wsi = wsi_by_conn_id(g.ws_ids[i]);
         if (wsi) _ws_send_wsi(wsi, data, len);
-    }
-}
-
-void driver_stream_write(uint32_t conn_id, const uint8_t *buf, int size)
-{
-    if (!g.started || size <= 0 || !conn_id) return;
-    for (int i = 0; i < g.stream_count; i++) {
-        if (g.stream_ids[i] != conn_id) continue;
-        http_session_t *s = g.stream_sessions[i];
-        if (s && s->ring_buf) {
-            ring_write(s, buf, size);
-            struct lws *wsi = wsi_by_conn_id(conn_id);
-            if (wsi) lws_callback_on_writable(wsi);
-        }
-        return;
     }
 }

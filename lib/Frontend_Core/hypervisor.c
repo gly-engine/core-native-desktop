@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "gecnd.h"
+#include "gdwsl.h"
 #include "gehook.h"
 #include <stdio.h>
 gamely_img_decoded_t gamely_driver_decoder_stb(const uint8_t *data, size_t len);
@@ -49,9 +50,9 @@ void gamely_hypervisor_init(gecnd_t *gly) {
     gamely_daemon_db_start();
     gamely_daemon_media_init();
     gamely_daemon_fs_start(gly->loop);
-    gamely_daemon_webloop_start(gly->loop);
-    gamely_daemon_webclient_start(gly->loop);
-    gamely_daemon_webserver_start(gly->loop, g_display.port);
+    gdwsl_loop_start(gly->loop);
+    gdwsl_control_client()->start(gly->loop);
+    gdwsl_control_server()->start(gly->loop, g_display.port);
     gamely_daemon_img_start(gly->loop);
 
     gamely_daemon_img_opengl_register();

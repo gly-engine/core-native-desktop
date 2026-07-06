@@ -416,76 +416,7 @@ bool               gamely_daemon_img_has_backend(const char *fmt);
 bool               gamely_daemon_img_can_decode (const char *from);
 int32_t            gamely_daemon_img_loading_count(void);
 
-/* ---- Web Daemons ---- */
-
-typedef uint32_t gly_req_id_t;
-
-typedef enum { GLY_WS_OPEN, GLY_WS_CLOSE, GLY_WS_MESSAGE } gly_ws_event_t;
-
-typedef struct {
-    gly_req_id_t  id;
-    const char   *method;
-    const char   *path;
-    const char   *body;
-    size_t        body_len;
-} gly_http_req_t;
-
-typedef struct {
-    gly_req_id_t   id;
-    gly_ws_event_t event;
-    const char    *data;
-    size_t         len;
-    void         **usr;
-} gly_ws_req_t;
-
-typedef void (*gly_http_cb_t)   (const gly_http_req_t *req);
-typedef void (*gly_ws_cb_t)     (const gly_ws_req_t   *req);
-typedef void (*gly_stream_cb_t) (gly_req_id_t conn_id, bool connected);
-
-typedef void (*gly_wc_status_cb)  (gly_req_id_t id, int status,                   void *user);
-typedef void (*gly_wc_data_cb)    (gly_req_id_t id, const char *data, size_t len, void *user);
-typedef void (*gly_wc_done_cb)    (gly_req_id_t id,                               void *user);
-typedef void (*gly_wc_error_cb)   (gly_req_id_t id, const char *msg,              void *user);
-typedef void (*gly_wc_ws_open_cb) (gly_req_id_t id,                               void *user);
-typedef void (*gly_wc_ws_msg_cb)  (gly_req_id_t id, const char *data, size_t len, void *user);
-typedef void (*gly_wc_ws_close_cb)(gly_req_id_t id,                               void *user);
-
-void gamely_daemon_webserver_start(void *loop, int port);
-void gamely_daemon_webserver_stop(void);
-void gamely_daemon_webserver_http_send(gly_req_id_t id, int status,
-        const char *content_type, const char *body, size_t body_len);
-void gamely_daemon_webserver_ws_send    (gly_req_id_t id, const char *data, size_t len);
-void gamely_daemon_webserver_ws_send_all(const char *path, const char *data, size_t len,
-        gly_req_id_t exclude_id);
-void gamely_daemon_webserver_stream_write(gly_req_id_t id, const uint8_t *buf, int size);
-
-/* Drena a fila do REPL /lua, executando o código no VM (thread principal).
- * Chamar a cada tick. */
-void gamely_daemon_webserver_lua_tick(void);
-
-void gamely_daemon_webloop_start(void *loop);
-void gamely_daemon_webloop_stop(void);
-void gamely_daemon_webloop_route_http  (const char *path, gly_http_cb_t cb);
-void gamely_daemon_webloop_route_ws    (const char *path, gly_ws_cb_t cb);
-void gamely_daemon_webloop_route_stream(const char *path, const char *content_type,
-                                        gly_stream_cb_t cb);
-void gamely_daemon_webloop_route_proxy (const char *from, const char *to);
-
-/* Registers http:// and https:// schemas with Daemon_Img.
- * Call after gamely_daemon_webclient_start() and gamely_daemon_img_start(). */
-void gamely_daemon_webclient_img_register(void);
-
-void         gamely_daemon_webclient_start(void *loop);
-void         gamely_daemon_webclient_stop(void);
-void         gamely_daemon_webclient_set_ca_path(const char *path);
-gly_req_id_t gamely_daemon_webclient_http(const char *url, gly_http_req_t *req,
-    gly_wc_status_cb on_status, gly_wc_data_cb on_data,
-    gly_wc_done_cb on_done, gly_wc_error_cb on_error, void *user);
-gly_req_id_t gamely_daemon_webclient_ws_connect(const char *url, const char *protocol,
-    gly_wc_ws_open_cb on_open, gly_wc_ws_msg_cb on_msg,
-    gly_wc_ws_close_cb on_close, gly_wc_error_cb on_error, void *user);
-void gamely_daemon_webclient_ws_send (gly_req_id_t id, const char *data, size_t len);
-void gamely_daemon_webclient_ws_close(gly_req_id_t id);
+/* ---- Web Daemons: include/gdwsl.h ---- */
 
 /* ---- Backends ---- */
 

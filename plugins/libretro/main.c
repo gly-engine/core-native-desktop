@@ -6,6 +6,7 @@
 
 #include "gecnd.h"
 #include "gdmsp.h"
+#include "gdwsl.h"
 #include "main.h"
 
 /* Protótipos de open_libretro.c */
@@ -30,14 +31,14 @@ const char *scanner_resolve_rom (const char *name);
 gecnd_api_t *api = NULL;
 
 static struct {
-    typeof(gamely_daemon_webclient_http) *webclient_http;
-    typeof(gdmsp_control)                *control;
+    typeof(gdwsl_control_client) *client;
+    typeof(gdmsp_control)        *control;
 } host;
 
 static bool host_bind(void) {
     if (host.control) return true;
-    api->registry("get", "function:gamely_daemon_webclient_http", (void *)&host.webclient_http, NULL);
-    api->registry("get", "function:gdmsp_control",                (void *)&host.control,        NULL);
+    api->registry("get", "function:gdwsl_control_client", (void *)&host.client,  NULL);
+    api->registry("get", "function:gdmsp_control",        (void *)&host.control, NULL);
     return host.control != NULL;
 }
 
@@ -274,7 +275,7 @@ static gdmsp_fsm_t libretro_http_source(uint8_t channel, const char *url, void *
         free(ctx);
         return GDMSP_FSM_ERROR;
     }
-    host.webclient_http(u.remote, &req,
+    host.client()->http(u.remote, &req,
         libretro_http_on_status, libretro_http_on_data,
         libretro_http_on_done,   libretro_http_on_error,
         ctx);

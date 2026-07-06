@@ -1,5 +1,6 @@
 
 #include "gecnd.h"
+#include "gdwsl.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -46,7 +47,7 @@ static void try_connect(void)
 {
     if (!g_url[0] || g_ws_id || g_connecting) return;
     g_connecting = 1;
-    gly_req_id_t id = gamely_daemon_webclient_ws_connect(g_url, "ws",
+    gly_req_id_t id = gdwsl_control_client()->ws_connect(g_url, "ws",
             on_open, on_msg, on_close, on_error, NULL);
     fprintf(stderr, "[core:input:remote] try_connect -> id=%u url=%s\n", id, g_url);
     if (!id) g_connecting = 0;
@@ -62,12 +63,12 @@ static void on_input(const char *name, bool pressed, int port, void *usr)
 
     if (port != g_cur_port) {
         len = snprintf(buf, sizeof(buf), "%d", port);
-        gamely_daemon_webclient_ws_send(g_ws_id, buf, (size_t)len);
+        gdwsl_control_client()->send(g_ws_id, buf, (size_t)len);
         g_cur_port = port;
     }
 
     len = snprintf(buf, sizeof(buf), "%c%s", pressed ? '+' : '-', name);
-    gamely_daemon_webclient_ws_send(g_ws_id, buf, (size_t)len);
+    gdwsl_control_client()->send(g_ws_id, buf, (size_t)len);
 }
 
 void gamely_daemon_input_remote(const char *url)
@@ -75,7 +76,7 @@ void gamely_daemon_input_remote(const char *url)
     if (!url || !url[0]) {
         g_url[0]     = '\0';
         g_connecting = 0;
-        if (g_ws_id) gamely_daemon_webclient_ws_close(g_ws_id);
+        if (g_ws_id) gdwsl_control_client()->close(g_ws_id);
         return;
     }
     strncpy(g_url, url, sizeof(g_url) - 1);

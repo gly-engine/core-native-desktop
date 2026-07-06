@@ -13,6 +13,7 @@
 #include "gehook.h"
 #include "gecnd.h"
 #include "gdmsp.h"
+#include "gdwsl.h"
 #include "gemetrics.h"
 
 #if defined(GECND_USE_VENDOR_ENGINE)
@@ -136,7 +137,7 @@ static void fetch_start(gecnd_lua_source_t *src) {
     src->fetch.len   = 0;
     src->fetch.done  = false;
     src->fetch.error = false;
-    if (!gamely_daemon_webclient_http(src->uri, NULL,
+    if (!gdwsl_control_client()->http(src->uri, NULL,
             on_fetch_status, on_fetch_data, on_fetch_done, on_fetch_error, src)) {
         src->fetch.error = true;
         src->fetch.done  = true;

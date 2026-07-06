@@ -1,4 +1,5 @@
 #include "gecnd.h"
+#include "gdwsl.h"
 #include <uv.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,12 +8,13 @@
 /* -----------------------------------------------------------------------
  * Driver transport functions (implemented in Daemon_WebServer/driver_warmcat.c)
  * ---------------------------------------------------------------------- */
-extern void driver_http_send    (uint32_t conn_id, int status, const char *ct,
-                                  const char *body, size_t len);
-extern void driver_ws_send      (uint32_t conn_id, const char *data, size_t len);
+extern void driver_http_set     (uint32_t conn_id, gdwsl_http_cmd_t cmd,
+                                  const gdwsl_value_t *value);
+extern void driver_send         (uint32_t conn_id, const char *data, size_t len);
 extern void driver_ws_send_all  (const char *path, const char *data, size_t len,
                                   uint32_t exclude_conn_id);
-extern void driver_stream_write (uint32_t conn_id, const uint8_t *buf, int size);
+extern void driver_server_start (void *loop, int port);
+extern void driver_server_stop  (void);
 
 /* -----------------------------------------------------------------------
  * req_id ↔ conn_id mapping for real (non-loopback) connections
@@ -72,6 +74,7 @@ typedef struct {
     gly_req_id_t        id;
     wl_type_t           type;
     int                 active;
+    int                 status;   /* GDWSL_HTTP_STATUS pendente (0 = 200) */
 
     char                path[256];
     char                body[4096];
@@ -123,11 +126,48 @@ static wl_conn_t *wl_conn_by_id(gly_req_id_t id)
 }
 
 /* -----------------------------------------------------------------------
- * Route lookup (implemented in service_router.c)
+ * Route lookup — registry-backed: "/foo/bar" vira "web_http_route:(foo:bar)"
  * ---------------------------------------------------------------------- */
-extern gly_http_cb_t   wl_router_find_http   (const char *path);
-extern gly_ws_cb_t     wl_router_find_ws     (const char *path);
-extern gly_stream_cb_t wl_router_find_stream (const char *path);
+typedef struct {
+    void *cb;
+} route_ctx_t;
+
+static void route_handler(const char *key, void *value, void *usr) {
+    (void)key;
+    ((route_ctx_t *)usr)->cb = value;
+}
+
+static void *route_find(const char *kind, const char *path)
+{
+    char   key[192];
+    size_t n = (size_t)snprintf(key, sizeof(key), "%s:(", kind);
+    const char *p = (path && *path == '/') ? path + 1 : (path ? path : "");
+    while (*p && *p != '?' && n < sizeof(key) - 2) {
+        key[n++] = (*p == '/') ? ':' : *p;
+        p++;
+    }
+    key[n++] = ')';
+    key[n]   = '\0';
+
+    route_ctx_t ctx = { NULL };
+    gecnd_registry("get", key, (void *)route_handler, &ctx);
+    return ctx.cb;
+}
+
+gly_http_cb_t webloop_route_http(const char *path)
+{
+    return (gly_http_cb_t)route_find("web_http_route", path);
+}
+
+gly_ws_cb_t webloop_route_ws(const char *path)
+{
+    return (gly_ws_cb_t)route_find("web_ws_route", path);
+}
+
+gly_stream_cb_t webloop_route_stream(const char *path)
+{
+    return (gly_stream_cb_t)route_find("web_stream_route", path);
+}
 
 /* -----------------------------------------------------------------------
  * Timer callbacks — fire on next loop iteration (delay=0, never inline)
@@ -137,13 +177,7 @@ static void _http_fire(uv_timer_t *h)
     wl_conn_t *c = (wl_conn_t *)h->data;
     uv_timer_stop(h);
 
-    char route_path[sizeof(c->path)];
-    strncpy(route_path, c->path, sizeof(route_path) - 1);
-    route_path[sizeof(route_path) - 1] = '\0';
-    char *query = strchr(route_path, '?');
-    if (query) *query = '\0';
-
-    gly_http_cb_t route_cb = wl_router_find_http(route_path);
+    gly_http_cb_t route_cb = webloop_route_http(c->path);
     if (!route_cb) {
         if (c->on_error) c->on_error(c->id, "no route", c->user);
         wl_conn_free(c);
@@ -158,7 +192,7 @@ static void _http_fire(uv_timer_t *h)
         .body_len = c->body_len
     };
     route_cb(&req);
-    /* response arrives via gamely_daemon_webserver_http_send */
+    /* response arrives via gdwsl_control_server()->send() */
 }
 
 static void _ws_fire(uv_timer_t *h)
@@ -166,7 +200,7 @@ static void _ws_fire(uv_timer_t *h)
     wl_conn_t *c = (wl_conn_t *)h->data;
     uv_timer_stop(h);
 
-    gly_ws_cb_t route_cb = wl_router_find_ws(c->path);
+    gly_ws_cb_t route_cb = webloop_route_ws(c->path);
     if (!route_cb) {
         if (c->on_error) c->on_error(c->id, "no route", c->user);
         wl_conn_free(c);
@@ -180,54 +214,59 @@ static void _ws_fire(uv_timer_t *h)
 }
 
 /* -----------------------------------------------------------------------
- * Public API — gamely_daemon_webserver_*
+ * Server control — gdwsl_control_server()
  * WebLoop decides: loopback delivery or delegate to driver transport.
  * ---------------------------------------------------------------------- */
-void gamely_daemon_webserver_http_send(gly_req_id_t id, int status,
-                                       const char *content_type,
-                                       const char *body, size_t body_len)
+static void sv_http(gly_req_id_t id, gdwsl_http_cmd_t cmd, const gdwsl_value_t *value)
+{
+    if (id & 0x80000000u) {
+        wl_conn_t *c = wl_conn_by_id(id);
+        if (c && cmd == GDWSL_HTTP_STATUS && value)
+            c->status = (int)value->i64;
+        return;
+    }
+    uint32_t conn_id = req_to_conn(id);
+    if (conn_id) driver_http_set(conn_id, cmd, value);
+}
+
+static void sv_send(gly_req_id_t id, const char *data, size_t len)
 {
     if (id & 0x80000000u) {
         wl_conn_t *c = wl_conn_by_id(id);
         if (!c) return;
-        if (c->on_status) c->on_status(id, status, c->user);
-        if (c->on_data && body && body_len) c->on_data(id, body, body_len, c->user);
+        if (c->type == WL_WS) {
+            if (c->on_ws_msg) c->on_ws_msg(id, data, len, c->user);
+            return;
+        }
+        if (c->on_status) c->on_status(id, c->status ? c->status : 200, c->user);
+        if (c->on_data && data && len) c->on_data(id, data, len, c->user);
         if (c->on_done) c->on_done(id, c->user);
         wl_conn_free(c);
         return;
     }
     uint32_t conn_id = req_to_conn(id);
-    if (conn_id) driver_http_send(conn_id, status, content_type, body, body_len);
+    if (conn_id) driver_send(conn_id, data, len);
 }
 
-void gamely_daemon_webserver_ws_send(gly_req_id_t id, const char *data, size_t len)
-{
-    if (id & 0x80000000u) {
-        wl_conn_t *c = wl_conn_by_id(id);
-        if (c && c->on_ws_msg) c->on_ws_msg(id, data, len, c->user);
-        return;
-    }
-    uint32_t conn_id = req_to_conn(id);
-    if (conn_id) driver_ws_send(conn_id, data, len);
-}
-
-void gamely_daemon_webserver_ws_send_all(const char *path, const char *data, size_t len,
-                                         gly_req_id_t exclude_id)
+static void sv_send_all(const char *path, const char *data, size_t len,
+                        gly_req_id_t exclude_id)
 {
     uint32_t exclude_conn = (exclude_id && !(exclude_id & 0x80000000u))
                             ? req_to_conn(exclude_id) : 0;
     driver_ws_send_all(path, data, len, exclude_conn);
 }
 
-void gamely_daemon_webserver_stream_write(gly_req_id_t id, const uint8_t *buf, int size)
+static const gdwsl_server_t s_server = {
+    .http     = sv_http,
+    .send     = sv_send,
+    .send_all = sv_send_all,
+    .start    = driver_server_start,
+    .stop     = driver_server_stop,
+};
+
+const gdwsl_server_t *gdwsl_control_server(void)
 {
-    if (id & 0x80000000u) {
-        wl_conn_t *c = wl_conn_by_id(id);
-        if (c && c->on_data) c->on_data(id, (const char *)buf, (size_t)size, c->user);
-        return;
-    }
-    uint32_t conn_id = req_to_conn(id);
-    if (conn_id) driver_stream_write(conn_id, buf, size);
+    return &s_server;
 }
 
 /* -----------------------------------------------------------------------
@@ -239,7 +278,7 @@ void webloop_client_ws_send(gly_req_id_t id, const char *data, size_t len)
     wl_conn_t *c = wl_conn_by_id(id);
     if (!c || c->type != WL_WS) return;
 
-    gly_ws_cb_t route_cb = wl_router_find_ws(c->path);
+    gly_ws_cb_t route_cb = webloop_route_ws(c->path);
     if (!route_cb) return;
 
     gly_ws_req_t req = { .id = id, .event = GLY_WS_MESSAGE, .data = data, .len = len };
@@ -251,7 +290,7 @@ void webloop_client_ws_close(gly_req_id_t id)
     wl_conn_t *c = wl_conn_by_id(id);
     if (!c || c->type != WL_WS) return;
 
-    gly_ws_cb_t route_cb = wl_router_find_ws(c->path);
+    gly_ws_cb_t route_cb = webloop_route_ws(c->path);
     if (route_cb) {
         gly_ws_req_t req = { .id = id, .event = GLY_WS_CLOSE };
         route_cb(&req);
@@ -339,16 +378,13 @@ gly_req_id_t webloop_ws_connect(const char *path,
 /* -----------------------------------------------------------------------
  * Lifecycle
  * ---------------------------------------------------------------------- */
-extern void wl_router_init(void);
-
-void gamely_daemon_webloop_start(void *loop)
+void gdwsl_loop_start(void *loop)
 {
     if (s_loop) return;
     s_loop = (uv_loop_t *)loop;
-    wl_router_init();
 }
 
-void gamely_daemon_webloop_stop(void)
+void gdwsl_loop_stop(void)
 {
     for (int i = 0; i < WL_MAX_CONNS; i++) {
         if (s_pool[i].active) {
@@ -358,4 +394,10 @@ void gamely_daemon_webloop_stop(void)
     }
     memset(s_req_map, 0, sizeof(s_req_map));
     s_loop = NULL;
+}
+
+__attribute__((constructor))
+static void register_loopback_functions(void)
+{
+    gecnd_registry("set", "function:gdwsl_control_server", (void *)gdwsl_control_server, NULL);
 }

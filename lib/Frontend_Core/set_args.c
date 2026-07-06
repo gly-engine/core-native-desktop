@@ -116,7 +116,7 @@ void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
     if (c == 1310 && (sscanf(opt.arg, "%hu", &gecnd_get_display()->port) != 1))
         gecnd_add_error(gly, "invalid port!");
     if (c == 1311) {
-        gamely_daemon_webclient_set_ca_path(opt.arg);
+        gecnd_registry("set", "web_ca_path", (void *)opt.arg, NULL);
     }
     if (c == 1312) {
         float f = (float)atof(opt.arg);
