@@ -1,6 +1,7 @@
 #include <lua.h>
 #ifdef LUAU_FASTMATH_BEGIN
 #include <lualib.h>
+void lua_register(lua_State *L, const char *name, lua_CFunction f);
 #else
 #include <lauxlib.h>
 #endif

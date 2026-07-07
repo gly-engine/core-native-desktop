@@ -17,8 +17,8 @@ static void cb_push(lua_State *L, int64_t req_id, const char *evt)
 {
     int fn_ref = 0;
     if (!fn_ref) {
-        lua_getglobal(L, "native_callback_http");
-        fn_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        //lua_getglobal(L, "native_callback_http");
+        //fn_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     }
     lua_rawgeti(L, LUA_REGISTRYINDEX, fn_ref);
     lua_pushinteger(L, req_id);

@@ -5,6 +5,7 @@
 #include <lua.h>
 #ifdef LUAU_FASTMATH_BEGIN
 #include <lualib.h>
+int luaL_loadstring(lua_State *L, const char *s);
 #else
 #include <lauxlib.h>
 #endif

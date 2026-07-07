@@ -20,8 +20,8 @@ void lua_register(lua_State *L, const char *name, lua_CFunction f) {
 int luaL_loadbuffer(lua_State *L, const char *buff, size_t size, const char *name) {
     lua_CompileOptions opts;
     memset(&opts, 0, sizeof(opts));
-    opts.optimizationLevel = 1;
-    opts.debugLevel = 1;
+    opts.optimizationLevel = 2;
+    opts.debugLevel = 0;
 
     size_t bc_size = 0;
     char *bc = luau_compile(buff, size, &opts, &bc_size);

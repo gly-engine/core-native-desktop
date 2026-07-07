@@ -40,7 +40,7 @@ if(NOT (EXISTS "${CMAKE_BINARY_DIR}/lua" OR EXISTS "${CMAKE_BINARY_DIR}/lua.exe"
     FetchContent_Populate(lua54-host URL "${LUA54_DOWNLOAD}" SOURCE_DIR ${LUA54_HOST_DIR})
     if(TARGET)
         execute_process(
-            COMMAND ${ZIG_DIR}/zig-cc-host -DMAKE_LUA onelua.c -o ${CMAKE_BINARY_DIR}/lua -lm
+            COMMAND ${ZIG_BIN}/zig-cc-host -DMAKE_LUA onelua.c -o ${CMAKE_BINARY_DIR}/lua -lm
             WORKING_DIRECTORY ${LUA54_HOST_DIR}
         )
     else()
@@ -76,10 +76,10 @@ if(GECND_USE_LUAJIT)
         add_custom_command(
             OUTPUT ${LUAJIT_LIB2}
             COMMAND make
-                HOST_CC=${ZIG_DIR}/zig-cc-host
+                HOST_CC=${ZIG_BIN}/zig-cc-host
                 HOST_CFLAGS="--target=x86-linux-musl"
                 HOST_LDFLAGS="--target=x86-linux-musl"
-                CC=${ZIG_DIR}/zig-cc
+                CC=${ZIG_BIN}/zig-cc
                 XCFLAGS="-DLUAJIT_NO_UNWIND"
                 TARGET_SYS=Linux
                 TARGET_STRIP=eu-strip
@@ -115,6 +115,10 @@ endif()
 if(GECND_USE_LUAROBLOX)
     enable_language(CXX)
     math(EXPR LUA_COUNT "${LUA_COUNT} + 1")
+    set(LUAROBLOX_TARGET_ARG "")
+    if(DEFINED TARGET)
+        set(LUAROBLOX_TARGET_ARG "-DTARGET=${TARGET}")
+    endif()
     ExternalProject_Add(luaroblox_proj
         URL "${LUAROBLOX_DOWNLOAD}"
         SOURCE_DIR ${LUAROBLOX_DIR}
@@ -125,6 +129,7 @@ if(GECND_USE_LUAROBLOX)
             ${LUAROBLOX_DIR}/lib/libLuau.Ast.a
             ${LUAROBLOX_DIR}/lib/libLuau.Common.a
         CMAKE_ARGS
+            ${LUAROBLOX_TARGET_ARG}
             -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
             -DBUILD_SHARED_LIBS=OFF
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON

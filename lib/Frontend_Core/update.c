@@ -5,6 +5,10 @@
 #include <lua.h>
 #ifdef LUAU_FASTMATH_BEGIN
 #include <lualib.h>
+typedef const char *(*lua_Reader)(lua_State *L, void *ud, size_t *size);
+int luaL_ref(lua_State *L, int t);
+int lua_load(lua_State *L, lua_Reader reader, void *data, const char *chunkname);
+int luaL_loadbuffer(lua_State *L, const char *buff, size_t size, const char *name);
 #else
 #include <lauxlib.h>
 #endif
