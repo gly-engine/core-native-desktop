@@ -259,6 +259,60 @@ void gecnd_metrics_update(void)
     }
 }
 
+/* The core only fires registry events (core:pre_loop, core:pre_draw, ...);
+ * metrics is not wired in update.c. On the first core:pre_loop, if profiling
+ * is enabled, the remaining events are hooked and collection starts. The
+ * pre_* hooks land before the backend ones (hooks are prepended), so
+ * core:pre_tint measures the backend flush and post_draw renders the overlay
+ * before it. */
+static void on_post_loop(const char *key, void *value, void *usr) {
+    (void)key; (void)value; (void)usr;
+    gecnd_metrics_finish_loop();
+}
+
+static void on_pre_draw(const char *key, void *value, void *usr) {
+    (void)key; (void)value; (void)usr;
+    gecnd_metrics_start_draw();
+}
+
+static void on_post_draw(const char *key, void *value, void *usr) {
+    (void)key; (void)usr;
+    gecnd_metrics_finish_draw();
+    gecnd_metrics_render((gecnd_t *)value);
+}
+
+static void on_pre_tint(const char *key, void *value, void *usr) {
+    (void)key; (void)value; (void)usr;
+    gecnd_metrics_start_tint();
+}
+
+static void on_post_tint(const char *key, void *value, void *usr) {
+    (void)key; (void)value; (void)usr;
+    gecnd_metrics_finish_tint();
+    gecnd_metrics_start_wait();
+}
+
+static void on_pre_loop(const char *key, void *value, void *usr) {
+    (void)key; (void)value; (void)usr;
+    static bool registered = false;
+    if (!registered && state.flags) {
+        registered = true;
+        gecnd_registry("hook", "core:post_loop", (void *)on_post_loop, NULL);
+        gecnd_registry("hook", "core:pre_draw",  (void *)on_pre_draw,  NULL);
+        gecnd_registry("hook", "core:post_draw", (void *)on_post_draw, NULL);
+        gecnd_registry("hook", "core:pre_tint",  (void *)on_pre_tint,  NULL);
+        gecnd_registry("hook", "core:post_tint", (void *)on_post_tint, NULL);
+    }
+    gecnd_metrics_finish_wait();
+    gecnd_metrics_update();
+    gecnd_metrics_start_loop();
+}
+
+__attribute__((constructor))
+static void init(void) {
+    gecnd_registry("hook", "core:pre_loop", (void *)on_pre_loop, NULL);
+}
+
 uint64_t gecnd_metrics_get_lua_peak(void) { return state.lua_mem_peak; }
 uint64_t gecnd_metrics_get_lua_avg(void) { return state.lua_mem_avg; }
 uint32_t gecnd_metrics_get_input_time(void) { return state.input_time; }

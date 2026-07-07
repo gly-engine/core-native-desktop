@@ -40,16 +40,17 @@ static void lua_global_value(const char *key, void *value, gecnd_t *const gly) {
 
 }
 
-static void boot_lua(const char* key, void* value, gecnd_t *gly) {
-    ffi_ctx_t ffi = { gly };
+static void boot_lua(const char* key, void* value, void* usr) {
+    (void)key; (void)usr;
+    ffi_ctx_t ffi = { (gecnd_t *)value };
     gecnd_registry("get", "function:lua_global_ffi", &ffi.handler, NULL);
-    gecnd_registry("get", "lua_global_func:*", lua_global_func, gly);
-    gecnd_registry("get", "lua_global_init:*", lua_global_init, gly);
+    gecnd_registry("get", "lua_global_func:*", lua_global_func, ffi.gly);
+    gecnd_registry("get", "lua_global_init:*", lua_global_init, ffi.gly);
     gecnd_registry("get", "lua_global_ffi:*", lua_global_ffi, &ffi);
-    gecnd_registry("get", "lua_global_value:*", lua_global_value, gly);
+    gecnd_registry("get", "lua_global_value:*", lua_global_value, ffi.gly);
 }
 
 __attribute__((constructor))
 static void init(void) {
-    gecnd_registry("set", "boot:lua", (void *)boot_lua, NULL);
+    gecnd_registry("hook", "core:boot", (void *)boot_lua, NULL);
 }

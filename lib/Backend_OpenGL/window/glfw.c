@@ -97,7 +97,11 @@ void* platform_get_proc_address(const char *name) {
     return (void*)glfwGetProcAddress(name);
 }
 
-void gly_hook_display_init(uint16_t width, uint16_t height) {
+static void core_pre_init(const char *key, void *value, void *usr) {
+    (void)key; (void)usr;
+    gecnd_t *gly = (gecnd_t *)value;
+    uint16_t width  = (uint16_t)gly->width;
+    uint16_t height = (uint16_t)gly->height;
     GLBackendState *s = geogl_get_state();
     if (platform_init(width, height) != 0) exit(1);
     if (!gladLoadGL((GLADloadfunc)platform_get_proc_address)) die("GLAD load failed");
@@ -111,14 +115,18 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
                         GL_ONE,       GL_ONE_MINUS_SRC_ALPHA);
     mat4_ortho(s->projection, 0, width, height, 0, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
     s->last_frame_time = platform_get_time();
-    gecnd_t *root = gecnd_get_root();
-    if (root) root->internal |= GECND_INTERNAL_HW_GL_READY;
+    gly->internal |= GECND_INTERNAL_HW_GL_READY;
     ge_hw_register();
 
     for (uint8_t i = 0; i < sizeof(keymap)/sizeof(*keymap); i++) {
         gamely_daemon_input_add_keycode("glfw", keymap[i].name, keymap[i].key);
     }
     gamely_input_add_cb("@tick", glfwPollEvents, NULL);
+}
+
+__attribute__((constructor))
+static void init(void) {
+    gecnd_registry("hook", "core:pre_init", (void *)core_pre_init, NULL);
 }
 
 void gly_hook_display_dt(int16_t *delta_time) {

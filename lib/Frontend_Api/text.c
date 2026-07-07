@@ -111,14 +111,14 @@ static void init() {
     gecnd_registry("set", "lua_global_func:native_text_font_name", lua_native_text_font_name, NULL);
     gecnd_registry("set", "lua_global_func:native_text_font_default", lua_native_text_font_default, NULL);
     gecnd_registry("set", "lua_global_func:native_text_font_previous", lua_native_text_font_previous, NULL);
-    gecnd_registry("bind", "backend_func:native_text_print", &native_text_print, GECND_TYPE_VOID);
-    gecnd_registry("bind", "backend_func:native_text_mensure", &native_text_mensure, GECND_TYPE_VOID);
-    gecnd_registry("bind", "backend_func:native_text_font_size", &native_text_font_size, GECND_TYPE_VOID);
-    gecnd_registry("bind", "backend_func:native_text_font_name", &native_text_font_name, GECND_TYPE_VOID);
-    gecnd_registry("bind", "backend_func:native_text_font_default", &native_text_font_default, GECND_TYPE_VOID);
-    gecnd_registry("bind", "backend_func:native_text_font_previous", &native_text_font_previous, GECND_TYPE_VOID);
-    gecnd_registry("bind", "option:font_factor", &option_font_factor, GECND_TYPE_F32);
-    gecnd_registry("bind", "option:mojibake", &option_mojibake, GECND_TYPE_BOOLEAN);
+    gecnd_registry("bind", "backend_func:native_text_print", &native_text_print, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_text_mensure", &native_text_mensure, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_text_font_size", &native_text_font_size, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_text_font_name", &native_text_font_name, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_text_font_default", &native_text_font_default, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_text_font_previous", &native_text_font_previous, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "option:font_factor", &option_font_factor, (void*) GECND_TYPE_F32);
+    gecnd_registry("bind", "option:mojibake", &option_mojibake, (void*) GECND_TYPE_BOOLEAN);
 }
 
 __attribute__((destructor))

@@ -9,7 +9,8 @@
 #endif
 
 #include <libbase64.h>
-#include "gehook.h"
+
+#include "gecnd.h"
 
 static int lua_base64_encode(lua_State *L) {
     size_t input_len;

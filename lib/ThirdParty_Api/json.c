@@ -5,7 +5,7 @@
 #include <lauxlib.h>
 #endif
 
-#include "gehook.h"
+#include "gecnd.h"
 
 extern int luaopen_cjson(lua_State *L);
 

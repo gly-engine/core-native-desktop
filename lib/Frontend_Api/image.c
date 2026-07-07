@@ -134,14 +134,14 @@ static void init() {
     gecnd_registry("set", "lua_global_func:native_image_unload", lua_native_image_unload, NULL);
     gecnd_registry("set", "lua_global_func:native_image_unload_all", lua_native_image_unload_all, NULL);
     gecnd_registry("set", "lua_global_func:native_image_loading_count", lua_native_image_loading_count, NULL);
-    gecnd_registry("bind", "backend_func:native_image_load", &native_image_load, GECND_TYPE_VOID);
-    gecnd_registry("bind", "backend_func:native_image_exists", &native_image_exists, GECND_TYPE_VOID);
-    gecnd_registry("bind", "backend_func:native_image_draw", &native_image_draw, GECND_TYPE_VOID);
-    gecnd_registry("bind", "backend_func:native_image_mensure", &native_image_mensure, GECND_TYPE_VOID);
-    gecnd_registry("bind", "backend_func:native_image_error", &native_image_error, GECND_TYPE_VOID);
-    gecnd_registry("bind", "backend_func:native_image_unload", &native_image_unload, GECND_TYPE_VOID);
-    gecnd_registry("bind", "backend_func:native_image_unload_all", &native_image_unload_all, GECND_TYPE_VOID);
-    gecnd_registry("bind", "backend_func:native_image_loading_count", &native_image_loading_count, GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_image_load", &native_image_load, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_image_exists", &native_image_exists, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_image_draw", &native_image_draw, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_image_mensure", &native_image_mensure, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_image_error", &native_image_error, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_image_unload", &native_image_unload, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_image_unload_all", &native_image_unload_all, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_image_loading_count", &native_image_loading_count, (void*) GECND_TYPE_VOID);
 }
 
 __attribute__((destructor))

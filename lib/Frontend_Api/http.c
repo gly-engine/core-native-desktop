@@ -272,8 +272,8 @@ __attribute__((constructor))
 static void init() {
     gecnd_registry("set", "lua_global_func:native_http_handler", lua_native_http_handler, NULL);
     gecnd_registry("set", "lua_global_func:native_http_sock", lua_native_http_sock, NULL);
-    gecnd_registry("set", "lua_global_value:native_http_has_ssl+$b", 1LLU, NULL);
-    gecnd_registry("set", "lua_global_value:native_http_has_callback+$b", 1LLU, NULL);
+    gecnd_registry("set", "lua_global_value:native_http_has_ssl+$b", (void *)1, NULL);
+    gecnd_registry("set", "lua_global_value:native_http_has_callback+$b", (void *)1, NULL);
 }
 
 __attribute__((destructor))

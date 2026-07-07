@@ -7,7 +7,7 @@
 #include <lauxlib.h>
 #endif
 
-#include "gehook.h"
+#include "gecnd.h"
 
 static int lua_native_log_trace(lua_State *L) {
     const char *message = luaL_checkstring(L, 1);

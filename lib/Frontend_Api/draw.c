@@ -10,6 +10,7 @@
 bool option_disable_radius = false;
 
 GECND_NATIVE_STUB(native_draw_start, ());
+GECND_NATIVE_STUB(native_draw_flush, ());
 GECND_NATIVE_STUB(native_draw_color, (uint32_t));
 GECND_NATIVE_STUB(native_draw_clear, (uint32_t));
 GECND_NATIVE_STUB(native_draw_rect, (uint8_t, int16_t, int16_t, int16_t, int16_t, int16_t));
@@ -22,10 +23,7 @@ static int lua_native_draw_start(lua_State *L) {
 }
 
 static int lua_native_draw_flush(lua_State *L) {
-    lua_rawgeti(L, LUA_REGISTRYINDEX, GLY_REGISTRYINDEX);
-    gecnd_t *gly = lua_touserdata(L, -1);
-    gly->want_blit = false;
-    lua_settop(L, 0);
+    (void) L;
     return 0;
 }
 
@@ -74,10 +72,10 @@ static void init() {
     gecnd_registry("set", "lua_global_func:native_draw_rect2", lua_native_draw_rect, NULL);
     gecnd_registry("set", "lua_global_func:native_draw_rect", lua_native_draw_rect, NULL);
     gecnd_registry("set", "lua_global_func:native_draw_line", lua_native_draw_line, NULL);
-    gecnd_registry("bind", "backend_global:native_draw_start", &native_draw_start, GECND_TYPE_VOID);
-    //gecnd_registry("bind", "backend_func:native_draw_flush", &native_draw_flush, GECND_TYPE_VOID);
-    gecnd_registry("bind", "backend_func:native_draw_color", &native_draw_color, GECND_TYPE_VOID);
-    gecnd_registry("bind", "backend_func:native_draw_rect", &native_draw_rect, GECND_TYPE_VOID);
-    gecnd_registry("bind", "backend_func:native_draw_line", &native_draw_line, GECND_TYPE_VOID);
-    gecnd_registry("bind", "option:disable_radius", &option_disable_radius, GECND_TYPE_BOOLEAN);
+    gecnd_registry("bind", "backend_global:native_draw_start", &native_draw_start, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_draw_flush", &native_draw_flush, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_draw_color", &native_draw_color, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_draw_rect", &native_draw_rect, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_draw_line", &native_draw_line, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "option:disable_radius", &option_disable_radius, (void*) GECND_TYPE_BOOLEAN);
 }

@@ -63,9 +63,23 @@ if(NOT EXISTS "${ZIG_DIR}/zig-cc")
         string(REPLACE "-" ";" TARGET_PARTS "${TARGET}")
         list(LENGTH TARGET_PARTS TARGET_LEN)
 
+        # <arch>-<os>-<abi>[-<cpu>[-<feature>...]][-o<N>]
+        # e.g. arm-linux-gnueabihf-cortex_a7-neon-o3
+        #   -> -target arm-linux-gnueabihf -mcpu=cortex_a7+neon -O3
+        set(TARGET_CPU "")
+        set(TARGET_OPT "")
         if(TARGET_LEN GREATER 3)
-            list(GET TARGET_PARTS -1 TARGET_CPU)
-            list(REMOVE_AT TARGET_PARTS -1)
+            list(SUBLIST TARGET_PARTS 3 -1 TARGET_EXTRAS)
+            list(SUBLIST TARGET_PARTS 0 3 TARGET_PARTS)
+            foreach(TARGET_EXTRA IN LISTS TARGET_EXTRAS)
+                if(TARGET_EXTRA MATCHES "^[oO]([0-9sz])$")
+                    set(TARGET_OPT "-O${CMAKE_MATCH_1}")
+                elseif(TARGET_CPU STREQUAL "")
+                    set(TARGET_CPU "${TARGET_EXTRA}")
+                else()
+                    set(TARGET_CPU "${TARGET_CPU}+${TARGET_EXTRA}")
+                endif()
+            endforeach()
         endif()
 
         string(REPLACE ";" "-" TARGET_BASE "${TARGET_PARTS}")
@@ -75,6 +89,9 @@ if(NOT EXISTS "${ZIG_DIR}/zig-cc")
 
         if(TARGET_CPU)
             set(ZIG_TARGET_ARGS "${ZIG_TARGET_ARGS} -mcpu=${TARGET_CPU}")
+        endif()
+        if(TARGET_OPT)
+            set(ZIG_TARGET_ARGS "${ZIG_TARGET_ARGS} ${TARGET_OPT}")
         endif()
     endif()
 

@@ -10,8 +10,9 @@
 
 static void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r);
 
-static void native_draw_start(void) {
-    gecnd_t *gly = gecnd_get_root();
+static void core_pre_draw(const char *key, void *value, void *usr) {
+    (void)key; (void)usr;
+    gecnd_t *gly = (gecnd_t *)value;
     if (gly->state != GECND_FSM_RUNNING_PERFORMANCE &&
         gly->state != GECND_FSM_RUNNING_BACKGROUND) {
         glFinish();
@@ -20,7 +21,8 @@ static void native_draw_start(void) {
     native_draw_background_video();
 }
 
-void native_draw_flush() {
+static void core_pre_tint(const char *key, void *value, void *usr) {
+    (void)key; (void)value; (void)usr;
     ge_pipeline_flush();
     platform_swap_buffers();
 }
@@ -193,7 +195,8 @@ static void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
 
 __attribute__((constructor))
 static void init(void) {
-    gecnd_registry("set", "backend_func:native_draw_start", (void *)native_draw_start, NULL);
+    gecnd_registry("hook", "core:pre_draw", (void *)core_pre_draw, NULL);
+    gecnd_registry("hook", "core:pre_tint", (void *)core_pre_tint, NULL);
     gecnd_registry("set", "backend_func:native_draw_color", (void *)native_draw_color, NULL);
     gecnd_registry("set", "backend_func:native_draw_clear", (void *)native_draw_clear, NULL);
     gecnd_registry("set", "backend_func:native_draw_rect",  (void *)native_draw_rect,  NULL);

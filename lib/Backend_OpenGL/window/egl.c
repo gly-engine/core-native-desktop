@@ -107,7 +107,11 @@ double platform_get_time(void) {
     return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
 }
 
-void gly_hook_display_init(uint16_t width, uint16_t height) {
+static void core_pre_init(const char *key, void *value, void *usr) {
+    (void)key; (void)usr;
+    gecnd_t *gly = (gecnd_t *)value;
+    uint16_t width  = (uint16_t)gly->width;
+    uint16_t height = (uint16_t)gly->height;
     GLBackendState *s = geogl_get_state();
     if (platform_init(width, height) != 0) {
         fprintf(stderr, "[egl] platform_init failed: unable to bring up EGL context (%ux%u)\n", width, height);
@@ -126,9 +130,13 @@ void gly_hook_display_init(uint16_t width, uint16_t height) {
                         GL_ONE,       GL_ONE_MINUS_SRC_ALPHA);
     mat4_ortho(s->projection, 0, width, height, 0, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
     s->last_frame_time = platform_get_time();
-    gecnd_t *root = gecnd_get_root();
-    if (root) root->internal |= GECND_INTERNAL_HW_GL_READY;
+    gly->internal |= GECND_INTERNAL_HW_GL_READY;
     ge_hw_register();
+}
+
+__attribute__((constructor))
+static void init(void) {
+    gecnd_registry("hook", "core:pre_init", (void *)core_pre_init, NULL);
 }
 
 void gly_hook_display_dt(int16_t *delta_time) {

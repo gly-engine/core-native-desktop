@@ -12,10 +12,8 @@
 #define GLY_HOOK_IMPL
 #include "gehook.h"
 #include "gecnd.h"
-#include "genative.h"
 #include "gdmsp.h"
 #include "gdweb.h"
-#include "gemetrics.h"
 
 #if defined(GECND_USE_VENDOR_ENGINE)
 #include "engine_bytecode_lua.h"
@@ -190,6 +188,7 @@ static void on_core_state(const char *key, void *value, void *usr) {
 }
 
 static bool state_boot(gecnd_t *gly) {
+    gecnd_registry("set", "core:pre_init", gly, NULL);
     gly_hook_display_init(gly->width, gly->height);
     if (gecnd_is_root(gly)) {
         gamely_hypervisor_init(gly);
@@ -203,7 +202,7 @@ static bool state_boot(gecnd_t *gly) {
 }
 
 static bool state_lualib_load(gecnd_t *gly) {
-    gecnd_registry("get", "boot:*", NULL, gly);
+    gecnd_registry("set", "core:boot", gly, NULL);
     if (gly->error_len) return false;
     gly->state = GECND_FSM_DAEMONS_UP;
     return init_check_exit(gly);
@@ -362,43 +361,32 @@ static void callback_draw(gecnd_t *gly) {
 }
 
 static bool state_running(gecnd_t *gly) {
-    gecnd_metrics_finish_wait();
     gdmsp_control()->tick();
     gdweb_lua_tick();
 
-    gecnd_metrics_start_input();
     if (gecnd_is_root(gly)) gamely_hypervisor_tick();
-    gecnd_metrics_finish_input();
     if (gly->error_len) return false;
 
-    gecnd_metrics_start_loop();
+    gecnd_registry("set", "core:pre_loop", gly, NULL);
     if (gly->state != GECND_FSM_RUNNING_NOGAME)
         callback_loop(gly);
-    gecnd_metrics_finish_loop();
+    gecnd_registry("set", "core:post_loop", gly, NULL);
     if (gly->error_len) return false;
 
     if (gly->state != GECND_FSM_RUNNING_BACKGROUND &&
         gly->state != GECND_FSM_RUNNING_STANDBY) {
         if (gly->frameskip_count++ >= gly->frameskip) {
             gly->frameskip_count = 0;
-            native_draw_start();
-            gecnd_metrics_start_draw();
+            gecnd_registry("set", "core:pre_draw", gly, NULL);
             if (gly->state != GECND_FSM_RUNNING_NOGAME) {
-                gly->want_blit = true;
                 callback_draw(gly);
-                if (gly->want_blit)
-                    gecnd_add_error(gly, "[error] engine want blit!");
             }
-            gecnd_metrics_finish_draw();
-            gecnd_metrics_render(gly);
-            gecnd_metrics_start_post();
-            native_draw_flush();
-            gecnd_metrics_finish_post();
+            gecnd_registry("set", "core:post_draw", gly, NULL);
+            gecnd_registry("set", "core:pre_tint", gly, NULL);
+            gecnd_registry("set", "core:post_tint", gly, NULL);
         }
     }
 
-    gecnd_metrics_update();
-    gecnd_metrics_start_wait();
     if (gly->error_len) return false;
 
     bool close_requested = false;

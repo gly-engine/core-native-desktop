@@ -11,13 +11,19 @@ typedef struct hook_node {
 
 typedef struct {
     const char  *key;
-    void        *value;
+    size_t       value;   /* index into bucket; 0 = never set */
     hook_node_t *hooks;
 } gecnd_registry_entry_t;
 
 static gecnd_registry_entry_t *entries;
 static size_t count;
 static size_t capacity;
+
+/* bucket[0] is reserved as the "no value" sentinel, so an entry created by
+ * bind/hook before any set keeps index 0 and has/get report it as absent. */
+static void **bucket;
+static size_t bucket_count;
+static size_t bucket_capacity;
 
 #define BIND_HANDLER(suffix, type)                                  \
     static void bind_set_##suffix(const char *k, void *v, void *usr) { \
@@ -60,16 +66,26 @@ static size_t entry_intern(const char *key) {
     }
     memmove(&entries[pos + 1], &entries[pos], (count - pos) * sizeof(*entries));
     entries[pos].key   = key;
-    entries[pos].value = NULL;
+    entries[pos].value = 0;
     entries[pos].hooks = NULL;
     count++;
     return pos;
 }
 
+static size_t bucket_intern(void) {
+    if (bucket_count + 1 >= bucket_capacity) {
+        bucket_capacity = bucket_capacity ? bucket_capacity * 2 : 16;
+        bucket = realloc(bucket, bucket_capacity * sizeof(*bucket));
+    }
+    if (bucket_count == 0) bucket[bucket_count++] = NULL;
+    return bucket_count++;
+}
+
 int gecnd_registry(const char *cmd, const char *key, void *const value, void *const usr) {
     if (strcmp(cmd, "set") == 0) {
         size_t pos = entry_intern(key);
-        entries[pos].value = value;
+        if (entries[pos].value == 0) entries[pos].value = bucket_intern();
+        bucket[entries[pos].value] = value;
         for (hook_node_t *h = entries[pos].hooks; h; h = h->next) {
             h->handler(key, value, h->usr);
         }
@@ -84,7 +100,7 @@ int gecnd_registry(const char *cmd, const char *key, void *const value, void *co
         node->usr     = usr;
         node->next    = entries[pos].hooks;
         entries[pos].hooks = node;
-        if (entries[pos].value) node->handler(key, entries[pos].value, usr);
+        if (entries[pos].value) node->handler(key, bucket[entries[pos].value], usr);
         return 0;
     }
 
@@ -120,6 +136,7 @@ int gecnd_registry(const char *cmd, const char *key, void *const value, void *co
             int                    best_score = -1;
             for (size_t i = lower_bound(key, plen); i < count; i++) {
                 if (strncmp(entries[i].key, key, plen) != 0) break;
+                if (entries[i].value == 0) continue;
                 gecnd_lang_t ctx = {{ "rdsl", entries[i].key + plen, text }};
                 int score = 0;
                 while (gecnd_lang(&ctx)) {
@@ -129,7 +146,7 @@ int gecnd_registry(const char *cmd, const char *key, void *const value, void *co
                 if (score > best_score) {
                     best_score = score;
                     best_key   = entries[i].key;
-                    best_val   = entries[i].value;
+                    best_val   = bucket[entries[i].value];
                 }
             }
             if (handler) handler(best_key, best_val, usr);
@@ -139,16 +156,18 @@ int gecnd_registry(const char *cmd, const char *key, void *const value, void *co
         if (!star) {
             size_t pos = lower_bound(key, strlen(key) + 1);
             if (pos >= count || strcmp(entries[pos].key, key) != 0) return 0;
-            if (value) *(void **)value = entries[pos].value;
+            if (entries[pos].value == 0) return 0;
+            if (value) *(void **)value = bucket[entries[pos].value];
             return 1;
         }
         size_t len = (size_t)(star - key);
         int found = 0;
         for (size_t i = lower_bound(key, len); i < count; i++) {
             if (strncmp(entries[i].key, key, len) != 0) break;
+            if (entries[i].value == 0) continue;
             gecnd_registry_handler handler = value ? (gecnd_registry_handler)value
-                                                   : (gecnd_registry_handler)entries[i].value;
-            handler(entries[i].key, entries[i].value, usr);
+                                                   : (gecnd_registry_handler)bucket[entries[i].value];
+            handler(entries[i].key, bucket[entries[i].value], usr);
             found++;
         }
         return found;
