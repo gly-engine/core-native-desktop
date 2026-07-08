@@ -177,13 +177,6 @@ void gamely_daemon_db_start(void) {
              "  id    INTEGER PRIMARY KEY AUTOINCREMENT,"
              "  key   TEXT UNIQUE NOT NULL,"
              "  value TEXT);");
-    exec_sql("CREATE TABLE IF NOT EXISTS media ("
-             "  id        INTEGER PRIMARY KEY AUTOINCREMENT,"
-             "  name      TEXT,"
-             "  short     TEXT UNIQUE,"
-             "  url       TEXT,"
-             "  type      TEXT,"
-             "  url_image TEXT);");
     exec_sql("CREATE TABLE IF NOT EXISTS blob ("
              "  id   INTEGER PRIMARY KEY AUTOINCREMENT,"
              "  data BLOB NOT NULL,"
@@ -195,49 +188,6 @@ void gamely_daemon_db_stop(void) {
     if (!s_db) return;
     sqlite3_close(s_db);
     s_db = NULL;
-}
-
-int32_t gamely_daemon_db_insert_media(const char *name, const char *short_id,
-                                       const char *url,  const char *type,
-                                       const char *url_image) {
-    if (!s_db) return -1;
-    static const char sql[] =
-        "INSERT INTO media (name, short, url, type, url_image) VALUES (?,?,?,?,?)"
-        " ON CONFLICT(short) DO UPDATE SET"
-        "  name=excluded.name, url=excluded.url,"
-        "  type=excluded.type, url_image=excluded.url_image;";
-    sqlite3_stmt *st;
-    if (sqlite3_prepare_v2(s_db, sql, -1, &st, NULL) != SQLITE_OK) return -1;
-    sqlite3_bind_text(st, 1, name,      -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(st, 2, short_id,  -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(st, 3, url,       -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(st, 4, type,      -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(st, 5, url_image, -1, SQLITE_TRANSIENT);
-    sqlite3_step(st);
-    sqlite3_finalize(st);
-    return (int32_t)sqlite3_last_insert_rowid(s_db);
-}
-
-void gamely_daemon_db_delete_media(const char *short_id) {
-    if (!s_db) return;
-    sqlite3_stmt *st;
-    if (sqlite3_prepare_v2(s_db, "DELETE FROM media WHERE short=?;",
-                            -1, &st, NULL) != SQLITE_OK) return;
-    sqlite3_bind_text(st, 1, short_id, -1, SQLITE_TRANSIENT);
-    sqlite3_step(st);
-    sqlite3_finalize(st);
-}
-
-void gamely_daemon_db_delete_media_by_type(const char *type) {
-    if (!s_db) return;
-    sqlite3_stmt *st;
-    const char *sql = (type && type[0])
-        ? "DELETE FROM media WHERE type=?;"
-        : "DELETE FROM media;";
-    if (sqlite3_prepare_v2(s_db, sql, -1, &st, NULL) != SQLITE_OK) return;
-    if (type && type[0]) sqlite3_bind_text(st, 1, type, -1, SQLITE_TRANSIENT);
-    sqlite3_step(st);
-    sqlite3_finalize(st);
 }
 
 int32_t gamely_daemon_db_insert_blob(const uint8_t *data, size_t len,
@@ -296,29 +246,6 @@ const char *gamely_daemon_db_kv_get(const char *key) {
     return rc;
 }
 
-char *gamely_daemon_db_media_json(const char *type) {
-    if (!s_db) return NULL;
-    static const char sel[] =
-        "SELECT json_group_array(json_object("
-        "'name',name,'short',short,'url',url,"
-        "'type',type,'url_image',url_image)) FROM media";
-    char sql[256];
-    snprintf(sql, sizeof(sql), "%s%s;", sel, (type && type[0]) ? " WHERE type=?" : "");
-
-    sqlite3_stmt *st;
-    if (sqlite3_prepare_v2(s_db, sql, -1, &st, NULL) != SQLITE_OK) return NULL;
-    if (type && type[0]) sqlite3_bind_text(st, 1, type, -1, SQLITE_TRANSIENT);
-
-    char *out = NULL;
-    if (sqlite3_step(st) == SQLITE_ROW) {
-        const char *v = (const char *)sqlite3_column_text(st, 0);
-        size_t l = v ? strlen(v) : 0;
-        if ((out = malloc(l + 1))) memcpy(out, v ? v : "", l + 1);
-    }
-    sqlite3_finalize(st);
-    return out;
-}
-
 void *gamely_daemon_db_query_uri(const char *uri, size_t *out_len) {
     if (!s_db || !uri) return NULL;
 
@@ -330,4 +257,18 @@ void *gamely_daemon_db_query_uri(const char *uri, size_t *out_len) {
     if (run_query(table, field, &w, &out, out_len, NULL) == 0)
         return out;
     return NULL;
+}
+
+static int on_sqlite3_autoext(sqlite3 *db, char **err, const void *papi) {
+    (void)db; (void)err;
+    if (papi) gecnd_registry("set", "sqlite3_api_routines", (void *)papi, NULL);
+    return SQLITE_OK;
+}
+
+__attribute__((constructor))
+static void init(void) {
+    sqlite3 *tmp = NULL;
+    sqlite3_auto_extension((void (*)(void))on_sqlite3_autoext);
+    sqlite3_open(":memory:", &tmp);
+    if (tmp) sqlite3_close(tmp);
 }

@@ -88,12 +88,6 @@ set(TOMLC17_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/toml")
 set(TOMLC17_DOWNLOAD "https://github.com/cktan/tomlc17/archive/refs/tags/R260323.tar.gz")
 target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE "${TOMLC17_DIR}/src")
 
-# SQLite3
-set(SQLITE_VERSION "3410200") # exemplo: 3.41.2
-set(SQLITE_DIR "${CMAKE_SOURCE_DIR}/vendor/sqlite3")
-set(SQLITE_DOWNLOAD "https://www.sqlite.org/2023/sqlite-amalgamation-${SQLITE_VERSION}.zip")
-option(GECND_USE_SQLITE3 "Fetch and build sqlite3" ON)
-
 # Raylib
 set(RAYLIB_VERSION "5.5")
 set(RAYLIB_DIR "${CMAKE_SOURCE_DIR}/vendor/raylib")
@@ -296,19 +290,6 @@ add_custom_target(gecnd_fonts_headers DEPENDS
     ${FONTS_ROBOTO_REGULAR_HEADER}
 )
 add_dependencies(${PROJECT_NAME} gecnd_fonts_headers)
-
-if(GECND_USE_SQLITE3)
-    if(NOT EXISTS ${SQLITE_DIR})
-        FetchContent_Populate(dep_sqlite3 URL ${SQLITE_DOWNLOAD} SOURCE_DIR ${SQLITE_DIR})
-    endif()
-    add_library(sqlite3-static STATIC "${SQLITE_DIR}/sqlite3.c")
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_IO/driver_db_sqlite3.c")
-    target_link_libraries(${PROJECT_NAME} PRIVATE sqlite3-static)
-    target_link_libraries("sqlite3-static" PRIVATE gecnd_cc_flags)
-    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${SQLITE_DIR})
-else()
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_IO/driver_db_stub.c")
-endif()
 
 if(GECND_USE_RAYLIB)
     if(NOT EXISTS "${RAYLIB_DIR}")
@@ -625,6 +606,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/libffi.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/libjpeg.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/liblua.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/libqr.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/libsqlite3.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/libwuffs.cmake)
 
 if(GECND_USE_PLUGIN_LIBRETRO)
