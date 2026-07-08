@@ -12,6 +12,7 @@ typedef struct {
     int32_t            id;
     char              *url;
     gamely_img_state_t state;
+    char               from[16];   /* extensão-fonte (hint do resolver) p/ diagnóstico */
     char               fmt[16];
     int16_t            w, h;
     void              *backend_data;
@@ -139,8 +140,8 @@ static void decode_after_cb(uv_work_t *req, int status) {
     img_entry_t *e = find_by_id(w->entry_id);
     bool move = (w->result.flags & GECND_FLAG_IMG_MOVE) != 0;
     if (!e || !w->result.pixels) {
-        if (e) fprintf(stderr, "[img] decode failed id=%d '%s' (%zu bytes)\n",
-                       e->id, e->url, w->src_len);
+        if (e) fprintf(stderr, "[img] decode failed id=%d '%s' (decoder %s->%s, %zu bytes)\n",
+                       e->id, e->url, e->from, e->fmt, w->src_len);
         if (move) free(w->src); else free(w->result.pixels);
         free(w);
         if (e) set_error(e, "decode failed");
@@ -189,8 +190,12 @@ static void on_fetch(const uint8_t *data, size_t len,
         return;
     }
 
+    strncpy(e->from, from, sizeof(e->from) - 1);
+    e->from[sizeof(e->from) - 1] = '\0';
     strncpy(e->fmt, pick.to, sizeof(e->fmt) - 1);
     e->state = GLY_IMG_DECODING;
+    printf("[img] decode id=%d '%s' decoder %s->%s (threaded=%d)\n",
+           e->id, e->url, e->from, e->fmt, pick.threaded);
 
     if (pick.threaded && s_loop) {
         decode_work_t *w = calloc(1, sizeof(*w));
@@ -206,8 +211,8 @@ static void on_fetch(const uint8_t *data, size_t len,
     gamely_img_decoded_t result = pick.cb(data, len);
     if (!result.pixels) {
         free((void *)data);
-        fprintf(stderr, "[img] decode failed id=%d '%s' (->%s, %zu bytes)\n",
-                e->id, e->url, pick.to, len);
+        fprintf(stderr, "[img] decode failed id=%d '%s' (decoder %s->%s, %zu bytes)\n",
+                e->id, e->url, e->from, pick.to, len);
         set_error(e, "decode failed");
         return;
     }

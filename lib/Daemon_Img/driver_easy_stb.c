@@ -17,8 +17,6 @@ static gamely_img_decoded_t driver_decoder_stb(const uint8_t *data, size_t len) 
 
 __attribute__((constructor))
 static void init() {
-    gecnd_registry("set", "image_decoder_async:jpeg:rgba8888", driver_decoder_stb, NULL);
-    gecnd_registry("set", "image_decoder_async:jpg:rgba8888",  driver_decoder_stb, NULL);
     gecnd_registry("set", "image_decoder_async:bmp:rgba8888",  driver_decoder_stb, NULL);
     gecnd_registry("set", "image_decoder_async:gif:rgba8888",  driver_decoder_stb, NULL);
     gecnd_registry("set", "image_decoder_async:png:rgba8888",  driver_decoder_stb, NULL);

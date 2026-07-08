@@ -7,9 +7,6 @@
 #define WUFFS_CONFIG__MODULES
 #define WUFFS_CONFIG__MODULE__BASE
 #define WUFFS_CONFIG__MODULE__PNG
-#define WUFFS_CONFIG__MODULE__JPEG
-#define WUFFS_CONFIG__MODULE__BMP
-#define WUFFS_CONFIG__MODULE__TGA
 #define WUFFS_CONFIG__MODULE__ZLIB
 #define WUFFS_CONFIG__MODULE__DEFLATE
 #define WUFFS_CONFIG__MODULE__ADLER32
@@ -81,37 +78,7 @@ static gamely_img_decoded_t driver_decoder_wuffs_png(const uint8_t *data, size_t
     return decode_with(wuffs_png__decoder__upcast_as__wuffs_base__image_decoder(&dec), data, len);
 }
 
-static gamely_img_decoded_t driver_decoder_wuffs_jpeg(const uint8_t *data, size_t len) {
-    wuffs_jpeg__decoder dec;
-    wuffs_base__status st = wuffs_jpeg__decoder__initialize(
-        &dec, sizeof dec, WUFFS_VERSION, WUFFS_INITIALIZE__DEFAULT_OPTIONS);
-    if (!wuffs_base__status__is_ok(&st)) return (gamely_img_decoded_t){0};
-    return decode_with(wuffs_jpeg__decoder__upcast_as__wuffs_base__image_decoder(&dec), data, len);
-}
-
-static gamely_img_decoded_t driver_decoder_wuffs_bmp(const uint8_t *data, size_t len) {
-    wuffs_bmp__decoder dec;
-    wuffs_base__status st = wuffs_bmp__decoder__initialize(
-        &dec, sizeof dec, WUFFS_VERSION, WUFFS_INITIALIZE__DEFAULT_OPTIONS);
-    if (!wuffs_base__status__is_ok(&st)) return (gamely_img_decoded_t){0};
-    return decode_with(wuffs_bmp__decoder__upcast_as__wuffs_base__image_decoder(&dec), data, len);
-}
-
-static gamely_img_decoded_t driver_decoder_wuffs_tga(const uint8_t *data, size_t len) {
-    wuffs_tga__decoder dec;
-    wuffs_base__status st = wuffs_tga__decoder__initialize(
-        &dec, sizeof dec, WUFFS_VERSION, WUFFS_INITIALIZE__DEFAULT_OPTIONS);
-    if (!wuffs_base__status__is_ok(&st)) return (gamely_img_decoded_t){0};
-    return decode_with(wuffs_tga__decoder__upcast_as__wuffs_base__image_decoder(&dec), data, len);
-}
-
-/**
- @todo use only wuffs png?
- */
 __attribute__((constructor))
 static void init() {
-    gecnd_registry("set", "image_decoder_async:jpeg:rgba8888", driver_decoder_wuffs_jpeg, NULL);
-    gecnd_registry("set", "image_decoder_async:jpg:rgba8888",  driver_decoder_wuffs_jpeg, NULL);
     gecnd_registry("set", "image_decoder_async:png:rgba8888",  driver_decoder_wuffs_png, NULL);
-    gecnd_registry("set", "image_decoder_async:bmp:rgba8888",  driver_decoder_wuffs_bmp, NULL);
 }
