@@ -262,6 +262,9 @@ static bool state_fetching(gecnd_t *gly) {
 }
 
 static bool state_engine_loaded(gecnd_t *gly) {
+    gecnd_registry("set", "core:engine", gly, NULL);
+    if (gly->error_len) return false;
+
     lua_getglobal(gly->L, "native_callback_init");
     if (lua_type(gly->L, -1) != LUA_TFUNCTION) {
         gecnd_add_error(gly, "missing: native_callback_init");

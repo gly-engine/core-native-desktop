@@ -499,6 +499,7 @@ if(GECND_USE_WARMCAT)
     ExternalProject_Add(libwebsockets_proj
         SOURCE_DIR ${WARMCAT_DIR}
         CMAKE_ARGS
+            ${ZIG_TARGET_FLAG}
             -DCMAKE_INSTALL_PREFIX=${WARMCAT_BIN}
             -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
             -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
@@ -515,6 +516,8 @@ if(GECND_USE_WARMCAT)
             -DLWS_HAVE_MBEDTLS_NET_SOCKETS=ON
             -DLWS_HAVE_MBEDTLS_SSL_NEW_SESSION_TICKET=ON
             -DLWS_HAVE_mbedtls_md_setup=ON
+            -DLWS_HAVE_mbedtls_ssl_conf_alpn_protocols=ON
+            -DLWS_HAVE_mbedtls_ssl_get_alpn_protocol=ON
             -DLWS_WITH_OPENSSL=OFF
             -DLWS_WITH_WOLFSSL=OFF
             -DLWS_WITH_MINIMAL_EXAMPLES=OFF

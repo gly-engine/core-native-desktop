@@ -13,14 +13,27 @@
 #include "gecnd.h"
 #include "gdweb.h"
 
+/**
+ * @todo move to gecnd_t
+ */
+static int g_http_cb_ref = 0;
+
+static void on_core_engine(const char *key, void *value, void *usr)
+{
+    (void)key; (void)usr;
+    gecnd_t *gly = (gecnd_t *)value;
+    if (!gly) return;
+    lua_getglobal(gly->L, "native_callback_http");
+    if (lua_type(gly->L, -1) != LUA_TFUNCTION) {
+        lua_pop(gly->L, 1);
+        return;
+    }
+    g_http_cb_ref = luaL_ref(gly->L, LUA_REGISTRYINDEX);
+}
+
 static void cb_push(lua_State *L, int64_t req_id, const char *evt)
 {
-    int fn_ref = 0;
-    if (!fn_ref) {
-        //lua_getglobal(L, "native_callback_http");
-        //fn_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-    }
-    lua_rawgeti(L, LUA_REGISTRYINDEX, fn_ref);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, g_http_cb_ref);
     lua_pushinteger(L, req_id);
     lua_pushstring(L, evt);
 }
@@ -270,6 +283,7 @@ static int lua_native_http_sock(lua_State *L)
 
 __attribute__((constructor))
 static void init() {
+    gecnd_registry("hook", "core:engine", (void *)on_core_engine, NULL);
     gecnd_registry("set", "lua_global_func:native_http_handler", lua_native_http_handler, NULL);
     gecnd_registry("set", "lua_global_func:native_http_sock", lua_native_http_sock, NULL);
     gecnd_registry("set", "lua_global_value:native_http_has_ssl+$b", (void *)1, NULL);

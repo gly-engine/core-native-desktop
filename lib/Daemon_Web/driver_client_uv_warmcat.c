@@ -1,3 +1,6 @@
+/**
+ * @todo investigar sobre alpn se esta certo colocar para http 1.1
+ */
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -343,6 +346,7 @@ static gdweb_id_t wc_http(
     ccinfo.host           = host;
     ccinfo.origin         = host;
     ccinfo.protocol       = "http";
+    ccinfo.alpn           = "http/1.1"; /* driver only handles h1; avoid h2 negotiation hang */
     ccinfo.ssl_connection = ssl_flags;
     ccinfo.method         = method;
     ccinfo.userdata       = c;
@@ -393,6 +397,7 @@ static gdweb_id_t wc_ws_connect(
     ccinfo.host           = host;
     ccinfo.origin         = host;
     ccinfo.protocol       = protocol; /* NULL = no Sec-WebSocket-Protocol header */
+    ccinfo.alpn           = "http/1.1"; /* ws upgrade happens over h1 */
     ccinfo.ssl_connection = ssl_flags;
     ccinfo.userdata       = c;
 
