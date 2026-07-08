@@ -305,7 +305,7 @@ int  gamely_daemon_fs_search(const char      **paths,
                               void             *a,
                               void             *b);
 
-/* on_done=NULL -> sync (fills *out_data/*out_len, caller frees).
+/* on_done=NULL -> sync (fills *out_data / *out_len, caller frees).
  * on_done!=NULL -> async; delivered via gamely_daemon_fs_tick(). */
 int  gamely_daemon_fs_read  (const char        *path,
                               uint8_t          **out_data,
@@ -543,7 +543,7 @@ typedef struct {
 typedef struct gecnd_plugin gecnd_plugin_t;
 struct gecnd_plugin {
     gecnd_api_t *(*require)(const char *abi);
-    bool (*load)(const char *module);
+    bool (*call)(const char *module);
 };
 
 #endif

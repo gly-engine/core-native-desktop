@@ -360,4 +360,6 @@ void gamely_daemon_input_reset_port(int port)
 __attribute__((constructor))
 static void init(void) {
     gecnd_registry("set", "function:gamely_input_add_cb", (void *)gamely_input_add_cb, NULL);
+    gecnd_registry("set", "function:gamely_daemon_input_push", (void *)gamely_daemon_input_push, NULL);
+    gecnd_registry("set", "function:gamely_daemon_input_push_name", (void *)gamely_daemon_input_push_name, NULL);
 }

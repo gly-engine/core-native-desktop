@@ -8,7 +8,7 @@
 typedef void (*fn_gecnd_open)(gecnd_plugin_t *plugin);
 
 static gecnd_api_t *plugin_require(const char *abi);
-static bool         plugin_load(const char *module);
+static bool         plugin_call(const char *module);
 
 static gecnd_api_t PLUGIN_API = {
     .lang     = gecnd_lang,
@@ -17,7 +17,7 @@ static gecnd_api_t PLUGIN_API = {
 
 static gecnd_plugin_t PLUGIN = {
     .require = plugin_require,
-    .load    = plugin_load,
+    .call    = plugin_call,
 };
 
 static LIB_HANDLE g_handle = NULL;
@@ -44,15 +44,13 @@ static gecnd_api_t *plugin_require(const char *abi) {
     return &PLUGIN_API;
 }
 
-static bool plugin_load(const char *module) {
-    char sym[128];
-    snprintf(sym, sizeof(sym), "coreopen_%s_%s", g_base, module);
-    fn_gecnd_open open_fn = (fn_gecnd_open)get_symbol(g_handle, sym);
-    if (!open_fn) {
-        fprintf(stderr, "[plugin] module not found: %s\n", sym);
+static bool plugin_call(const char *module) {
+    void (*fn)(void) = (typeof(fn)) get_symbol(g_handle, module);
+    if (!fn) {
+        fprintf(stderr, "[plugin] module not found: %s\n", module);
         return false;
     }
-    open_fn(&PLUGIN);
+    fn();
     return true;
 }
 
