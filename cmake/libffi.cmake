@@ -1,14 +1,14 @@
-option(GECND_USE_FFI "fetch ffi" ON)
+option(GECND_USE_FFI "fetch ffi" OFF)
 set(LIBFFI_VERSION "v3.6.0")
 set(LIBFFI_DIR "${CMAKE_SOURCE_DIR}/vendor/libffi")
 set(LIBFFI_BIN "${CMAKE_BINARY_DIR}/libffi")
 set(LIBFFI_DOWNLOAD "https://github.com/libffi/libffi/archive/refs/tags/${LIBFFI_VERSION}.tar.gz")
 set(LIBFFI_SOURCE "${CMAKE_CURRENT_LIST_DIR}/../lib/Daemon_Registry/driver_lua_ffi.c")
 
-set(LIBFFI_BUILD_TRIPLE "x86_64-linux-gnu")
-set(LIBFFI_HOST_TRIPLE  "arm-linux-gnueabihf")
-#--build=${LIBFFI_BUILD_TRIPLE} \
-#--host=${LIBFFI_HOST_TRIPLE} \
+set(LIBFFI_HOST_ARG "")
+if(ZIG_TARGET_TRIPLE)
+    set(LIBFFI_HOST_ARG "--host=${ZIG_TARGET_TRIPLE}")
+endif()
 
 if (GECND_USE_FFI)
     set(LIBFFI_LIB ${LIBFFI_BIN}/lib/libffi.a)
@@ -23,6 +23,7 @@ if (GECND_USE_FFI)
                     CXX=${CMAKE_CXX_COMPILER} \
                     AR=${CMAKE_AR} RANLIB=${CMAKE_RANLIB} \
                 ./configure \
+                    ${LIBFFI_HOST_ARG} \
                     --prefix=${LIBFFI_BIN} \
                     --libdir=${LIBFFI_BIN}/lib \
                     --disable-shared \
