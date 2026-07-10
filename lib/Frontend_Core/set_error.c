@@ -33,3 +33,13 @@ void gecnd_add_error(gecnd_t *gly, const char *fmt, ...) {
 
     if (written > 0) gly->error_len += (size_t)written;
 }
+
+static void hook_add_error(const char *key, void *value, void *usr) {
+    gecnd_t *gly = gecnd_get_root();
+    if (gly) gecnd_add_error(gly, "%s", (char*) value);
+}
+
+__attribute__((constructor))
+static void init() {
+    gecnd_registry("hook", "core:error", hook_add_error, NULL);
+}
