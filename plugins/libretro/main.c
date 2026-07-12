@@ -20,6 +20,7 @@ void        native_libretro_exit               (void);
 void        libretro_run_frame                 (void);
 bool        libretro_is_running                (void);
 const char *native_libretro_error              (void);
+void        native_libretro_set_error          (const char *fmt, ...);
 
 /* Protótipos de hw_render.c */
 void libretro_hw_gl_ready(void);
@@ -118,7 +119,7 @@ static gdmsp_fsm_t libretro_file_source(uint8_t channel, const char *url, void *
 
     const char *core_path = scanner_resolve_core(core_name);
     if (!core_path) {
-        fprintf(stderr, "[libretro] core not found: %s\n", core_name);
+        native_libretro_set_error("core not found: %s", core_name);
         return GDMSP_FSM_ERROR;
     }
     /* scanner_resolve_* retorna ponteiro para buffer estático — copia antes
@@ -129,16 +130,16 @@ static gdmsp_fsm_t libretro_file_source(uint8_t channel, const char *url, void *
 
     const char *rom_path = scanner_resolve_rom(rom_name);
     if (!rom_path) {
-        fprintf(stderr, "[libretro] rom not found: %s\n", rom_name);
+        native_libretro_set_error("rom not found: %s", rom_name);
         return GDMSP_FSM_ERROR;
     }
 
     if (!native_libretro_load(core_buf)) {
-        fprintf(stderr, "[libretro] failed to load core: %s\n", core_buf);
+        native_libretro_set_error("failed to load core: %s", core_buf);
         return GDMSP_FSM_ERROR;
     }
     if (!native_libretro_game_load_only(rom_path)) {
-        fprintf(stderr, "[libretro] failed to load game: %s\n", rom_path);
+        native_libretro_set_error("failed to load game: %s", rom_path);
         native_libretro_exit();
         return GDMSP_FSM_ERROR;
     }
@@ -221,7 +222,7 @@ static void libretro_http_on_done(gdweb_id_t id, void *user) {
 
     const char *core_path = scanner_resolve_core(ctx->core_name);
     if (!core_path) {
-        fprintf(stderr, "[libretro+http] core not found: %s\n", ctx->core_name);
+        native_libretro_set_error("core not found: %s", ctx->core_name);
         free(ctx->buf);
         free(ctx);
         atomic_store(&s_http_ok, false);
@@ -242,7 +243,7 @@ static void libretro_http_on_done(gdweb_id_t id, void *user) {
 static void libretro_http_on_error(gdweb_id_t id, const char *msg, void *user) {
     (void)id;
     libretro_http_ctx_t *ctx = user;
-    fprintf(stderr, "[libretro+http] fetch error: %s\n", msg ? msg : "");
+    native_libretro_set_error("fetch error: %s", msg ? msg : "");
     free(ctx->buf);
     free(ctx);
     atomic_store(&s_http_ok, false);
@@ -258,7 +259,7 @@ static gdmsp_fsm_t libretro_http_source(uint8_t channel, const char *url, void *
     url_env_set(url);
 
     if (u.core == NULL || u.remote == NULL || u.location == NULL) {
-        fprintf(stderr, "[libretro+http] malformed url: %s\n", url);
+        native_libretro_set_error("malformed url: %s", url);
         return GDMSP_FSM_ERROR;
     }
 
@@ -298,7 +299,7 @@ static gdmsp_fsm_t libretro_http_source(uint8_t channel, const char *url, void *
     if (!atomic_load(&s_http_ok)) return GDMSP_FSM_ERROR;
 
     if (!native_libretro_load(s_load_core_path)) {
-        fprintf(stderr, "[libretro+http] failed to load core: %s\n", s_load_core_path);
+        native_libretro_set_error("failed to load core: %s", s_load_core_path);
         free(s_load_rom_buf); s_load_rom_buf = NULL; s_load_rom_buf_len = 0;
         return GDMSP_FSM_ERROR;
     }
@@ -306,7 +307,7 @@ static gdmsp_fsm_t libretro_http_source(uint8_t channel, const char *url, void *
     /* buffer não é mais útil depois que load_game o copia internamente */
     free(s_load_rom_buf); s_load_rom_buf = NULL; s_load_rom_buf_len = 0;
     if (!ok) {
-        fprintf(stderr, "[libretro+http] failed to load game from buffer\n");
+        native_libretro_set_error("failed to load game from buffer");
         native_libretro_exit();
         return GDMSP_FSM_ERROR;
     }
@@ -332,7 +333,7 @@ static char* lua_native_libretro_exit(void) {
     return NULL;
 }
 
-static char* lua_native_libretro_error(const char **const ret) {
+static char* lua_native_libretro_get_error(const char **const ret) {
     *ret = native_libretro_error();
     return NULL;
 }
@@ -346,7 +347,7 @@ void coreopen_libretro_gecnd(gecnd_plugin_t *const plugin) {
     api = plugin->require("v1");
     api->registry("set", "lua_global_ffi:native_libretro_url+$s+$0", lua_native_libretro_url, NULL);
     api->registry("set", "lua_global_ffi:native_libretro_exit+$0+$0", lua_native_libretro_exit, NULL);
-    api->registry("set", "lua_global_ffi:native_libretro_error+$0+$s", lua_native_libretro_error, NULL);
+    api->registry("set", "lua_global_ffi:native_libretro_get_error+$0+$s", lua_native_libretro_get_error, NULL);
     api->registry("set", "lua_global_ffi:native_libretro_is_running+$0+$b", lua_native_libretro_is_running, NULL);
     api->registry("set", "media_player:libretro+$l$0", &libretro_file_player, NULL);
     api->registry("set", "media_player:libretro+$l+http$0", &libretro_http_player, NULL);

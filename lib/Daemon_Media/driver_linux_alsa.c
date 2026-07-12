@@ -69,7 +69,16 @@ void coreopen_alsa_gecnd()
             break;
         }
 
-        gamely_daemon_media_audio_subscribe(on_audio, NULL);
+        /* nova ABI: consome o serviço de áudio via registry, não por link */
+        typeof(gamely_daemon_media_audio_subscribe) *subscribe = NULL;
+        gecnd_registry("get", "function:gamely_daemon_media_audio_subscribe", (void *)&subscribe, NULL);
+        if (!subscribe) {
+            fprintf(stderr, "[alsa] audio service not in registry\n");
+            dlclose(g_lib);
+            g_lib = NULL;
+            break;
+        }
+        subscribe(on_audio, NULL);
     }
     while(0);
 }

@@ -112,11 +112,12 @@ static void RETRO_CALLCONV core_video_refresh(const void *data, unsigned width, 
 
 static void RETRO_CALLCONV core_audio_sample(int16_t left, int16_t right) {
     int16_t buf[2] = { left, right };
-    if (media_bind()) media.audio_push(buf, 1);
+    /* audio vem de outro serviço que o claim — pode não estar registrado */
+    if (media_bind() && media.audio_push) media.audio_push(buf, 1);
 }
 
 static size_t RETRO_CALLCONV core_audio_sample_batch(const int16_t *data, size_t frames) {
-    if (media_bind()) media.audio_push(data, frames);
+    if (media_bind() && media.audio_push) media.audio_push(data, frames);
     return frames;
 }
 
@@ -208,6 +209,14 @@ const char *native_libretro_error(void) {
     return s_error;
 }
 
+void native_libretro_set_error(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(s_error, sizeof(s_error), fmt, ap);
+    va_end(ap);
+    fprintf(stderr, "[libretro] %s\n", s_error);
+}
+
 bool native_libretro_url(const char *url) {
     char buf[2048];
     strncpy(buf, url, sizeof(buf) - 1);
@@ -215,7 +224,7 @@ bool native_libretro_url(const char *url) {
 
     char *sep = strstr(buf, "://");
     if (!sep) {
-        snprintf(s_error, sizeof(s_error), "invalid url, expected: core://rom[?key=val&...]");
+        native_libretro_set_error("invalid url, expected: core://rom[?key=val&...]");
         return false;
     }
     *sep = '\0';
@@ -229,21 +238,21 @@ bool native_libretro_url(const char *url) {
 
     const char *resolved_core = scanner_resolve_core(core);
     if (!resolved_core) {
-        snprintf(s_error, sizeof(s_error), "core not found: %s", core);
+        native_libretro_set_error("core not found: %s", core);
         return false;
     }
     if (!native_libretro_load(resolved_core)) {
-        snprintf(s_error, sizeof(s_error), "failed to open core: %s", resolved_core);
+        native_libretro_set_error("failed to open core: %s", resolved_core);
         return false;
     }
 
     const char *resolved_rom = scanner_resolve_rom(rom);
     if (!resolved_rom) {
-        snprintf(s_error, sizeof(s_error), "rom not found: %s", rom);
+        native_libretro_set_error("rom not found: %s", rom);
         return false;
     }
     if (!native_libretro_game(resolved_rom)) {
-        snprintf(s_error, sizeof(s_error), "failed to load rom: %s", resolved_rom);
+        native_libretro_set_error("failed to load rom: %s", resolved_rom);
         return false;
     }
 
@@ -384,7 +393,7 @@ void native_libretro_game_finalize(void) {
     if (!s_pending_finalize) return;
     s_pending_finalize = false;
 
-    if (media_bind()) media.audio_configure((unsigned)s_pending_av_info.timing.sample_rate, 2);
+    if (media_bind() && media.audio_configure) media.audio_configure((unsigned)s_pending_av_info.timing.sample_rate, 2);
     if (libretro_hw_is_active()) {
         int fw = (s_pending_av_info.geometry.max_width  > 0)
             ? (int)s_pending_av_info.geometry.max_width
@@ -417,14 +426,14 @@ static const char *libretro_spill_rom_to_tmp(const uint8_t *data, size_t size,
 
     FILE *f = fopen(s_tmp_rom_path, "wb");
     if (!f) {
-        fprintf(stderr, "[libretro] cannot create tmp rom: %s\n", s_tmp_rom_path);
+        native_libretro_set_error("cannot create tmp rom: %s", s_tmp_rom_path);
         s_tmp_rom_path[0] = '\0';
         return NULL;
     }
     size_t written = fwrite(data, 1, size, f);
     fclose(f);
     if (written != size) {
-        fprintf(stderr, "[libretro] short write on tmp rom: %s\n", s_tmp_rom_path);
+        native_libretro_set_error("short write on tmp rom: %s", s_tmp_rom_path);
         unlink(s_tmp_rom_path);
         s_tmp_rom_path[0] = '\0';
         return NULL;
