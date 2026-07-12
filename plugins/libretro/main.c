@@ -13,7 +13,7 @@
 bool        native_libretro_load               (const char *core_path);
 bool        native_libretro_game               (const char *rom_path);
 bool        native_libretro_game_load_only     (const char *rom_path);
-bool        native_libretro_game_from_buffer   (const uint8_t *data, size_t size);
+bool        native_libretro_game_from_buffer   (const uint8_t *data, size_t size, const char *name);
 void        native_libretro_game_finalize      (void);
 bool        native_libretro_url                (const char *url);
 void        native_libretro_exit               (void);
@@ -53,6 +53,7 @@ static atomic_bool s_http_fetching = false;
 static atomic_bool s_http_ok       = false;
 
 static char     s_load_core_path[1024];
+static char     s_load_rom_name[256];
 static uint8_t *s_load_rom_buf     = NULL;
 static size_t   s_load_rom_buf_len = 0;
 
@@ -261,6 +262,16 @@ static gdmsp_fsm_t libretro_http_source(uint8_t channel, const char *url, void *
         return GDMSP_FSM_ERROR;
     }
 
+    /* basename da URL — vira o nome do arquivo temporário quando o core
+     * exige need_fullpath (extensão importa: cores detectam o console por ela) */
+    {
+        const char *base = u.location;
+        for (size_t i = 0; i < u.location_len; i++)
+            if (u.location[i] == '/') base = u.location + i + 1;
+        size_t base_len = (size_t)(u.location + u.location_len - base);
+        snprintf(s_load_rom_name, sizeof(s_load_rom_name), "%.*s", (int)base_len, base);
+    }
+
     libretro_http_ctx_t *ctx = calloc(1, sizeof(*ctx));
     if (!ctx) return GDMSP_FSM_ERROR;
     ctx->channel = channel;
@@ -291,7 +302,7 @@ static gdmsp_fsm_t libretro_http_source(uint8_t channel, const char *url, void *
         free(s_load_rom_buf); s_load_rom_buf = NULL; s_load_rom_buf_len = 0;
         return GDMSP_FSM_ERROR;
     }
-    bool ok = native_libretro_game_from_buffer(s_load_rom_buf, s_load_rom_buf_len);
+    bool ok = native_libretro_game_from_buffer(s_load_rom_buf, s_load_rom_buf_len, s_load_rom_name);
     /* buffer não é mais útil depois que load_game o copia internamente */
     free(s_load_rom_buf); s_load_rom_buf = NULL; s_load_rom_buf_len = 0;
     if (!ok) {

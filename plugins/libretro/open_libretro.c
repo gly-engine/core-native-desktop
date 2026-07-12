@@ -22,6 +22,10 @@ static LIB_HANDLE core_handle = NULL;
 static char system_dir[1024] = ".";
 static char s_error[256]     = "";
 
+/* ROM temporária gravada em /tmp quando o core exige need_fullpath;
+ * removida no deinit (cores de CD podem ler o arquivo depois do load). */
+static char s_tmp_rom_path[512] = "";
+
 /* Pending finalize state — populated by *_load_only no worker thread,
  * consumido por native_libretro_game_finalize no main thread. */
 static bool                       s_pending_finalize = false;
@@ -196,7 +200,7 @@ static bool core_environment(unsigned cmd, void *data) {
 bool native_libretro_load(const char *path);
 bool native_libretro_game(const char *path);
 bool native_libretro_game_load_only(const char *path);
-bool native_libretro_game_from_buffer(const uint8_t *data, size_t size);
+bool native_libretro_game_from_buffer(const uint8_t *data, size_t size, const char *name);
 void native_libretro_game_finalize(void);
 static void libretro_deinit_core(void);
 
@@ -395,7 +399,40 @@ void native_libretro_game_finalize(void) {
     api->registry("set", "core:state", (void *)(uintptr_t)GECND_FSM_RUNNING_PERFORMANCE, NULL);
 }
 
-bool native_libretro_game_from_buffer(const uint8_t *data, size_t size) {
+/* Grava o buffer em /tmp/<name> para cores com need_fullpath.
+ * Mantém a extensão original — cores detectam o console por ela. */
+static const char *libretro_spill_rom_to_tmp(const uint8_t *data, size_t size,
+                                             const char *name,
+                                             const struct retro_system_info *sys_info) {
+    char fallback[32] = "rom";
+    if ((!name || !name[0]) && sys_info->valid_extensions) {
+        char ext[16];
+        snprintf(ext, sizeof(ext), "%s", sys_info->valid_extensions);
+        char *sep = strchr(ext, '|');
+        if (sep) *sep = '\0';
+        snprintf(fallback, sizeof(fallback), "rom.%s", ext);
+    }
+    snprintf(s_tmp_rom_path, sizeof(s_tmp_rom_path), "/tmp/%s",
+             (name && name[0]) ? name : fallback);
+
+    FILE *f = fopen(s_tmp_rom_path, "wb");
+    if (!f) {
+        fprintf(stderr, "[libretro] cannot create tmp rom: %s\n", s_tmp_rom_path);
+        s_tmp_rom_path[0] = '\0';
+        return NULL;
+    }
+    size_t written = fwrite(data, 1, size, f);
+    fclose(f);
+    if (written != size) {
+        fprintf(stderr, "[libretro] short write on tmp rom: %s\n", s_tmp_rom_path);
+        unlink(s_tmp_rom_path);
+        s_tmp_rom_path[0] = '\0';
+        return NULL;
+    }
+    return s_tmp_rom_path;
+}
+
+bool native_libretro_game_from_buffer(const uint8_t *data, size_t size, const char *name) {
     if (!core_handle) return false;
 
     struct retro_system_info sys_info = {0};
@@ -406,6 +443,13 @@ bool native_libretro_game_from_buffer(const uint8_t *data, size_t size) {
     info.data = data;
     info.size = size;
     info.meta = NULL;
+
+    if (sys_info.need_fullpath) {
+        info.path = libretro_spill_rom_to_tmp(data, size, name, &sys_info);
+        if (!info.path) return false;
+        info.data = NULL;
+        info.size = 0;
+    }
 
     if (p_retro_set_video_refresh)      p_retro_set_video_refresh(core_video_refresh);
     if (p_retro_set_audio_sample)       p_retro_set_audio_sample(core_audio_sample);
@@ -438,6 +482,10 @@ static void libretro_deinit_core(void) {
     api->registry("set", "core:state", (void *)(uintptr_t)GECND_FSM_RUNNING, NULL);
     if (core_initialized) {
         if (p_retro_unload_game) p_retro_unload_game();
+    }
+    if (s_tmp_rom_path[0]) {
+        unlink(s_tmp_rom_path);
+        s_tmp_rom_path[0] = '\0';
     }
     libretro_hw_cleanup();
     if (core_init_done) {
