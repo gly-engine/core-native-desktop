@@ -217,6 +217,12 @@ void native_libretro_set_error(const char *fmt, ...) {
     fprintf(stderr, "[libretro] %s\n", s_error);
 }
 
+void native_libretro_track_tmp_rom(const char *path) {
+    if (s_tmp_rom_path[0] && strcmp(s_tmp_rom_path, path) != 0)
+        unlink(s_tmp_rom_path);
+    snprintf(s_tmp_rom_path, sizeof(s_tmp_rom_path), "%s", path);
+}
+
 bool native_libretro_url(const char *url) {
     char buf[2048];
     strncpy(buf, url, sizeof(buf) - 1);

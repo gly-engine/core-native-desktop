@@ -21,6 +21,7 @@ void        libretro_run_frame                 (void);
 bool        libretro_is_running                (void);
 const char *native_libretro_error              (void);
 void        native_libretro_set_error          (const char *fmt, ...);
+void        native_libretro_track_tmp_rom      (const char *path);
 
 /* Protótipos de hw_render.c */
 void libretro_hw_gl_ready(void);
@@ -193,17 +194,27 @@ typedef struct {
     uint8_t *buf;
     size_t   buf_len;
     size_t   buf_cap;
+    FILE    *file;           /* modo tmp+http: streama pro disco */
+    char     file_path[300];
 } libretro_http_ctx_t;
 
 static void libretro_http_on_status(gdweb_id_t id, int status, void *user) {
     (void)id; (void)status;
     libretro_http_ctx_t *ctx = user;
     ctx->buf_len = 0;
+    if (ctx->file) { /* nova resposta (ex.: redirect) — recomeça o arquivo */
+        fclose(ctx->file);
+        ctx->file = fopen(ctx->file_path, "wb");
+    }
 }
 
 static void libretro_http_on_data(gdweb_id_t id, const char *data, size_t len, void *user) {
     (void)id;
     libretro_http_ctx_t *ctx = user;
+    if (ctx->file) {
+        fwrite(data, 1, len, ctx->file);
+        return;
+    }
     if (ctx->buf_len + len > ctx->buf_cap) {
         size_t new_cap = ctx->buf_cap == 0 ? 65536 : ctx->buf_cap * 2;
         while (new_cap < ctx->buf_len + len) new_cap *= 2;
@@ -216,6 +227,17 @@ static void libretro_http_on_data(gdweb_id_t id, const char *data, size_t len, v
     ctx->buf_len += len;
 }
 
+static void libretro_http_ctx_abort(libretro_http_ctx_t *ctx) {
+    if (ctx->file) {
+        fclose(ctx->file);
+        unlink(ctx->file_path);
+    }
+    free(ctx->buf);
+    free(ctx);
+    atomic_store(&s_http_ok, false);
+    atomic_store(&s_http_fetching, false);
+}
+
 static void libretro_http_on_done(gdweb_id_t id, void *user) {
     (void)id;
     libretro_http_ctx_t *ctx = user;
@@ -223,17 +245,19 @@ static void libretro_http_on_done(gdweb_id_t id, void *user) {
     const char *core_path = scanner_resolve_core(ctx->core_name);
     if (!core_path) {
         native_libretro_set_error("core not found: %s", ctx->core_name);
-        free(ctx->buf);
-        free(ctx);
-        atomic_store(&s_http_ok, false);
-        atomic_store(&s_http_fetching, false);
+        libretro_http_ctx_abort(ctx);
         return;
     }
 
     strncpy(s_load_core_path, core_path, sizeof(s_load_core_path) - 1);
     s_load_core_path[sizeof(s_load_core_path) - 1] = '\0';
-    s_load_rom_buf     = ctx->buf; ctx->buf = NULL;
-    s_load_rom_buf_len = ctx->buf_len;
+    if (ctx->file) {
+        fclose(ctx->file);
+        ctx->file = NULL;
+    } else {
+        s_load_rom_buf     = ctx->buf; ctx->buf = NULL;
+        s_load_rom_buf_len = ctx->buf_len;
+    }
     free(ctx);
 
     atomic_store(&s_http_ok, true);
@@ -244,15 +268,11 @@ static void libretro_http_on_error(gdweb_id_t id, const char *msg, void *user) {
     (void)id;
     libretro_http_ctx_t *ctx = user;
     native_libretro_set_error("fetch error: %s", msg ? msg : "");
-    free(ctx->buf);
-    free(ctx);
-    atomic_store(&s_http_ok, false);
-    atomic_store(&s_http_fetching, false);
+    libretro_http_ctx_abort(ctx);
 }
 
-static gdmsp_fsm_t libretro_http_source(uint8_t channel, const char *url, void *usr) {
-    (void)usr;
-
+static gdmsp_fsm_t libretro_http_source_common(uint8_t channel, const char *url,
+                                               bool to_tmp) {
     native_libretro_exit();
 
     libretro_url_t u = libretro_url_split(url);
@@ -263,8 +283,9 @@ static gdmsp_fsm_t libretro_http_source(uint8_t channel, const char *url, void *
         return GDMSP_FSM_ERROR;
     }
 
-    /* basename da URL — vira o nome do arquivo temporário quando o core
-     * exige need_fullpath (extensão importa: cores detectam o console por ela) */
+    const char *remote = u.remote;
+    if (to_tmp && strncmp(remote, "tmp+", 4) == 0) remote += 4;
+
     {
         const char *base = u.location;
         for (size_t i = 0; i < u.location_len; i++)
@@ -278,16 +299,30 @@ static gdmsp_fsm_t libretro_http_source(uint8_t channel, const char *url, void *
     ctx->channel = channel;
     snprintf(ctx->core_name, sizeof(ctx->core_name), "%.*s", (int)u.core_len, u.core);
 
+    char tmp_path[300] = "";
+    if (to_tmp) {
+        snprintf(tmp_path, sizeof(tmp_path), "/tmp/%s",
+                 s_load_rom_name[0] ? s_load_rom_name : "rom");
+        snprintf(ctx->file_path, sizeof(ctx->file_path), "%s", tmp_path);
+        ctx->file = fopen(ctx->file_path, "wb");
+        if (!ctx->file) {
+            native_libretro_set_error("cannot create tmp rom: %s", ctx->file_path);
+            free(ctx);
+            return GDMSP_FSM_ERROR;
+        }
+    }
+
     atomic_store(&s_http_ok,       false);
     atomic_store(&s_http_fetching, true);
 
     gdweb_http_req_t req = {0};
     if (!host_bind()) {
         atomic_store(&s_http_fetching, false);
+        if (ctx->file) { fclose(ctx->file); unlink(ctx->file_path); }
         free(ctx);
         return GDMSP_FSM_ERROR;
     }
-    host.client()->http(u.remote, &req,
+    host.client()->http(remote, &req,
         libretro_http_on_status, libretro_http_on_data,
         libretro_http_on_done,   libretro_http_on_error,
         ctx);
@@ -301,13 +336,21 @@ static gdmsp_fsm_t libretro_http_source(uint8_t channel, const char *url, void *
     if (!native_libretro_load(s_load_core_path)) {
         native_libretro_set_error("failed to load core: %s", s_load_core_path);
         free(s_load_rom_buf); s_load_rom_buf = NULL; s_load_rom_buf_len = 0;
+        if (to_tmp) unlink(tmp_path);
         return GDMSP_FSM_ERROR;
     }
-    bool ok = native_libretro_game_from_buffer(s_load_rom_buf, s_load_rom_buf_len, s_load_rom_name);
-    /* buffer não é mais útil depois que load_game o copia internamente */
-    free(s_load_rom_buf); s_load_rom_buf = NULL; s_load_rom_buf_len = 0;
+
+    bool ok;
+    if (to_tmp) {
+        native_libretro_track_tmp_rom(tmp_path);
+        ok = native_libretro_game_load_only(tmp_path);
+        if (!ok) native_libretro_set_error("failed to load game: %s", tmp_path);
+    } else {
+        ok = native_libretro_game_from_buffer(s_load_rom_buf, s_load_rom_buf_len, s_load_rom_name);
+        free(s_load_rom_buf); s_load_rom_buf = NULL; s_load_rom_buf_len = 0;
+        if (!ok) native_libretro_set_error("failed to load game from buffer");
+    }
     if (!ok) {
-        native_libretro_set_error("failed to load game from buffer");
         native_libretro_exit();
         return GDMSP_FSM_ERROR;
     }
@@ -315,8 +358,24 @@ static gdmsp_fsm_t libretro_http_source(uint8_t channel, const char *url, void *
     return GDMSP_FSM_LOADING;
 }
 
+static gdmsp_fsm_t libretro_http_source(uint8_t channel, const char *url, void *usr) {
+    (void)usr;
+    return libretro_http_source_common(channel, url, false);
+}
+
+static gdmsp_fsm_t libretro_tmp_http_source(uint8_t channel, const char *url, void *usr) {
+    (void)usr;
+    return libretro_http_source_common(channel, url, true);
+}
+
 static gdmsp_player_t libretro_http_player = {
     .src = libretro_http_source,
+    .set = libretro_set,
+    .get = libretro_get,
+};
+
+static gdmsp_player_t libretro_tmp_http_player = {
+    .src = libretro_tmp_http_source,
     .set = libretro_set,
     .get = libretro_get,
 };
@@ -352,4 +411,6 @@ void coreopen_libretro_gecnd(gecnd_plugin_t *const plugin) {
     api->registry("set", "media_player:libretro+$l$0", &libretro_file_player, NULL);
     api->registry("set", "media_player:libretro+$l+http$0", &libretro_http_player, NULL);
     api->registry("set", "media_player:libretro+$l+https$0", &libretro_http_player, NULL);
+    api->registry("set", "media_player:libretro+$l+tmp+http$0", &libretro_tmp_http_player, NULL);
+    api->registry("set", "media_player:libretro+$l+tmp+https$0", &libretro_tmp_http_player, NULL);
 }
