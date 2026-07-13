@@ -1,4 +1,4 @@
-set(ZIG_VERSION "0.15.2")
+set(ZIG_VERSION "0.16.0")
 set(ZIG_DIR "${CMAKE_CURRENT_LIST_DIR}/vendor/zig")
 set(ZIG_BIN "${CMAKE_BINARY_DIR}")
 
