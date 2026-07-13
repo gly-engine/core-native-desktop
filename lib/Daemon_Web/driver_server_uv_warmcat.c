@@ -18,6 +18,8 @@ extern void            web_free_req    (uint32_t conn_id);
 extern gdweb_http_cb_t   web_route_http  (const char *path);
 extern gdweb_ws_cb_t     web_route_ws    (const char *path);
 extern gdweb_stream_cb_t web_route_stream(const char *path);
+extern bool              web_http_path_file(const char *path, char **out_buf,
+                                            size_t *out_len, const char **out_mime);
 
 #define MAX_WS_CLIENTS     64
 #define MAX_STREAM_CLIENTS  8
@@ -328,13 +330,23 @@ static int callback_http(struct lws *wsi,
             gdweb_http_req_t req = { .id = s->req_id, .path = full_path, .method = method };
             http_cb(&req);
         } else {
-            s->status = 404;
-            strncpy(s->content_type, "text/plain", sizeof(s->content_type) - 1);
-            static const char not_found[] = "Not Found";
-            s->body = malloc(sizeof(not_found) - 1);
-            if (s->body) {
-                memcpy(s->body, not_found, sizeof(not_found) - 1);
-                s->body_len = sizeof(not_found) - 1;
+            char       *fbuf = NULL;
+            size_t      flen = 0;
+            const char *mime = NULL;
+            if (web_http_path_file(path, &fbuf, &flen, &mime)) {
+                s->status = 200;
+                strncpy(s->content_type, mime, sizeof(s->content_type) - 1);
+                s->body     = fbuf;
+                s->body_len = flen;
+            } else {
+                s->status = 404;
+                strncpy(s->content_type, "text/plain", sizeof(s->content_type) - 1);
+                static const char not_found[] = "Not Found";
+                s->body = malloc(sizeof(not_found) - 1);
+                if (s->body) {
+                    memcpy(s->body, not_found, sizeof(not_found) - 1);
+                    s->body_len = sizeof(not_found) - 1;
+                }
             }
             s->has_response = 1;
         }

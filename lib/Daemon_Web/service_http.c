@@ -212,6 +212,80 @@ gdweb_stream_cb_t web_route_stream(const char *path)
 }
 
 /* -----------------------------------------------------------------------
+ * Static mounts — registry-backed: "set" "web_http_path:rc" "./rc2"
+ * faz "/rc/index.html" resolver para o arquivo "./rc2/index.html"
+ * ---------------------------------------------------------------------- */
+static const char *web_mime_by_ext(const char *path)
+{
+    const char *dot = strrchr(path, '.');
+    if (!dot) return "application/octet-stream";
+    dot++;
+    if (!strcmp(dot, "html") || !strcmp(dot, "htm")) return "text/html";
+    if (!strcmp(dot, "js"))   return "application/javascript";
+    if (!strcmp(dot, "css"))  return "text/css";
+    if (!strcmp(dot, "json")) return "application/json";
+    if (!strcmp(dot, "png"))  return "image/png";
+    if (!strcmp(dot, "jpg") || !strcmp(dot, "jpeg")) return "image/jpeg";
+    if (!strcmp(dot, "gif"))  return "image/gif";
+    if (!strcmp(dot, "svg"))  return "image/svg+xml";
+    if (!strcmp(dot, "ico"))  return "image/x-icon";
+    if (!strcmp(dot, "wasm")) return "application/wasm";
+    if (!strcmp(dot, "txt"))  return "text/plain";
+    return "application/octet-stream";
+}
+
+static bool web_http_path_resolve(const char *path, char *out, size_t cap)
+{
+    if (!path || *path != '/') return false;
+    const char *seg = path + 1;
+    const char *end = seg;
+    while (*end && *end != '/' && *end != '?') end++;
+    if (end == seg) return false;
+
+    char key[128];
+    snprintf(key, sizeof(key), "web_http_path:%.*s", (int)(end - seg), seg);
+
+    route_ctx_t ctx = { NULL };
+    gecnd_registry("get", key, (void *)route_handler, &ctx);
+    if (!ctx.cb) return false;
+
+    size_t n = (size_t)snprintf(out, cap, "%s", (const char *)ctx.cb);
+    if (n >= cap) return false;
+    const char *rest = (*end == '/') ? end : "/";
+    while (*rest && *rest != '?' && n < cap - 1) out[n++] = *rest++;
+    out[n] = '\0';
+    if (out[n - 1] == '/' && n + sizeof("index.html") < cap)
+        strcpy(out + n, "index.html");
+    if (strstr(out, "..")) return false; /* sem path traversal */
+    return true;
+}
+
+bool web_http_path_file(const char *path, char **out_buf, size_t *out_len,
+                        const char **out_mime)
+{
+    char fpath[512];
+    if (!web_http_path_resolve(path, fpath, sizeof(fpath))) return false;
+
+    FILE *f = fopen(fpath, "rb");
+    if (!f) return false;
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (sz < 0) { fclose(f); return false; }
+
+    char *buf = malloc((size_t)sz ? (size_t)sz : 1);
+    if (!buf) { fclose(f); return false; }
+    size_t rd = fread(buf, 1, (size_t)sz, f);
+    fclose(f);
+    if (rd != (size_t)sz) { free(buf); return false; }
+
+    *out_buf  = buf;
+    *out_len  = rd;
+    if (out_mime) *out_mime = web_mime_by_ext(fpath);
+    return true;
+}
+
+/* -----------------------------------------------------------------------
  * Timer callbacks — fire on next loop iteration (delay=0, never inline)
  * ---------------------------------------------------------------------- */
 static void _http_fire(uv_timer_t *h)
@@ -221,7 +295,16 @@ static void _http_fire(uv_timer_t *h)
 
     gdweb_http_cb_t route_cb = web_route_http(c->path);
     if (!route_cb) {
-        if (c->on_error) c->on_error(c->id, "no route", c->user);
+        char  *fbuf = NULL;
+        size_t flen = 0;
+        if (web_http_path_file(c->path, &fbuf, &flen, NULL)) {
+            if (c->on_status) c->on_status(c->id, 200, c->user);
+            if (c->on_data && flen) c->on_data(c->id, fbuf, flen, c->user);
+            if (c->on_done) c->on_done(c->id, c->user);
+            free(fbuf);
+        } else if (c->on_error) {
+            c->on_error(c->id, "no route", c->user);
+        }
         wl_conn_free(c);
         return;
     }
