@@ -255,11 +255,8 @@ void gamely_daemon_input_push(uint32_t code, bool pressed, uint32_t ttl_ms)
 
     int n = gamely_keymap_source_count();
     for (int s = 0; s < n; s++) {
-        const char *name = gamely_keymap_lookup_source(s, code);
-        if (!name) continue;
-
-        int port = gamely_keymap_source_port(s);
-
+        /* debug antes do filtro: a graça do ?debug=1 é ver o hex de tecla
+         * que AINDA não está mapeada na classe da source */
         if (gamely_keymap_source_debug(s)) {
             const char *dbg_class = NULL;
             const char *dbg_name  = gamely_keymap_lookup_debug(code, &dbg_class);
@@ -270,6 +267,11 @@ void gamely_daemon_input_push(uint32_t code, bool pressed, uint32_t ttl_ms)
                     dbg_name  ? dbg_name  : "?",
                     pressed);
         }
+
+        const char *name = gamely_keymap_lookup_source(s, code);
+        if (!name) continue;
+
+        int port = gamely_keymap_source_port(s);
 
         if (ttl_ms > 0 && pressed)
             ttl_upsert(name, port, s, now_ms() + ttl_ms);
