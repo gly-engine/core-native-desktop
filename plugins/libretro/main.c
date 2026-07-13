@@ -23,6 +23,9 @@ const char *native_libretro_error              (void);
 void        native_libretro_set_error          (const char *fmt, ...);
 void        native_libretro_track_tmp_rom      (const char *path);
 
+/* Protótipos de inputs.c */
+void        native_libretro_keyboard           (uint8_t port, uint8_t keyidx, bool press);
+
 /* Protótipos de hw_render.c */
 void libretro_hw_gl_ready(void);
 
@@ -402,12 +405,18 @@ static char* lua_native_libretro_is_running(bool *const ret) {
     return NULL;
 }
 
+static char* lua_native_libretro_keyboard(uint8_t port, uint8_t keyidx, bool press) {
+    native_libretro_keyboard(port, keyidx, press);
+    return NULL;
+}
+
 void coreopen_libretro_gecnd(gecnd_plugin_t *const plugin) {
     api = plugin->require("v1");
     api->registry("set", "lua_global_ffi:native_libretro_url+$s+$0", lua_native_libretro_url, NULL);
     api->registry("set", "lua_global_ffi:native_libretro_exit+$0+$0", lua_native_libretro_exit, NULL);
     api->registry("set", "lua_global_ffi:native_libretro_get_error+$0+$s", lua_native_libretro_get_error, NULL);
     api->registry("set", "lua_global_ffi:native_libretro_is_running+$0+$b", lua_native_libretro_is_running, NULL);
+    api->registry("set", "lua_global_ffi:native_libretro_keyboard+$u8+$u8+$b+$0", lua_native_libretro_keyboard, NULL);
     api->registry("set", "media_player:libretro+$l$0", &libretro_file_player, NULL);
     api->registry("set", "media_player:libretro+$l+http$0", &libretro_http_player, NULL);
     api->registry("set", "media_player:libretro+$l+https$0", &libretro_http_player, NULL);

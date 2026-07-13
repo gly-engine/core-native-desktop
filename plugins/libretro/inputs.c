@@ -17,6 +17,12 @@ static void on_key(uint32_t code, bool pressed, int port) {
     s_pressed[port][code] = pressed;
 }
 
+/* Injeção direta de botão (ex.: controle virtual via Lua/FFI).
+ * keyidx = RETRO_DEVICE_ID_JOYPAD_* (0..15). */
+void native_libretro_keyboard(uint8_t port, uint8_t keyidx, bool press) {
+    on_key(keyidx, press, port);
+}
+
 static struct {
     typeof(gamely_daemon_input_add_keycode) *add_keycode;
     typeof(gamely_input_add_cb)             *add_cb;
