@@ -22,9 +22,11 @@
 #define FMT_LUA  "Lua %s (%s %db) | %9s cur | %9s avg | %9s peak"
 #define FMT_PERF "Perf: I/O %4dms | Loop %4dms | Draw %4dms | Post %4dms | Wait %4dms"
 #define FMT_TEMP "Temp: %3d\xc2\xb0""C"
+#define FMT_MEM  "Mem: %3d%% | free: %u MB | use: %u MB | total: %u MB"
 
 int gecnd_profile_get_ip_count(void);
 const char *gecnd_profile_get_ip_at(int i);
+int gecnd_profile_get_mem(uint32_t *free_mb, uint32_t *used_mb, uint32_t *total_mb);
 
 static void format_ips(char *out, size_t sz)
 {
@@ -58,13 +60,16 @@ void gecnd_metrics_render(gecnd_t *gly)
     uint32_t flags = gecnd_metrics_get_flags();
     if (!(flags & GECND_METRICS_DRAW) || !gly) return;
 
+    uint32_t mem_free, mem_used, mem_total;
+    int mem_pct = gecnd_profile_get_mem(&mem_free, &mem_used, &mem_total);
+
     const int16_t box_x = 40;
     const int16_t box_y = 32;
     const int16_t box_w = 380;
     const int16_t line_h = 16;
     const int16_t padding = 8;
-    const int16_t box_h = (4 * line_h) + padding;
-    
+    const int16_t box_h = (int16_t)(((mem_pct >= 0 ? 5 : 4) * line_h) + padding);
+
     char buf[256];
     char s1[32], s2[32], s3[32];
 
@@ -103,6 +108,12 @@ void gecnd_metrics_render(gecnd_t *gly)
              gecnd_metrics_get_wait_time());
     native_text_print(tx, ty, buf);
     ty += line_h;
+
+    if (mem_pct >= 0) {
+        snprintf(buf, sizeof(buf), FMT_MEM, mem_pct, mem_free, mem_used, mem_total);
+        native_text_print(tx, ty, buf);
+        ty += line_h;
+    }
 
     {
         char ips[128];
@@ -148,6 +159,12 @@ void gecnd_metrics_print(void)
            gecnd_metrics_get_input_worst(), gecnd_metrics_get_loop_time(),
            gecnd_metrics_get_draw_time(), gecnd_metrics_get_post_time(),
            gecnd_metrics_get_wait_time());
+    {
+        uint32_t mem_free, mem_used, mem_total;
+        int mem_pct = gecnd_profile_get_mem(&mem_free, &mem_used, &mem_total);
+        if (mem_pct >= 0)
+            printf("  " FMT_MEM "\n", mem_pct, mem_free, mem_used, mem_total);
+    }
     {
         char ips[128];
         format_ips(ips, sizeof(ips));
