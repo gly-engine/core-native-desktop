@@ -308,9 +308,17 @@ static void on_pre_loop(const char *key, void *value, void *usr) {
     gecnd_metrics_start_loop();
 }
 
+/* @todo temporário: liga/desliga metrics em runtime pelo Lua
+ * (0 = off, 1 = print, 2 = draw, 3 = ambos) */
+static char *lua_native_debug_set(uint8_t flags) {
+    gecnd_metrics_setup(flags);
+    return NULL;
+}
+
 __attribute__((constructor))
 static void init(void) {
     gecnd_registry("hook", "core:pre_loop", (void *)on_pre_loop, NULL);
+    gecnd_registry("set", "lua_global_ffi:native_debug_set+$u8+$0", (void *)lua_native_debug_set, NULL);
 }
 
 uint64_t gecnd_metrics_get_lua_peak(void) { return state.lua_mem_peak; }
