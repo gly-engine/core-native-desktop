@@ -98,18 +98,20 @@ void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts)
         return;
     }
 
-    /* apply [envs] */
     toml_datum_t envs = toml_get(res.toptab, "envs");
     if (envs.type == TOML_TABLE) {
         for (int i = 0; i < envs.u.tab.size; i++) {
             toml_datum_t val = envs.u.tab.value[i];
-            if (val.type == TOML_STRING) {
-#if defined(_WIN32)
-                SetEnvironmentVariable(envs.u.tab.key[i], val.u.str.ptr);
-#else
-                setenv(envs.u.tab.key[i], val.u.str.ptr, 1);
-#endif
+            if (val.type != TOML_STRING) {
+                gecnd_add_error(gly, "[core:toml] env '%s' must be a string",
+                                envs.u.tab.key[i]);
+                continue;
             }
+#if defined(_WIN32)
+            SetEnvironmentVariable(envs.u.tab.key[i], val.u.str.ptr);
+#else
+            setenv(envs.u.tab.key[i], val.u.str.ptr, 1);
+#endif
         }
     }
 
