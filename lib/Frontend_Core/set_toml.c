@@ -52,6 +52,41 @@ static void traverse_keymap(toml_datum_t node, char *path, int path_len)
     }
 }
 
+/* [registry] — cada chave vira registry("set", ...); tabelas aninhadas
+ * juntam com ':' (ex.: [registry.web_http_path] rc="./rc2" → "web_http_path:rc").
+ * O TOML é liberado no fim do parse, então key (e value string) são strdup
+ * pelo próprio registry via opções de armazenamento. */
+static void traverse_registry(toml_datum_t node, const char *prefix)
+{
+    if (node.type != TOML_TABLE) return;
+    for (int i = 0; i < node.u.tab.size; i++) {
+        char key[192];
+        if (prefix[0])
+            snprintf(key, sizeof(key), "%s:%s", prefix, node.u.tab.key[i]);
+        else
+            snprintf(key, sizeof(key), "%s", node.u.tab.key[i]);
+
+        toml_datum_t val = node.u.tab.value[i];
+        switch (val.type) {
+            case TOML_TABLE:
+                traverse_registry(val, key);
+                break;
+            case TOML_INT64:
+                gecnd_registry("set", key, (void *)(intptr_t)val.u.int64, "strdup=key");
+                break;
+            case TOML_BOOLEAN:
+                gecnd_registry("set", key, (void *)(intptr_t)(val.u.boolean ? 1 : 0), "strdup=key");
+                break;
+            case TOML_STRING:
+                gecnd_registry("set", key, (void *)val.u.str.ptr, "strdup=keyval");
+                break;
+            default:
+                fprintf(stderr, "[core:toml] incompatible type for registry key '%s'\n", key);
+                break;
+        }
+    }
+}
+
 void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts)
 {
     if (!gly || !path) return;
@@ -77,6 +112,10 @@ void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts)
             }
         }
     }
+
+    /* apply [registry] */
+    toml_datum_t reg = toml_get(res.toptab, "registry");
+    if (reg.type == TOML_TABLE) traverse_registry(reg, "");
 
     /* traverse [keymap] */
     toml_datum_t keymap = toml_get(res.toptab, "keymap");

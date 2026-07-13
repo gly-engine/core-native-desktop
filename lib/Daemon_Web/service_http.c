@@ -245,11 +245,12 @@ static bool web_http_path_resolve(const char *path, char *out, size_t cap)
     char key[128];
     snprintf(key, sizeof(key), "web_http_path:%.*s", (int)(end - seg), seg);
 
-    route_ctx_t ctx = { NULL };
-    gecnd_registry("get", key, (void *)route_handler, &ctx);
-    if (!ctx.cb) return false;
+    /* get exato: value é ponteiro de saída (diferente do matcher com handler) */
+    const char *dir = NULL;
+    gecnd_registry("get", key, (void *)&dir, NULL);
+    if (!dir) return false;
 
-    size_t n = (size_t)snprintf(out, cap, "%s", (const char *)ctx.cb);
+    size_t n = (size_t)snprintf(out, cap, "%s", dir);
     if (n >= cap) return false;
     const char *rest = (*end == '/') ? end : "/";
     while (*rest && *rest != '?' && n < cap - 1) out[n++] = *rest++;
