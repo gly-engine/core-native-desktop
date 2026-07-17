@@ -133,6 +133,15 @@ const char *scanner_resolve_core(const char *name) {
     snprintf(v2, PATH_CAP, "lib%s_libretro.so", name);
     const char *variants[] = { name, v1, v2 };
 
+    const char *cfg = NULL;
+    api->registry("get", "libretro:core:path", (void *)&cfg, NULL);
+    if (cfg && cfg[0]) {
+        for (size_t v = 0; v < 3; v++) {
+            snprintf(s_found, PATH_CAP, "%s/%s", cfg, variants[v]);
+            if (file_exists(s_found)) return s_found;
+        }
+    }
+
     char cwd[PATH_CAP], exedir[PATH_CAP], homedir[PATH_CAP];
     cwd[0] = exedir[0] = '\0';
     if (paths_bind()) {
