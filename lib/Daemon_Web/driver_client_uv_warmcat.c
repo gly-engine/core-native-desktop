@@ -12,8 +12,20 @@
 #include "gecnd.h"
 #include "gdweb.h"
 
+/* alocador unico de ids do daemon web (service_http.c) — garante que ids
+ * de conexao do driver nunca colidem com ids de conexao loopback */
+extern gdweb_id_t web_alloc_id(void);
+
 #define MAX_CONNS 64
 #define BUF_SIZE  8192
+
+/* validity/keepalive: PING apos 15 s ocioso, derruba aos 30 s sem PONG.
+ * Sem isso a queda silenciosa do servidor (rede, kill -9) so vira
+ * on_ws_close depois do default de ~5 min do lws. */
+static const lws_retry_bo_t s_retry_policy = {
+    .secs_since_valid_ping   = 15,
+    .secs_since_valid_hangup = 30,
+};
 
 typedef enum { CONN_HTTP, CONN_WS } conn_type_t;
 
@@ -46,7 +58,6 @@ typedef struct {
 static struct {
     struct lws_context *ctx;
     conn_t              pool[MAX_CONNS];
-    gdweb_id_t         next_id;
     int                 started;
 } g;
 
@@ -56,8 +67,7 @@ static conn_t *conn_alloc(void)
         if (!g.pool[i].active) {
             memset(&g.pool[i], 0, sizeof(conn_t));
             g.pool[i].active = 1;
-            if (++g.next_id == 0) g.next_id = 1;
-            g.pool[i].id = g.next_id;
+            g.pool[i].id = web_alloc_id();
             return &g.pool[i];
         }
     }
@@ -158,6 +168,15 @@ static int callback_wc(struct lws *wsi,
     }
 
     case LWS_CALLBACK_CLOSED_CLIENT_HTTP: {
+        if (!c || !c->active) break;
+        /* fechou sem COMPLETED (on_error ainda armado): resposta foi
+         * interrompida — reporta a queda. Apos COMPLETED os callbacks
+         * ja foram limpos e aqui so devolvemos o slot ao pool. */
+        gdweb_error_cb_t cb  = c->on_error;
+        gdweb_id_t       cid = c->id;
+        void            *usr = c->user;
+        conn_free(c);
+        if (cb) cb(cid, "connection closed", usr);
         break;
     }
 
@@ -209,14 +228,8 @@ static int callback_wc(struct lws *wsi,
         gdweb_error_cb_t cb  = c->on_error;
         gdweb_id_t    cid = c->id;
         void           *usr = c->user;
-        c->on_error    = NULL;
-        c->on_status   = NULL;
-        c->on_data     = NULL;
-        c->on_done     = NULL;
-        c->on_ws_open  = NULL;
-        c->on_ws_msg   = NULL;
-        c->on_ws_close = NULL;
-        c->user        = NULL;
+        /* CCE nao e seguido de CLOSED: devolve o slot ao pool aqui */
+        conn_free(c);
         if (cb) cb(cid, msg, usr);
         break;
     }
@@ -276,6 +289,7 @@ static void wc_start(void *loop)
     info.port                  = CONTEXT_PORT_NO_LISTEN;
     info.protocols             = protocols;
     info.foreign_loops         = (void **)&uv_loop;
+    info.retry_and_idle_policy = &s_retry_policy;
 #if defined(GECND_HAS_SSL)
     info.options               = LWS_SERVER_OPTION_LIBUV | LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
     info.client_ssl_ca_filepath = ca_path;
@@ -400,6 +414,7 @@ static gdweb_id_t wc_ws_connect(
     ccinfo.alpn           = "http/1.1"; /* ws upgrade happens over h1 */
     ccinfo.ssl_connection = ssl_flags;
     ccinfo.userdata       = c;
+    ccinfo.retry_and_idle_policy = &s_retry_policy;
 
     c->wsi = lws_client_connect_via_info(&ccinfo);
     if (!c->wsi) {

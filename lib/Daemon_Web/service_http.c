@@ -1,7 +1,11 @@
+/**
+ * @todo tem muitos problemas mas worka, tem que retrabalhar isso
+ */
 #include "gecnd.h"
 #include "gdweb.h"
 #include <uv.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -17,6 +21,8 @@ static struct {
     void (*server_send)    (uint32_t conn_id, const char *data, size_t len);
     void (*server_send_all)(const char *path, const char *data, size_t len,
                             uint32_t exclude_conn_id);
+    void (*server_close)    (uint32_t conn_id);
+    void (*server_close_all)(const char *path, uint32_t exclude_conn_id);
 
     gdweb_id_t (*client_http)(const char *url, gdweb_http_req_t *req,
                               gdweb_status_cb_t on_status, gdweb_data_cb_t on_data,
@@ -48,14 +54,30 @@ static void drv_bind(void)
     drv_get("server_start",    &drv.server_start);
     drv_get("server_stop",     &drv.server_stop);
     drv_get("server_http",     &drv.server_http);
-    drv_get("server_send",     &drv.server_send);
-    drv_get("server_send_all", &drv.server_send_all);
+    drv_get("server_send",      &drv.server_send);
+    drv_get("server_send_all",  &drv.server_send_all);
+    drv_get("server_close",     &drv.server_close);
+    drv_get("server_close_all", &drv.server_close_all);
     drv_get("client_http",     &drv.client_http);
     drv_get("client_ws",       &drv.client_ws);
     drv_get("client_send",     &drv.client_send);
     drv_get("client_close",    &drv.client_close);
     drv_get("client_start",    &drv.client_start);
     drv_get("client_stop",     &drv.client_stop);
+}
+
+/* -----------------------------------------------------------------------
+ * gdweb_id_t — alocador unico para todos os ids do daemon web (req de
+ * conexao real, conexao loopback e conexao de client driver). Como os ids
+ * nunca colidem, a natureza da conexao vem da struct (flag loopback), e
+ * nao de faixa ou bit magico dentro do id.
+ * ---------------------------------------------------------------------- */
+static uint32_t s_next_id = 0;
+
+gdweb_id_t web_alloc_id(void)
+{
+    if (++s_next_id == 0) s_next_id = 1;
+    return s_next_id;
 }
 
 /* -----------------------------------------------------------------------
@@ -70,15 +92,13 @@ typedef struct {
 } wl_req_map_t;
 
 static wl_req_map_t s_req_map[WL_MAX_REAL];
-static uint32_t     s_next_real_id = 1; /* real req_ids: 1..0x7FFFFFFF */
 
 gdweb_id_t web_alloc_req(uint32_t conn_id)
 {
     for (int i = 0; i < WL_MAX_REAL; i++) {
         if (s_req_map[i].active) continue;
-        if (s_next_real_id >= 0x80000000u) s_next_real_id = 1;
         s_req_map[i].conn_id = conn_id;
-        s_req_map[i].req_id  = s_next_real_id++;
+        s_req_map[i].req_id  = web_alloc_id();
         s_req_map[i].active  = 1;
         return s_req_map[i].req_id;
     }
@@ -106,7 +126,6 @@ static uint32_t req_to_conn(gdweb_id_t req_id)
 
 /* -----------------------------------------------------------------------
  * Loopback connection pool (WebClient-originated requests)
- * IDs use bit 31 to distinguish from real req_ids
  * ---------------------------------------------------------------------- */
 #define WL_MAX_CONNS 64
 
@@ -115,13 +134,14 @@ typedef enum { WL_HTTP, WL_WS } wl_type_t;
 typedef struct {
     gdweb_id_t        id;
     wl_type_t           type;
-    int                 active;
+    uint8_t             active   : 1;
+    uint8_t             loopback : 1; /* conexao self:// (vs id de driver) */
     int                 status;   /* GDWEB_HTTP_STATUS pendente (0 = 200) */
 
     char                path[256];
     char                body[4096];
     size_t              body_len;
-    const char         *method;
+    char                method[16]; /* copia: caller pode liberar apos o call */
 
     gdweb_status_cb_t    on_status;
     gdweb_data_cb_t      on_data;
@@ -131,22 +151,27 @@ typedef struct {
     gdweb_ws_msg_cb_t    on_ws_msg;
     gdweb_ws_close_cb_t  on_ws_close;
     void               *user;
+    void               *ws_usr;   /* estado por-conexao dos services (*req->usr) */
 
+    /* -- persistente: handles uv nao podem ser zerados no reuso do slot.
+     *    uv_timer_init insere o handle na fila do loop; re-init sem
+     *    uv_close corrompe a fila — init acontece uma vez por slot.     */
     uv_timer_t          timer;
+    uint8_t             timer_init;
 } wl_conn_t;
 
 static wl_conn_t  s_pool[WL_MAX_CONNS];
 static uv_loop_t *s_loop = NULL;
-static uint32_t   s_next_lb_id = 0x80000000u;
 
 static wl_conn_t *wl_conn_alloc(void)
 {
     for (int i = 0; i < WL_MAX_CONNS; i++) {
         if (!s_pool[i].active) {
-            memset(&s_pool[i], 0, sizeof(s_pool[i]));
-            s_pool[i].active = 1;
-            s_pool[i].id     = s_next_lb_id++;
-            if (s_next_lb_id == 0) s_next_lb_id = 0x80000000u;
+            /* zera so ate a regiao persistente (timer ja inicializado) */
+            memset(&s_pool[i], 0, offsetof(wl_conn_t, timer));
+            s_pool[i].active   = 1;
+            s_pool[i].loopback = 1;
+            s_pool[i].id       = web_alloc_id();
             return &s_pool[i];
         }
     }
@@ -161,9 +186,10 @@ static void wl_conn_free(wl_conn_t *c)
 
 static wl_conn_t *wl_conn_by_id(gdweb_id_t id)
 {
-    if (!(id & 0x80000000u)) return NULL;
+    if (!id) return NULL;
     for (int i = 0; i < WL_MAX_CONNS; i++)
-        if (s_pool[i].active && s_pool[i].id == id) return &s_pool[i];
+        if (s_pool[i].active && s_pool[i].loopback && s_pool[i].id == id)
+            return &s_pool[i];
     return NULL;
 }
 
@@ -312,7 +338,7 @@ static void _http_fire(uv_timer_t *h)
 
     gdweb_http_req_t req = {
         .id       = c->id,
-        .method   = c->method ? c->method : "GET",
+        .method   = c->method[0] ? c->method : "GET",
         .path     = c->path,
         .body     = c->body_len ? c->body : NULL,
         .body_len = c->body_len
@@ -335,19 +361,22 @@ static void _ws_fire(uv_timer_t *h)
 
     if (c->on_ws_open) c->on_ws_open(c->id, c->user);
 
-    gdweb_ws_req_t req = { .id = c->id, .event = GDWEB_WS_OPEN };
+    gdweb_ws_req_t req = { .id = c->id, .event = GDWEB_WS_OPEN, .usr = &c->ws_usr };
     route_cb(&req);
 }
 
 /* -----------------------------------------------------------------------
  * Server control — gdweb_control_server()
  * WebLoop decides: loopback delivery or delegate to driver transport.
+ * As versoes *_now executam direto e SO podem rodar na thread do loop;
+ * os wrappers publicos (mais abaixo) enfileiram quando chamados de outra
+ * thread (ex.: scan_thread de plugins).
  * ---------------------------------------------------------------------- */
-static void sv_http(gdweb_id_t id, gdweb_http_cmd_t cmd, const gdweb_value_t *value)
+static void sv_http_now(gdweb_id_t id, gdweb_http_cmd_t cmd, const gdweb_value_t *value)
 {
-    if (id & 0x80000000u) {
-        wl_conn_t *c = wl_conn_by_id(id);
-        if (c && cmd == GDWEB_HTTP_STATUS && value)
+    wl_conn_t *c = wl_conn_by_id(id);
+    if (c) {
+        if (cmd == GDWEB_HTTP_STATUS && value)
             c->status = (int)value->i64;
         return;
     }
@@ -356,11 +385,10 @@ static void sv_http(gdweb_id_t id, gdweb_http_cmd_t cmd, const gdweb_value_t *va
     if (conn_id && drv.server_http) drv.server_http(conn_id, cmd, value);
 }
 
-static void sv_send(gdweb_id_t id, const char *data, size_t len)
+static void sv_send_now(gdweb_id_t id, const char *data, size_t len)
 {
-    if (id & 0x80000000u) {
-        wl_conn_t *c = wl_conn_by_id(id);
-        if (!c) return;
+    wl_conn_t *c = wl_conn_by_id(id);
+    if (c) {
         if (c->type == WL_WS) {
             if (c->on_ws_msg) c->on_ws_msg(id, data, len, c->user);
             return;
@@ -376,13 +404,194 @@ static void sv_send(gdweb_id_t id, const char *data, size_t len)
     if (conn_id && drv.server_send) drv.server_send(conn_id, data, len);
 }
 
+static void sv_send_all_now(const char *path, const char *data, size_t len,
+                            gdweb_id_t exclude_id)
+{
+    /* assinantes loopback (self://) tambem recebem o broadcast */
+    for (int i = 0; i < WL_MAX_CONNS; i++) {
+        wl_conn_t *c = &s_pool[i];
+        if (!c->active || c->type != WL_WS || c->id == exclude_id) continue;
+        if (path && strcmp(c->path, path) != 0) continue;
+        if (c->on_ws_msg && data && len) c->on_ws_msg(c->id, data, len, c->user);
+    }
+    drv_bind();
+    /* req_to_conn devolve 0 quando exclude_id nao e conexao real */
+    uint32_t exclude_conn = exclude_id ? req_to_conn(exclude_id) : 0;
+    if (drv.server_send_all) drv.server_send_all(path, data, len, exclude_conn);
+}
+
+static void lb_ws_close(gdweb_id_t id); /* fecha conexao ws loopback */
+
+static void sv_close_now(gdweb_id_t id)
+{
+    if (wl_conn_by_id(id)) {
+        lb_ws_close(id);
+        return;
+    }
+    drv_bind();
+    uint32_t conn_id = req_to_conn(id);
+    if (conn_id && drv.server_close) drv.server_close(conn_id);
+}
+
+static void sv_close_all_now(const char *path, gdweb_id_t exclude_id)
+{
+    for (int i = 0; i < WL_MAX_CONNS; i++) {
+        wl_conn_t *c = &s_pool[i];
+        if (!c->active || c->type != WL_WS || c->id == exclude_id) continue;
+        if (path && strcmp(c->path, path) != 0) continue;
+        lb_ws_close(c->id);
+    }
+    drv_bind();
+    uint32_t exclude_conn = exclude_id ? req_to_conn(exclude_id) : 0;
+    if (drv.server_close_all) drv.server_close_all(path, exclude_conn);
+}
+
+/* -----------------------------------------------------------------------
+ * Marshaling — servicos (plugins) chamam o controle do servidor a partir
+ * de threads proprias (ex.: blind_scan). lws/uv/Lua nao sao thread-safe,
+ * entao chamadas fora da thread do loop sao enfileiradas e drenadas no
+ * loop via uv_async (uv_async_send e a unica call thread-safe do libuv).
+ * ---------------------------------------------------------------------- */
+typedef enum { WQ_SEND, WQ_SEND_ALL, WQ_CLOSE, WQ_CLOSE_ALL, WQ_HTTP } wq_op_t;
+
+typedef struct wq_cmd {
+    wq_op_t          op;
+    gdweb_id_t       id;           /* SEND/CLOSE/HTTP; exclude nos *_ALL  */
+    gdweb_http_cmd_t http_cmd;
+    gdweb_value_t    http_val;     /* .str aponta para http_str           */
+    char             http_str[64];
+    int              has_http_val;
+    char             path[128];
+    int              has_path;
+    char            *data;
+    size_t           len;
+    struct wq_cmd   *next;
+} wq_cmd_t;
+
+static uv_async_t  s_wq_async;
+static uv_mutex_t  s_wq_mutex;
+static wq_cmd_t   *s_wq_head = NULL;
+static wq_cmd_t   *s_wq_tail = NULL;
+static uv_thread_t s_loop_thread;
+static int         s_wq_ready = 0;
+
+static int wq_on_loop_thread(void)
+{
+    uv_thread_t self = uv_thread_self();
+    return !s_wq_ready || uv_thread_equal(&self, &s_loop_thread);
+}
+
+static wq_cmd_t *wq_cmd_new(wq_op_t op, const char *path,
+                            const char *data, size_t len)
+{
+    wq_cmd_t *cmd = calloc(1, sizeof(*cmd));
+    if (!cmd) return NULL;
+    cmd->op = op;
+    if (path) {
+        strncpy(cmd->path, path, sizeof(cmd->path) - 1);
+        cmd->has_path = 1;
+    }
+    if (data && len) {
+        cmd->data = malloc(len);
+        if (!cmd->data) { free(cmd); return NULL; }
+        memcpy(cmd->data, data, len);
+        cmd->len = len;
+    }
+    return cmd;
+}
+
+static void wq_push(wq_cmd_t *cmd)
+{
+    uv_mutex_lock(&s_wq_mutex);
+    cmd->next = NULL;
+    if (s_wq_tail) s_wq_tail->next = cmd;
+    else           s_wq_head       = cmd;
+    s_wq_tail = cmd;
+    uv_mutex_unlock(&s_wq_mutex);
+    uv_async_send(&s_wq_async);
+}
+
+static void wq_drain(uv_async_t *h)
+{
+    (void)h;
+    uv_mutex_lock(&s_wq_mutex);
+    wq_cmd_t *cmd = s_wq_head;
+    s_wq_head = s_wq_tail = NULL;
+    uv_mutex_unlock(&s_wq_mutex);
+
+    while (cmd) {
+        wq_cmd_t *next = cmd->next;
+        const char *path = cmd->has_path ? cmd->path : NULL;
+        switch (cmd->op) {
+            case WQ_SEND:      sv_send_now(cmd->id, cmd->data, cmd->len);            break;
+            case WQ_SEND_ALL:  sv_send_all_now(path, cmd->data, cmd->len, cmd->id);  break;
+            case WQ_CLOSE:     sv_close_now(cmd->id);                                break;
+            case WQ_CLOSE_ALL: sv_close_all_now(path, cmd->id);                      break;
+            case WQ_HTTP:
+                sv_http_now(cmd->id, cmd->http_cmd,
+                            cmd->has_http_val ? &cmd->http_val : NULL);
+                break;
+        }
+        free(cmd->data);
+        free(cmd);
+        cmd = next;
+    }
+}
+
+static void sv_http(gdweb_id_t id, gdweb_http_cmd_t cmd, const gdweb_value_t *value)
+{
+    if (wq_on_loop_thread()) { sv_http_now(id, cmd, value); return; }
+    wq_cmd_t *c = wq_cmd_new(WQ_HTTP, NULL, NULL, 0);
+    if (!c) return;
+    c->id       = id;
+    c->http_cmd = cmd;
+    if (value) {
+        c->has_http_val = 1;
+        if (cmd == GDWEB_HTTP_CONTENT_TYPE && value->str) {
+            strncpy(c->http_str, value->str, sizeof(c->http_str) - 1);
+            c->http_val.str = c->http_str;
+        } else {
+            c->http_val = *value;
+        }
+    }
+    wq_push(c);
+}
+
+static void sv_send(gdweb_id_t id, const char *data, size_t len)
+{
+    if (wq_on_loop_thread()) { sv_send_now(id, data, len); return; }
+    wq_cmd_t *c = wq_cmd_new(WQ_SEND, NULL, data, len);
+    if (!c) return;
+    c->id = id;
+    wq_push(c);
+}
+
 static void sv_send_all(const char *path, const char *data, size_t len,
                         gdweb_id_t exclude_id)
 {
-    drv_bind();
-    uint32_t exclude_conn = (exclude_id && !(exclude_id & 0x80000000u))
-                            ? req_to_conn(exclude_id) : 0;
-    if (drv.server_send_all) drv.server_send_all(path, data, len, exclude_conn);
+    if (wq_on_loop_thread()) { sv_send_all_now(path, data, len, exclude_id); return; }
+    wq_cmd_t *c = wq_cmd_new(WQ_SEND_ALL, path, data, len);
+    if (!c) return;
+    c->id = exclude_id;
+    wq_push(c);
+}
+
+static void sv_close(gdweb_id_t id)
+{
+    if (wq_on_loop_thread()) { sv_close_now(id); return; }
+    wq_cmd_t *c = wq_cmd_new(WQ_CLOSE, NULL, NULL, 0);
+    if (!c) return;
+    c->id = id;
+    wq_push(c);
+}
+
+static void sv_close_all(const char *path, gdweb_id_t exclude_id)
+{
+    if (wq_on_loop_thread()) { sv_close_all_now(path, exclude_id); return; }
+    wq_cmd_t *c = wq_cmd_new(WQ_CLOSE_ALL, path, NULL, 0);
+    if (!c) return;
+    c->id = exclude_id;
+    wq_push(c);
 }
 
 static void sv_start(void *loop, int port)
@@ -398,11 +607,13 @@ static void sv_stop(void)
 }
 
 static const gdweb_server_t s_server = {
-    .http     = sv_http,
-    .send     = sv_send,
-    .send_all = sv_send_all,
-    .start    = sv_start,
-    .stop     = sv_stop,
+    .http      = sv_http,
+    .send      = sv_send,
+    .send_all  = sv_send_all,
+    .start     = sv_start,
+    .stop      = sv_stop,
+    .close     = sv_close,
+    .close_all = sv_close_all,
 };
 
 const gdweb_server_t *gdweb_control_server(void)
@@ -421,7 +632,8 @@ static void lb_ws_send(gdweb_id_t id, const char *data, size_t len)
     gdweb_ws_cb_t route_cb = web_route_ws(c->path);
     if (!route_cb) return;
 
-    gdweb_ws_req_t req = { .id = id, .event = GDWEB_WS_MESSAGE, .data = data, .len = len };
+    gdweb_ws_req_t req = { .id = id, .event = GDWEB_WS_MESSAGE, .data = data,
+                           .len = len, .usr = &c->ws_usr };
     route_cb(&req);
 }
 
@@ -432,7 +644,7 @@ static void lb_ws_close(gdweb_id_t id)
 
     gdweb_ws_cb_t route_cb = web_route_ws(c->path);
     if (route_cb) {
-        gdweb_ws_req_t req = { .id = id, .event = GDWEB_WS_CLOSE };
+        gdweb_ws_req_t req = { .id = id, .event = GDWEB_WS_CLOSE, .usr = &c->ws_usr };
         route_cb(&req);
     }
     if (c->on_ws_close) c->on_ws_close(id, c->user);
@@ -462,7 +674,7 @@ static gdweb_id_t lb_http_request(const char *path, const char *method,
     }
 
     c->type      = WL_HTTP;
-    c->method    = method;
+    if (method) strncpy(c->method, method, sizeof(c->method) - 1);
     c->on_status = on_status;
     c->on_data   = on_data;
     c->on_done   = on_done;
@@ -476,7 +688,10 @@ static gdweb_id_t lb_http_request(const char *path, const char *method,
     }
 
     c->timer.data = c;
-    uv_timer_init(s_loop, &c->timer);
+    if (!c->timer_init) {
+        uv_timer_init(s_loop, &c->timer);
+        c->timer_init = 1;
+    }
     uv_timer_start(&c->timer, _http_fire, 0, 0);
 
     return c->id;
@@ -509,7 +724,10 @@ static gdweb_id_t lb_ws_connect(const char *path,
     strncpy(c->path, path ? path : "/", sizeof(c->path) - 1);
 
     c->timer.data = c;
-    uv_timer_init(s_loop, &c->timer);
+    if (!c->timer_init) {
+        uv_timer_init(s_loop, &c->timer);
+        c->timer_init = 1;
+    }
     uv_timer_start(&c->timer, _ws_fire, 0, 0);
 
     return c->id;
@@ -570,7 +788,7 @@ static gdweb_id_t cl_ws_connect(const char *url, const char *protocol,
 
 static void cl_send(gdweb_id_t id, const char *data, size_t len)
 {
-    if (id & 0x80000000u) {
+    if (wl_conn_by_id(id)) {
         lb_ws_send(id, data, len);
         return;
     }
@@ -580,7 +798,7 @@ static void cl_send(gdweb_id_t id, const char *data, size_t len)
 
 static void cl_close(gdweb_id_t id)
 {
-    if (id & 0x80000000u) {
+    if (wl_conn_by_id(id)) {
         lb_ws_close(id);
         return;
     }
@@ -621,14 +839,40 @@ void gdweb_loop_start(void *loop)
 {
     if (s_loop) return;
     s_loop = (uv_loop_t *)loop;
+
+    /* fila de marshaling: precisa rodar na thread do loop (boot) */
+    s_loop_thread = uv_thread_self();
+    uv_mutex_init(&s_wq_mutex);
+    uv_async_init(s_loop, &s_wq_async, wq_drain);
+    uv_unref((uv_handle_t *)&s_wq_async); /* nao segura o loop vivo */
+    s_wq_ready = 1;
 }
 
 void gdweb_loop_stop(void)
 {
+    if (s_wq_ready) {
+        s_wq_ready = 0;
+        uv_close((uv_handle_t *)&s_wq_async, NULL);
+        uv_mutex_lock(&s_wq_mutex);
+        wq_cmd_t *cmd = s_wq_head;
+        s_wq_head = s_wq_tail = NULL;
+        uv_mutex_unlock(&s_wq_mutex);
+        while (cmd) {
+            wq_cmd_t *next = cmd->next;
+            free(cmd->data);
+            free(cmd);
+            cmd = next;
+        }
+        uv_mutex_destroy(&s_wq_mutex);
+    }
     for (int i = 0; i < WL_MAX_CONNS; i++) {
         if (s_pool[i].active) {
             uv_timer_stop(&s_pool[i].timer);
             wl_conn_free(&s_pool[i]);
+        }
+        if (s_pool[i].timer_init) {
+            uv_close((uv_handle_t *)&s_pool[i].timer, NULL);
+            s_pool[i].timer_init = 0;
         }
     }
     memset(s_req_map, 0, sizeof(s_req_map));

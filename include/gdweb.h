@@ -56,6 +56,10 @@ typedef struct {
                      gdweb_id_t exclude_id);
     void (*start)   (void *loop, int port);
     void (*stop)    (void);
+    /* encerra a conexao pelo lado servidor (close frame no ws);
+     * close_all derruba todos os assinantes do path (NULL = todos) */
+    void (*close)    (gdweb_id_t id);
+    void (*close_all)(const char *path, gdweb_id_t exclude_id);
 } gdweb_server_t;
 
 typedef struct {

@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <stdio.h>
 #include <assert.h>
 
@@ -24,6 +25,15 @@ extern bool              web_http_path_file(const char *path, char **out_buf,
 #define MAX_WS_CLIENTS     64
 #define MAX_STREAM_CLIENTS  8
 #define MSG_BUF           4096
+
+/* validity/keepalive: lws manda PING apos N s sem trafego e derruba a
+ * conexao ws se nem o PONG chegar — detecta peer morto (cabo, kill -9)
+ * sem esperar o default de ~5 min do lws. So afeta conexoes ws; h1 nao
+ * arma validity. */
+static const lws_retry_bo_t s_retry_policy = {
+    .secs_since_valid_ping   = 15,
+    .secs_since_valid_hangup = 30,
+};
 #define CHUNK_MAX         (52 * 188)  /* 9776 bytes — 52 TS packets por send    */
 #define STREAM_RING       (1 << 21)   /* 2 MB por cliente                       */
 #define STREAM_MASK       (STREAM_RING - 1)
@@ -53,6 +63,7 @@ typedef struct {
     unsigned char  pending[LWS_PRE + MSG_BUF];
     size_t         pending_len;
     int            has_pending;
+    int            close_pending; /* servico pediu close: fecha apos drenar */
     gdweb_ws_cb_t    cb;
     char           path[128];
     uint32_t      conn_id;
@@ -264,6 +275,26 @@ static int session_stream_upgrade(struct lws *wsi, http_session_t *s,
 }
 
 /* -----------------------------------------------------------------------
+ * ws_upgrade_confirm — upgrade websocket para topico sem rota: responde 404
+ * em vez de aceitar uma conexao surda (browser recebe onerror).
+ * O CONFIRM_UPGRADE chega no protocolo default do vhost (que o pvo abaixo
+ * troca para "ws"), entao os dois callbacks delegam para ca.
+ * ---------------------------------------------------------------------- */
+static int ws_upgrade_confirm(struct lws *wsi, void *in)
+{
+    if (in && !strcasecmp((const char *)in, "websocket")) {
+        char path[128] = "/";
+        lws_hdr_copy(wsi, path, sizeof(path), WSI_TOKEN_GET_URI);
+        if (!web_route_ws(path)) {
+            lws_return_http_status(wsi, HTTP_STATUS_NOT_FOUND,
+                                   "ws route not found");
+            return 1; /* >0: resposta ja emitida, lws completa a transacao */
+        }
+    }
+    return 0;
+}
+
+/* -----------------------------------------------------------------------
  * callback_http
  * ---------------------------------------------------------------------- */
 static int callback_http(struct lws *wsi,
@@ -274,6 +305,9 @@ static int callback_http(struct lws *wsi,
     (void)len;
 
     switch (reason) {
+
+    case LWS_CALLBACK_HTTP_CONFIRM_UPGRADE:
+        return ws_upgrade_confirm(wsi, in);
 
     case LWS_CALLBACK_HTTP: {
         if (!s) return -1;
@@ -482,6 +516,11 @@ static int callback_ws(struct lws *wsi,
                        enum lws_callback_reasons reason,
                        void *user, void *in, size_t len)
 {
+    /* pre-upgrade: com o pvo "default" o wsi h1 nasce vinculado a este
+     * protocolo, entao a validacao de rota chega aqui e nao no http */
+    if (reason == LWS_CALLBACK_HTTP_CONFIRM_UPGRADE)
+        return ws_upgrade_confirm(wsi, in);
+
     ws_session_t *s = (ws_session_t *)user;
     if (!s) return 0;
 
@@ -490,22 +529,27 @@ static int callback_ws(struct lws *wsi,
     case LWS_CALLBACK_ESTABLISHED: {
         char path[128] = "/";
         lws_hdr_copy(wsi, path, sizeof(path), WSI_TOKEN_GET_URI);
-        s->cb = web_route_ws(path);
+        gdweb_ws_cb_t cb = web_route_ws(path);
+
+        /* sem rota: CONFIRM_UPGRADE ja barra com 404; guarda extra para
+         * rota removida entre o handshake e o established. s->cb fica
+         * NULL, entao o CLOSED que segue nao notifica servico nenhum. */
+        if (!cb) return -1;
+
+        if (g.ws_count >= MAX_WS_CLIENTS) {
+            fprintf(stderr, "[webserver] MAX_WS_CLIENTS atingido, rejeitando\n");
+            return -1;
+        }
+
+        s->cb = cb;
         strncpy(s->path, path, sizeof(s->path) - 1);
         s->conn_id = alloc_id();
         conn_register(s->conn_id, wsi);
         s->req_id  = web_alloc_req(s->conn_id);
 
-        if (g.ws_count < MAX_WS_CLIENTS) {
-            g.ws_ids[g.ws_count]      = s->conn_id;
-            g.ws_sessions[g.ws_count] = s;
-            g.ws_count++;
-        } else {
-            fprintf(stderr, "[webserver] MAX_WS_CLIENTS atingido, rejeitando\n");
-            web_free_req(s->conn_id);
-            conn_remove(s->conn_id);
-            return -1;
-        }
+        g.ws_ids[g.ws_count]      = s->conn_id;
+        g.ws_sessions[g.ws_count] = s;
+        g.ws_count++;
 
         /* extrair query string — LWS separa URI e args em tokens distintos */
         char qbuf[384] = {0};
@@ -527,6 +571,7 @@ static int callback_ws(struct lws *wsi,
     }
 
     case LWS_CALLBACK_CLOSED: {
+        if (!s->conn_id) break; /* conexao rejeitada no established */
         web_free_req(s->conn_id);
         conn_remove(s->conn_id);
         for (int i = 0; i < g.ws_count; i++) {
@@ -565,6 +610,13 @@ static int callback_ws(struct lws *wsi,
             lws_write(wsi, &s->pending[LWS_PRE], s->pending_len, LWS_WRITE_TEXT);
             s->has_pending = 0;
             s->pending_len = 0;
+            /* drena o frame pendente antes de fechar */
+            if (s->close_pending) lws_callback_on_writable(wsi);
+            break;
+        }
+        if (s->close_pending) {
+            lws_close_reason(wsi, LWS_CLOSE_STATUS_NORMAL, NULL, 0);
+            return -1; /* LWS_CALLBACK_CLOSED notifica o servico */
         }
         break;
 
@@ -598,13 +650,26 @@ static void driver_server_start(void *loop, int port)
 
     uv_loop_t *uv_loop = (uv_loop_t *)loop;
 
+    /* upgrade ws sem header Sec-WebSocket-Protocol: lws vincula ao
+     * default_protocol_index do vhost (protocols[0] = "http", que ignora
+     * os eventos ws). Este pvo marca "ws" como default para que clientes
+     * sem subprotocolo tambem cheguem ao callback_ws. */
+    static const struct lws_protocol_vhost_options pvo_opt_default = {
+        NULL, NULL, "default", "1"
+    };
+    static const struct lws_protocol_vhost_options pvo_ws = {
+        NULL, &pvo_opt_default, "ws", ""
+    };
+
     struct lws_context_creation_info info;
     memset(&info, 0, sizeof(info));
-    info.port          = port;
-    info.protocols     = g.protocols;
-    info.iface         = NULL;
-    info.foreign_loops = (void **)&uv_loop;
-    info.options       = LWS_SERVER_OPTION_LIBUV;
+    info.port                  = port;
+    info.protocols             = g.protocols;
+    info.iface                 = NULL;
+    info.foreign_loops         = (void **)&uv_loop;
+    info.options               = LWS_SERVER_OPTION_LIBUV;
+    info.pvo                   = &pvo_ws;
+    info.retry_and_idle_policy = &s_retry_policy;
 
     g.ctx = lws_create_context(&info);
     if (!g.ctx) {
@@ -730,12 +795,51 @@ static void driver_ws_send_all(const char *path, const char *data, size_t len,
     }
 }
 
+static void driver_close(uint32_t conn_id)
+{
+    if (!g.started || !conn_id) return;
+    struct lws *wsi = wsi_by_conn_id(conn_id);
+    if (!wsi) return;
+
+    ws_session_t *ws = ws_session_by_conn_id(conn_id);
+    if (ws) {
+        /* fecha limpo: drena pendencias e manda close frame no WRITEABLE */
+        ws->close_pending = 1;
+        lws_callback_on_writable(wsi);
+        return;
+    }
+    /* conexao http/stream: derruba assincrono */
+    lws_set_timeout(wsi, PENDING_TIMEOUT_CLOSE_SEND, LWS_TO_KILL_ASYNC);
+}
+
+static void driver_ws_close_all(const char *path, uint32_t exclude_conn_id)
+{
+    if (!g.started) {
+        fprintf(stderr, "[webserver] close_all ignorado: server parado\n");
+        return;
+    }
+    int matched = 0;
+    for (int i = 0; i < g.ws_count; i++) {
+        if (g.ws_ids[i] == exclude_conn_id) continue;
+        if (path) {
+            ws_session_t *s = g.ws_sessions[i];
+            if (!s || strcmp(s->path, path) != 0) continue;
+        }
+        driver_close(g.ws_ids[i]);
+        matched++;
+    }
+    fprintf(stderr, "[webserver] close_all '%s': %d de %d conexoes ws\n",
+            path ? path : "*", matched, g.ws_count);
+}
+
 __attribute__((constructor))
 static void init(void)
 {
     gecnd_registry("set", "web_driver:server_start",    (void *)driver_server_start,  NULL);
     gecnd_registry("set", "web_driver:server_stop",     (void *)driver_server_stop,   NULL);
     gecnd_registry("set", "web_driver:server_http",     (void *)driver_http_set,      NULL);
-    gecnd_registry("set", "web_driver:server_send",     (void *)driver_send,          NULL);
-    gecnd_registry("set", "web_driver:server_send_all", (void *)driver_ws_send_all,   NULL);
+    gecnd_registry("set", "web_driver:server_send",      (void *)driver_send,         NULL);
+    gecnd_registry("set", "web_driver:server_send_all",  (void *)driver_ws_send_all,  NULL);
+    gecnd_registry("set", "web_driver:server_close",     (void *)driver_close,        NULL);
+    gecnd_registry("set", "web_driver:server_close_all", (void *)driver_ws_close_all, NULL);
 }

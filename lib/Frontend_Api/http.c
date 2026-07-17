@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 #include <lua.h>
 #ifdef LUAU_FASTMATH_BEGIN
@@ -13,11 +14,6 @@
 #include "gecnd.h"
 #include "gdweb.h"
 
-/**
- * @todo move to gecnd_t
- */
-static int g_http_cb_ref = 0;
-
 static void on_core_engine(const char *key, void *value, void *usr)
 {
     (void)key; (void)usr;
@@ -28,35 +24,59 @@ static void on_core_engine(const char *key, void *value, void *usr)
         lua_pop(gly->L, 1);
         return;
     }
-    g_http_cb_ref = luaL_ref(gly->L, LUA_REGISTRYINDEX);
+    gly->ref_native_callback_http = luaL_ref(gly->L, LUA_REGISTRYINDEX);
 }
 
-static void cb_push(lua_State *L, int64_t req_id, const char *evt)
+static void cb_push(gecnd_t *gly, int64_t lua_id, const char *evt)
 {
-    lua_rawgeti(L, LUA_REGISTRYINDEX, g_http_cb_ref);
-    lua_pushinteger(L, req_id);
-    lua_pushstring(L, evt);
+    lua_rawgeti(gly->L, LUA_REGISTRYINDEX, gly->ref_native_callback_http);
+    lua_pushinteger(gly->L, lua_id);
+    lua_pushstring(gly->L, evt);
 }
 
-static const char *cb_get_str(lua_State *L, int64_t req_id, const char *evt)
+/* pcall com erro logado — um throw no handler do usuario nao pode sumir */
+static void cb_call(lua_State *L, int nargs)
 {
-    cb_push(L, req_id, evt);
-    if (lua_pcall(L, 2, 1, 0)) { lua_pop(L, 1); return NULL; }
-    const char *s = lua_isstring(L, -1) ? lua_tostring(L, -1) : NULL;
+    if (lua_pcall(L, nargs, 0, 0)) {
+        const char *err = lua_tostring(L, -1);
+        fprintf(stderr, "[http] lua callback error: %s\n", err ? err : "?");
+        lua_pop(L, 1);
+    }
+}
+
+/* copia o resultado: o ponteiro de lua_tostring morre no lua_pop e o GC
+ * pode recolher a string durante os proximos pcall — caller da free() */
+static char *cb_get_str(gecnd_t *gly, int64_t lua_id, const char *evt)
+{
+    lua_State *L = gly->L;
+    cb_push(gly, lua_id, evt);
+    if (lua_pcall(L, 2, 1, 0)) {
+        const char *err = lua_tostring(L, -1);
+        fprintf(stderr, "[http] lua callback error: %s\n", err ? err : "?");
+        lua_pop(L, 1);
+        return NULL;
+    }
+    char *dup = NULL;
+    if (lua_isstring(L, -1)) {
+        size_t n;
+        const char *s = lua_tolstring(L, -1, &n);
+        dup = malloc(n + 1);
+        if (dup) { memcpy(dup, s, n); dup[n] = '\0'; }
+    }
     lua_pop(L, 1);
-    return s;
+    return dup;
 }
 
-static void cb_promise(lua_State *L, int64_t req_id)
+static void cb_promise(gecnd_t *gly, int64_t lua_id)
 {
-    cb_push(L, req_id, "async-promise");
-    lua_pcall(L, 2, 0, 0);
+    cb_push(gly, lua_id, "async-promise");
+    cb_call(gly->L, 2);
 }
 
-static void cb_resolve(lua_State *L, int64_t req_id)
+static void cb_resolve(gecnd_t *gly, int64_t lua_id)
 {
-    cb_push(L, req_id, "async-resolve");
-    lua_pcall(L, 2, 0, 0);
+    cb_push(gly, lua_id, "async-resolve");
+    cb_call(gly->L, 2);
 }
 
 static void cb_error_immediate(lua_State *L, const char *msg)
@@ -67,29 +87,31 @@ static void cb_error_immediate(lua_State *L, const char *msg)
 }
 
 typedef struct {
-    lua_State    *L;
-    int64_t       req_id;
-    gdweb_id_t  wc_id;
-    int           is_ws;
-    int           lua_close;
+    gecnd_t      *gly;
+    int64_t       lua_id;    /* id do request no Lua (engine.http[lua_id])   */
+    gdweb_id_t    con_id;    /* id da conexao no backend (gdweb) — nao vaza  */
+    uint8_t       is_ws     : 1;
+    uint8_t       lua_close : 1;
 } req_ctx_t;
 
 /**
  * @todo move to daemon WebLoop ownning pedings and *usr from frontend.
  */
-#define MAX_PENDING 64
+/* precisa cobrir conns reais (64 do driver) + loopback (64 do webloop) */
+#define MAX_PENDING 128
 static req_ctx_t *g_pending[MAX_PENDING];
 
-static void pending_add(req_ctx_t *ctx)
+static int pending_add(req_ctx_t *ctx)
 {
     for (int i = 0; i < MAX_PENDING; i++)
-        if (!g_pending[i]) { g_pending[i] = ctx; return; }
+        if (!g_pending[i]) { g_pending[i] = ctx; return 1; }
+    return 0;
 }
 
-static req_ctx_t *pending_find(int64_t req_id)
+static req_ctx_t *pending_find(int64_t lua_id)
 {
     for (int i = 0; i < MAX_PENDING; i++)
-        if (g_pending[i] && g_pending[i]->req_id == req_id) return g_pending[i];
+        if (g_pending[i] && g_pending[i]->lua_id == lua_id) return g_pending[i];
     return NULL;
 }
 
@@ -106,78 +128,89 @@ static int pending_remove(req_ctx_t *ctx)
 
 static void on_status(gdweb_id_t id, int status, void *user)
 {
+    (void)id;
     req_ctx_t *ctx = user;
-    cb_push(ctx->L, ctx->req_id, "set-status");
-    lua_pushinteger(ctx->L, status);
-    lua_pcall(ctx->L, 3, 0, 0);
+    cb_push(ctx->gly, ctx->lua_id, "set-status");
+    lua_pushinteger(ctx->gly->L, status);
+    cb_call(ctx->gly->L, 3);
 }
 
 static void on_data(gdweb_id_t id, const char *data, size_t len, void *user)
 {
+    (void)id;
     req_ctx_t *ctx = user;
-    cb_push(ctx->L, ctx->req_id, "add-body-data");
-    lua_pushlstring(ctx->L, data, len);
-    lua_pcall(ctx->L, 3, 0, 0);
+    cb_push(ctx->gly, ctx->lua_id, "add-body-data");
+    lua_pushlstring(ctx->gly->L, data, len);
+    cb_call(ctx->gly->L, 3);
 }
 
 static void on_done(gdweb_id_t id, void *user)
 {
+    (void)id;
     req_ctx_t *ctx = user;
     if (!pending_remove(ctx)) return;   /* already finished by another path */
-    cb_resolve(ctx->L, ctx->req_id);
+    cb_resolve(ctx->gly, ctx->lua_id);
     free(ctx);
 }
 
 static void on_error(gdweb_id_t id, const char *msg, void *user)
 {
+    (void)id;
     req_ctx_t *ctx = user;
     if (!pending_remove(ctx)) return;   /* already finished by another path */
-    cb_push(ctx->L, ctx->req_id, "set-error");
-    lua_pushstring(ctx->L, msg);
-    lua_pcall(ctx->L, 3, 0, 0);
-    cb_resolve(ctx->L, ctx->req_id);
+    cb_push(ctx->gly, ctx->lua_id, "set-error");
+    lua_pushstring(ctx->gly->L, msg);
+    cb_call(ctx->gly->L, 3);
+    cb_resolve(ctx->gly, ctx->lua_id);
     free(ctx);
 }
 
 static void on_ws_open(gdweb_id_t id, void *user)
 {
+    (void)id;
     req_ctx_t *ctx = user;
-    cb_push(ctx->L, ctx->req_id, "set-status");
-    lua_pushinteger(ctx->L, 200);
-    lua_pcall(ctx->L, 3, 0, 0);
-    cb_resolve(ctx->L, ctx->req_id);
+    cb_push(ctx->gly, ctx->lua_id, "set-status");
+    lua_pushinteger(ctx->gly->L, 200);
+    cb_call(ctx->gly->L, 3);
+    cb_resolve(ctx->gly, ctx->lua_id);
 }
 
 static void on_ws_msg(gdweb_id_t id, const char *data, size_t len, void *user)
 {
+    (void)id;
     req_ctx_t *ctx = user;
-    cb_push(ctx->L, ctx->req_id, "sock-message");
-    lua_pushlstring(ctx->L, data, len);
-    lua_pcall(ctx->L, 3, 0, 0);
+    cb_push(ctx->gly, ctx->lua_id, "sock-message");
+    lua_pushlstring(ctx->gly->L, data, len);
+    cb_call(ctx->gly->L, 3);
 }
 
 static void on_ws_close(gdweb_id_t id, void *user)
 {
+    (void)id;
     req_ctx_t *ctx = user;
     if (!pending_remove(ctx)) return;   /* already finished by another path */
     if (!ctx->lua_close) {
-        cb_push(ctx->L, ctx->req_id, "sock-event");
-        lua_pushstring(ctx->L, "disconnect");
-        lua_pcall(ctx->L, 3, 0, 0);
+        cb_push(ctx->gly, ctx->lua_id, "sock-event");
+        lua_pushstring(ctx->gly->L, "disconnect");
+        cb_call(ctx->gly->L, 3);
     }
     free(ctx);
 }
 
-static int64_t g_auto_id = -1;
-static int     g_started = 0;
+static int g_started = 0;
 
 static int lua_native_http_handler(lua_State *L)
 {
+    lua_rawgeti(L, LUA_REGISTRYINDEX, GLY_REGISTRYINDEX);
+    gecnd_t *gly = lua_touserdata(L, -1);
+    lua_pop(L, 1);
+    if (!gly || !gly->L) {
+        cb_error_immediate(L, "[core:error] core not ready!");
+        return 0;
+    }
+
     if (!g_started) {
-        lua_rawgeti(L, LUA_REGISTRYINDEX, GLY_REGISTRYINDEX);
-        gecnd_t *gly = lua_touserdata(L, -1);
-        lua_pop(L, 1);
-        if (!gly || !gly->loop) {
+        if (!gly->loop) {
             cb_error_immediate(L, "[core:error] libuv is not started!");
             return 0;
         }
@@ -185,19 +218,24 @@ static int lua_native_http_handler(lua_State *L)
         g_started = 1;
     }
 
-    int64_t req_id = luaL_checkinteger(L, 2);
-    if (req_id == 0) req_id = g_auto_id--;
+    /* id do request no Lua (engine.http[lua_id]) — obrigatorio e distinto
+     * do con_id, que pertence ao backend e nunca sobe para o Lua */
+    int64_t lua_id = luaL_checkinteger(L, 2);
+    if (!lua_id) {
+        cb_error_immediate(L, "missing request id");
+        return 0;
+    }
 
-    const char *url    = cb_get_str(L, req_id, "get-fullurl");
-    const char *method = cb_get_str(L, req_id, "get-method");
-    int         is_ws  = method && strcmp(method, "SOCK") == 0;
-    const char *body    = NULL;
-    const char *upgrade = NULL;
+    char *url    = cb_get_str(gly, lua_id, "get-fullurl");
+    char *method = cb_get_str(gly, lua_id, "get-method");
+    int   is_ws  = method && strcmp(method, "SOCK") == 0;
+    char *body    = NULL;
+    char *upgrade = NULL;
 
     if (is_ws) {
-        upgrade = cb_get_str(L, req_id, "get-sock-upgrade");
+        upgrade = cb_get_str(gly, lua_id, "get-sock-upgrade");
     } else {
-        body = cb_get_str(L, req_id, "get-body");
+        body = cb_get_str(gly, lua_id, "get-body");
     }
 
     /**
@@ -208,70 +246,78 @@ static int lua_native_http_handler(lua_State *L)
      *       LWS_CALLBACK_CLIENT_APPEND_HANDSHAKE_HEADER inside driver_warmcat.c.
      */
 
-    if (!url) { cb_error_immediate(L, "missing url"); return 0; }
+    if (!url) {
+        cb_error_immediate(L, "missing url");
+        goto cleanup_strings;
+    }
 
     req_ctx_t *ctx = malloc(sizeof(req_ctx_t));
-    if (!ctx) { cb_error_immediate(L, "out of memory"); return 0; }
-    lua_rawgeti(L, LUA_REGISTRYINDEX, GLY_REGISTRYINDEX);
-    gecnd_t *gly   = lua_touserdata(L, -1);
-    lua_pop(L, 1);
-    ctx->L         = gly->L;
-    ctx->req_id    = req_id;
-    ctx->wc_id     = 0;
+    if (!ctx) { cb_error_immediate(L, "out of memory"); goto cleanup_strings; }
+    ctx->gly       = gly;
+    ctx->lua_id    = lua_id;
+    ctx->con_id    = 0;
     ctx->is_ws     = is_ws;
     ctx->lua_close = 0;
-    pending_add(ctx);
+    if (!pending_add(ctx)) {
+        free(ctx);
+        cb_error_immediate(L, "too many pending requests");
+        goto cleanup_strings;
+    }
 
-    gdweb_id_t wc_id;
+    gdweb_id_t con_id;
     if (is_ws) {
-        wc_id = gdweb_control_client()->ws_connect(
+        con_id = gdweb_control_client()->ws_connect(
             url, upgrade,
             on_ws_open, on_ws_msg, on_ws_close, on_error,
             ctx
         );
     } else {
         gdweb_http_req_t req = { .method = method, .body = body, .body_len = body ? strlen(body) : 0 };
-        wc_id = gdweb_control_client()->http(
+        con_id = gdweb_control_client()->http(
             url, &req,
             on_status, on_data, on_done, on_error,
             ctx
         );
     }
 
-    if (!wc_id) {
-        /* If the driver already reported the failure via on_error it freed ctx
-         * and removed it from pending; only clean up here when it didn't. */
+    if (!con_id) {
         if (pending_remove(ctx)) {
             free(ctx);
             cb_error_immediate(L, "failed to connect");
         }
-        return 0;
+        goto cleanup_strings;
     }
-    ctx->wc_id = wc_id;
+    ctx->con_id = con_id;
 
-    cb_promise(L, req_id);
+    cb_promise(gly, lua_id);
+
+cleanup_strings:
+    free(url);
+    free(method);
+    free(body);
+    free(upgrade);
     return 0;
 }
 
 static int lua_native_http_sock(lua_State *L)
 {
-    int64_t    req_id = luaL_checkinteger(L, 1);
+    int64_t    lua_id = luaL_checkinteger(L, 1);
     int        op     = (int)luaL_checkinteger(L, 2);
-    req_ctx_t *ctx    = pending_find(req_id);
+    req_ctx_t *ctx    = pending_find(lua_id);
 
     switch (op) {
     case 1: {
         size_t      len  = 0;
         const char *data = luaL_checklstring(L, 3, &len);
         if (!ctx || !ctx->is_ws) { lua_pushboolean(L, 0); return 1; }
-        gdweb_control_client()->send(ctx->wc_id, data, len);
+        gdweb_control_client()->send(ctx->con_id, data, len);
         lua_pushboolean(L, 1);
         return 1;
     }
     case 2:
         if (ctx) {
             ctx->lua_close = 1;
-            gdweb_control_client()->close(ctx->wc_id);
+            gdweb_control_client()->close(ctx->con_id);
         }
         return 0;
     case 3:

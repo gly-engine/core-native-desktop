@@ -124,6 +124,7 @@ typedef struct {
     int         ref_native_callback_loop;
     int         ref_native_callback_draw;
     int         ref_native_callback_keyboard;
+    int         ref_native_callback_http;
     gecnd_lua_source_t engine_source;
     gecnd_lua_source_t game_source;
     char       *error_buf;
