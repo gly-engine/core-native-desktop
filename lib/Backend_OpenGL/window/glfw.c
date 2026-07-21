@@ -126,7 +126,8 @@ static void core_pre_init(const char *key, void *value, void *usr) {
 
 __attribute__((constructor))
 static void init(void) {
-    gecnd_registry("hook", "core:pre_init", (void *)core_pre_init, NULL);
+    gecnd_registry("set",  "backend:glfw", NULL, NULL);
+    gecnd_registry("hook", "backend:glfw:pre_init", (void *)core_pre_init, NULL);
 }
 
 void gly_hook_display_dt(int16_t *delta_time) {
