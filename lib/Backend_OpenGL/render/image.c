@@ -50,7 +50,6 @@ static void gl_upload(int32_t id, void **backend_data,
     t->width = ww; t->height = hh; t->is_opaque = is_opaque;
     t->color_format = color_format;
 
-#if defined(GECND_OPENGLES) && GECND_OPENGLES == 1
     if (color_format == GECND_PIX_FMT_ETC1) {
         int pw = (ww + 3) & ~3, ph = (hh + 3) & ~3;
         GLuint tex = 0;
@@ -70,7 +69,6 @@ static void gl_upload(int32_t id, void **backend_data,
         t->page_index = (int)tex | GECND_ATLAS_ETC_PAGE_FLAG;
         goto done;
     }
-#endif
     {
         int page_idx = 0, ox = 0, oy = 0;
         ge_atlas_acquire(color_format, is_opaque, ww, hh, &page_idx, &ox, &oy);
@@ -106,9 +104,7 @@ static void gl_upload(int32_t id, void **backend_data,
         t->page_index = page_idx;
     }
 
-#if defined(GECND_OPENGLES) && GECND_OPENGLES == 1
 done:;
-#endif
     t->live_idx = (int)kv_size(s_live);
     kv_push(GLTexture*, s_live, t);
     *backend_data = t;
@@ -197,8 +193,6 @@ void gamely_daemon_img_opengl_register(void) {
     gecnd_registry("set", "image_backend:rgba5551", (void *)&s_backend, NULL);
     gecnd_registry("set", "image_backend:alpha8",   (void *)&s_backend, NULL);
     gecnd_registry("set", "image_backend:yuv420",   (void *)&s_backend, NULL);
-#if defined(GECND_OPENGLES) && GECND_OPENGLES == 1
     if (geogl_get_state()->etc1_supported)
         gecnd_registry("set", "image_backend:etc1", (void *)&s_backend, NULL);
-#endif
 }

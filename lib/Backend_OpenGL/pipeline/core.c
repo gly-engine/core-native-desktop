@@ -154,14 +154,8 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
 }
 
 bool ge_detect_etc1_support(void) {
-    /* ETC1 only exists on OpenGL ES via GL_OES_compressed_ETC1_RGB8_texture.
-     * Desktop GL has no native ETC1 support, so we skip detection entirely. */
-#if defined(GECND_OPENGLES) && GECND_OPENGLES == 1
     const char *ext = (const char *)glGetString(GL_EXTENSIONS);
     return ext && strstr(ext, "GL_OES_compressed_ETC1_RGB8_texture") != NULL;
-#else
-    return false;
-#endif
 }
 
 static void ensure_fbo(GLBackendState *s) {
