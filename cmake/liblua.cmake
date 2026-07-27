@@ -22,7 +22,7 @@ set(LUAJIT_VERSION "v2.0.5")
 set(LUAJIT_DIR "${CMAKE_SOURCE_DIR}/vendor/lua/luajit")
 set(LUAJIT_LIB1 "${CMAKE_SOURCE_DIR}/vendor/lua/luajit/src/libluajit.a")
 set(LUAJIT_LIB2 "${CMAKE_BINARY_DIR}/libluajit.a")
-set(LUAJIT_DOWNLOAD "https://github.com/luajit/luajit/archive/refs/tags/${LUAJIT_VERSION}.tar.gz")
+set(LUAJIT_DOWNLOAD "https://github.com/LuaJIT/LuaJIT/archive/a471ab78c7b670b4f92dae111fc3c96fb824c768.tar.gz")
 
 set(LUAROBLOX_VERSION "0.727")
 set(LUAROBLOX_DOWNLOAD "https://github.com/luau-lang/luau/archive/refs/tags/${LUAROBLOX_VERSION}.tar.gz")
@@ -77,8 +77,8 @@ if(GECND_USE_LUAJIT)
             OUTPUT ${LUAJIT_LIB2}
             COMMAND make
                 HOST_CC=${ZIG_BIN}/zig-cc-host
-                HOST_CFLAGS="--target=x86-linux-musl"
-                HOST_LDFLAGS="--target=x86-linux-musl"
+                HOST_CFLAGS="--target=${ZIG_HOST_TARGET}"
+                HOST_LDFLAGS="--target=${ZIG_HOST_TARGET}"
                 CC=${ZIG_BIN}/zig-cc
                 XCFLAGS="-DLUAJIT_NO_UNWIND"
                 TARGET_SYS=Linux
