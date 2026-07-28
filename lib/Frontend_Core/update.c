@@ -191,46 +191,7 @@ static void on_core_state(const char *key, void *value, void *usr) {
     if (gly) gecnd_set_state(gly, (gecnd_fsm_t)(uintptr_t)value);
 }
 
-typedef struct {
-    char name[32];
-    bool found;
-} backend_pick_t;
-
-static void pick_first_backend(const char *key, void *value, void *usr) {
-    (void)value;
-    backend_pick_t *p = (backend_pick_t *)usr;
-    if (p->found) return;
-    const char *name = key + (sizeof("backend:") - 1);
-    if (strchr(name, ':')) return;
-    strncpy(p->name, name, sizeof(p->name) - 1);
-    p->name[sizeof(p->name) - 1] = '\0';
-    p->found = true;
-}
-
 static bool state_boot(gecnd_t *gly) {
-    const char *backend_name = NULL;
-    gecnd_registry("get", "core:backend", (void *)&backend_name, NULL);
-    if (backend_name) {
-        char backend_marker[64];
-        snprintf(backend_marker, sizeof(backend_marker), "backend:%s", backend_name);
-        if (!gecnd_registry("get", backend_marker, NULL, NULL)) {
-            gecnd_add_error(gly, "unknown backend: %s", backend_name);
-            return false;
-        }
-    } else {
-        backend_pick_t pick = {0};
-        gecnd_registry("get", "backend:*", (void *)pick_first_backend, &pick);
-        if (!pick.found) {
-            gecnd_add_error(gly, "missing backend");
-            return false;
-        }
-        gecnd_registry("set", "core:backend", (void *)pick.name, "strdup=val");
-        backend_name = pick.name;
-    }
-    char backend_key[64];
-    snprintf(backend_key, sizeof(backend_key), "backend:%s:pre_init", backend_name);
-    gecnd_registry("set", backend_key, gly, NULL);
-
     gecnd_registry("set", "core:pre_init", gly, NULL);
     gly_hook_display_init(gly->width, gly->height);
     if (gecnd_is_root(gly)) {

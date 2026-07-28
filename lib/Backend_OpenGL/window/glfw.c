@@ -1,19 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
 #include "gecnd.h"
 #include "gehook.h"
 #include "geopengl.h"
-#include <GLFW/glfw3.h>
+static GLBackendState g_gl_state;
 
-/* Registers two runtime-selectable backends off this one file: backend:gl_glfw
- * (desktop GL via GLX) and backend:gles_glfw (GLES2 via GLFW's EGL context
- * path). Which one actually runs is picked later by Frontend_Core/update.c;
- * both are only registered here if their underlying shared libs are present
- * (see ge_lib_available), so an unavailable variant never shows up as a
- * candidate. */
-typedef enum { GE_GLFW_GL, GE_GLFW_GLES } ge_glfw_api_t;
+GLBackendState* geogl_get_state(void) {
+    return &g_gl_state;
+}
 
 static void die(const char *msg) {
     fprintf(stderr, "[FATAL] %s\n", msg);
@@ -42,100 +37,116 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 }
 
 static void focus_callback(GLFWwindow* window, int focused) {
-    (void)window; (void)focused; /** @todo nao sei o porque disso. */
+    (void)window; /** @todo nao sei o porque disso.
+    if (!focused) {
+        for (size_t i = 0; i < sizeof(keymap)/sizeof(keymap[0]); i++) {
+            gecnd_set_btn_state(gecnd_get_root(), keymap[i].name, false);
+        }
+    }*/
 }
 
-static void glfw_error_callback(int error, const char* description) {
+void glfw_error_callback(int error, const char* description) {
     fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
 
-static void glfw_swap_buffers(void) {
-    glfwSwapBuffers(geogl_get_state()->window);
-}
-
-static double glfw_get_time(void) {
-    return glfwGetTime();
-}
-
-static void* glfw_proc_address(const char *name) {
-    return (void*)glfwGetProcAddress(name);
-}
-
-static void glfw_poll_should_close(bool *should_close) {
-    *should_close = geogl_get_state()->window && glfwWindowShouldClose(geogl_get_state()->window);
-}
-
-static void glfw_terminate(void) {
-    glfwTerminate();
-}
-
-static const GEWindowOps glfw_ops = {
-    .swap_buffers      = glfw_swap_buffers,
-    .get_time          = glfw_get_time,
-    .get_proc_address  = glfw_proc_address,
-    .poll_should_close = glfw_poll_should_close,
-    .terminate         = glfw_terminate,
-};
-
-static int glfw_window_create(uint16_t width, uint16_t height, ge_glfw_api_t api) {
+int platform_init(uint16_t width, uint16_t height) {
     GLBackendState *state = geogl_get_state();
     state->window_width = width;
     state->window_height = height;
 
     glfwSetErrorCallback(glfw_error_callback);
-    if (!glfwInit()) return -1;
 
-    glfwWindowHint(GLFW_CLIENT_API, api == GE_GLFW_GLES ? GLFW_OPENGL_ES_API : GLFW_OPENGL_API);
-    glfwWindowHint(GLFW_CONTEXT_CREATION_API, api == GE_GLFW_GLES ? GLFW_EGL_CONTEXT_API : GLFW_NATIVE_CONTEXT_API);
+    if (!glfwInit()) {
+        die("GLFW init failed");
+    }
+
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
     state->window = glfwCreateWindow(
-        width, height,
-        api == GE_GLFW_GLES ? "gecnd (OpenGL ES/GLFW)" : "gecnd (OpenGL/GLFW)",
+        state->window_width,
+        state->window_height,
+        "gecnd (OpenGL/GLFW)",
         NULL, NULL
     );
+
     if (!state->window) {
-        glfwTerminate();
-        return -1;
+        die("window creation failed");
     }
 
     glfwMakeContextCurrent(state->window);
     glfwSetKeyCallback(state->window, key_callback);
     glfwSetWindowFocusCallback(state->window, focus_callback);
+
     return 0;
 }
 
+void platform_terminate(void) {
+    glfwTerminate();
+}
+
+void platform_swap_buffers(void) {
+    glfwSwapBuffers(geogl_get_state()->window);
+}
+
+double platform_get_time(void) {
+    return glfwGetTime();
+}
+
+void* platform_get_proc_address(const char *name) {
+    return (void*)glfwGetProcAddress(name);
+}
+
 static void core_pre_init(const char *key, void *value, void *usr) {
-    (void)key;
-    ge_glfw_api_t api = (ge_glfw_api_t)(intptr_t)usr;
+    (void)key; (void)usr;
     gecnd_t *gly = (gecnd_t *)value;
     uint16_t width  = (uint16_t)gly->width;
     uint16_t height = (uint16_t)gly->height;
-
-    if (glfw_window_create(width, height, api) != 0) die("GLFW window/context creation failed");
-    if (!gladLoadGL((GLADloadfunc)glfwGetProcAddress)) die("GLAD load failed");
-
-    ge_window_ops_set(&glfw_ops);
+    GLBackendState *s = geogl_get_state();
+    if (platform_init(width, height) != 0) exit(1);
+    if (!gladLoadGL((GLADloadfunc)platform_get_proc_address)) die("GLAD load failed");
+    const char *ver = (const char*)glGetString(GL_VERSION);
+    bool gles = ver && strstr(ver, "OpenGL ES");
+    kv_init(s->textures);
+    init_all_shaders(gles);
+    ge_pipeline_init(width, height);
+    glEnable(GL_BLEND);
+    glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+                        GL_ONE,       GL_ONE_MINUS_SRC_ALPHA);
+    mat4_ortho(s->projection, 0, width, height, 0, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
+    s->last_frame_time = platform_get_time();
+    gly->internal |= GECND_INTERNAL_HW_GL_READY;
+    ge_hw_register();
 
     for (uint8_t i = 0; i < sizeof(keymap)/sizeof(*keymap); i++) {
         gamely_daemon_input_add_keycode("glfw", keymap[i].name, keymap[i].key);
     }
     gamely_input_add_cb("@tick", glfwPollEvents, NULL);
-
-    ge_backend_ready(gly, width, height, api == GE_GLFW_GLES);
 }
 
 __attribute__((constructor))
 static void init(void) {
-    if (ge_lib_available("libGL.so.1")) {
-        gecnd_registry("set",  "backend:gl_glfw", NULL, NULL);
-        gecnd_registry("hook", "backend:gl_glfw:pre_init", (void *)core_pre_init, (void *)(intptr_t)GE_GLFW_GL);
-    }
-    bool gles_libs = ge_lib_available("libEGL.so.1") &&
-        (ge_lib_available("libGLESv2.so.2") || ge_lib_available("libGLESv2.so"));
-    if (gles_libs) {
-        gecnd_registry("set",  "backend:gles_glfw", NULL, NULL);
-        gecnd_registry("hook", "backend:gles_glfw:pre_init", (void *)core_pre_init, (void *)(intptr_t)GE_GLFW_GLES);
+    gecnd_registry("hook", "core:pre_init", (void *)core_pre_init, NULL);
+}
+
+void gly_hook_display_dt(int16_t *delta_time) {
+    GLBackendState *state = geogl_get_state();
+    double t = platform_get_time();
+    *delta_time = (int16_t)((t - state->last_frame_time) * 1000.0);
+    state->last_frame_time = t;
+}
+
+void gly_hook_should_close(bool *should_close) {
+    if (geogl_get_state()->window) {
+        *should_close = glfwWindowShouldClose(geogl_get_state()->window);
     }
 }
+
+void gly_hook_display_close(void) {
+    terminate_all_shaders();
+    ge_pipeline_terminate();
+    gamely_daemon_media_shutdown();
+    native_text_terminate();
+    platform_terminate();
+}
+
