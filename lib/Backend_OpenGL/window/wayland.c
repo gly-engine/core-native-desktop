@@ -29,6 +29,27 @@ enum {
 
 typedef enum { GE_WL_GL, GE_WL_GLES } ge_wl_api_t;
 
+static const char *const s_wl_client_names[] = { "libwayland-client.so.0", "libwayland-client.so", NULL };
+static const char *const s_wl_egl_names[]    = { "libwayland-egl.so.1", "libwayland-egl.so.0", "libwayland-egl.so", NULL };
+static const char *const s_egl_names[]       = { "libEGL.so.1", "libEGL.so", NULL };
+static const char *const s_gl_names[]        = { "libGL.so.1", NULL };
+static const char *const s_gles_names[]      = { "libGLESv2.so.2", "libGLESv2.so", NULL };
+
+static void *dlopen_any(const char *const *names) {
+    for (; *names; names++) {
+        void *h = dlopen(*names, RTLD_LAZY | RTLD_GLOBAL);
+        if (h) return h;
+    }
+    return NULL;
+}
+
+static bool ge_lib_available_any(const char *const *names) {
+    for (; *names; names++) {
+        if (ge_lib_available(*names)) return true;
+    }
+    return false;
+}
+
 static void                                *s_libwl_client;
 static void                                *s_libwl_egl;
 static typeof(wl_display_connect)          *p_wl_display_connect;
@@ -61,8 +82,8 @@ static EGLSurface egl_surface = EGL_NO_SURFACE;
 
 static bool wl_load_libs(void) {
     if (s_libwl_client && s_libwl_egl) return true;
-    s_libwl_client = dlopen("libwayland-client.so.0", RTLD_LAZY | RTLD_GLOBAL);
-    s_libwl_egl    = dlopen("libwayland-egl.so.1", RTLD_LAZY | RTLD_GLOBAL);
+    s_libwl_client = dlopen_any(s_wl_client_names);
+    s_libwl_egl    = dlopen_any(s_wl_egl_names);
     if (!s_libwl_client || !s_libwl_egl) return false;
 
 #define LOAD_CLIENT(sym) (p_##sym = (typeof(sym)*)dlsym(s_libwl_client, #sym))
@@ -151,9 +172,8 @@ static void (*wayland_gles_loader(const char *name))(void) {
     if (p) return p;
     static void *libgl2 = NULL;
     if (libgl2 == NULL) {
-        libgl2 = dlopen("libGLESv2.so.2", RTLD_LAZY | RTLD_GLOBAL);
-        if (!libgl2) libgl2 = dlopen("libGLESv2.so", RTLD_LAZY | RTLD_GLOBAL);
-        if (!libgl2) libgl2 = dlopen("libGL.so.1", RTLD_LAZY | RTLD_GLOBAL);
+        libgl2 = dlopen_any(s_gles_names);
+        if (!libgl2) libgl2 = dlopen_any(s_gl_names);
     }
     return libgl2 ? (void (*)(void)) dlsym(libgl2, name) : NULL;
 }
@@ -299,14 +319,14 @@ static void core_pre_init(const char *key, void *value, void *usr) {
 
 __attribute__((constructor))
 static void init(void) {
-    if (!ge_lib_available("libwayland-client.so.0") || !ge_lib_available("libwayland-egl.so.1")) return;
-    if (!ge_lib_available("libEGL.so.1") && !ge_lib_available("libEGL.so")) return;
+    if (!ge_lib_available_any(s_wl_client_names) || !ge_lib_available_any(s_wl_egl_names)) return;
+    if (!ge_lib_available_any(s_egl_names)) return;
 
-    if (ge_lib_available("libGL.so.1")) {
+    if (ge_lib_available_any(s_gl_names)) {
         gecnd_registry("set",  "backend:gl_wayland", NULL, NULL);
         gecnd_registry("hook", "backend:gl_wayland:pre_init", (void *)core_pre_init, (void *)(intptr_t)GE_WL_GL);
     }
-    if (ge_lib_available("libGLESv2.so.2") || ge_lib_available("libGLESv2.so")) {
+    if (ge_lib_available_any(s_gles_names)) {
         gecnd_registry("set",  "backend:gles_wayland", NULL, NULL);
         gecnd_registry("hook", "backend:gles_wayland:pre_init", (void *)core_pre_init, (void *)(intptr_t)GE_WL_GLES);
     }
