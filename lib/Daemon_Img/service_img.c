@@ -4,25 +4,34 @@
 #include <uv.h>
 #include "gecnd.h"
 
-#define IMG_CAP     256
+#define IMG_CAP       512               /* must be a power of two */
+#define IMG_SLOT_BITS 9                 /* log2(IMG_CAP) */
+#define IMG_SLOT_MASK (IMG_CAP - 1)
 
 /* ── image entry ──────────────────────────────────────────────────── */
 
 typedef struct {
-    int32_t            id;
-    char              *url;
-    gamely_img_state_t state;
-    char               from[16];   /* extensão-fonte (hint do resolver) p/ diagnóstico */
-    char               fmt[16];
-    int16_t            w, h;
-    void              *backend_data;
-    char              *error_msg;
-    void              *src_owned;
-    int                active;
+    int32_t                     id;
+    char                       *url;
+    gamely_img_state_t          state;
+    char                        from[16];   /* extensão-fonte (hint do resolver) p/ diagnóstico */
+    char                        fmt[16];
+    int16_t                     w, h;
+    void                       *backend_data;
+    const gamely_img_backend_t *backend;    /* cacheado ao ficar READY, evita find_backend() por draw */
+    char                       *error_msg;
+    void                       *src_owned;
+    int                         active;
 } img_entry_t;
 
 static img_entry_t s_imgs[IMG_CAP];
-static int32_t     s_next_id = 1;
+
+/* id = (generation << IMG_SLOT_BITS) | slot. Generation por slot sobrevive ao
+ * entry_free() (fora do struct, não é zerada pelo memset) e é incrementada a
+ * cada liberação, invalidando handles antigos que apontem pro slot reciclado. */
+static uint16_t s_gen[IMG_CAP];
+static uint16_t s_free[IMG_CAP];   /* pilha de slots livres */
+static int      s_free_top;
 
 /* ── registries ───────────────────────────────────────────────────── */
 
@@ -38,23 +47,27 @@ static img_entry_t *find_by_url(const char *url) {
 }
 
 static img_entry_t *find_by_id(int32_t id) {
-    for (int i = 0; i < IMG_CAP; i++)
-        if (s_imgs[i].active && s_imgs[i].id == id)
-            return &s_imgs[i];
-    return NULL;
+    if (id < 0) return NULL;
+    img_entry_t *e = &s_imgs[(uint32_t)id & IMG_SLOT_MASK];
+    return (e->active && e->id == id) ? e : NULL;
 }
 
 static img_entry_t *alloc_entry(void) {
-    for (int i = 0; i < IMG_CAP; i++)
-        if (!s_imgs[i].active) return &s_imgs[i];
-    return NULL;
+    if (s_free_top == 0) return NULL;
+    uint16_t     slot = s_free[--s_free_top];
+    img_entry_t *e    = &s_imgs[slot];
+    e->id = ((int32_t)s_gen[slot] << IMG_SLOT_BITS) | slot;
+    return e;
 }
 
 static void entry_free(img_entry_t *e) {
+    uint32_t slot = (uint32_t)e->id & IMG_SLOT_MASK;
     free(e->url);
     free(e->error_msg);
     free(e->src_owned);
     memset(e, 0, sizeof(*e));
+    s_gen[slot]            = (uint16_t)(s_gen[slot] + 1);
+    s_free[s_free_top++]   = (uint16_t)slot;
 }
 
 /* ── registry helpers ─────────────────────────────────────────────── */
@@ -149,8 +162,9 @@ static void decode_after_cb(uv_work_t *req, int status) {
     }
     const gamely_img_backend_t *b = find_backend(e->fmt);
     if (b) {
-        e->w = w->result.w;
-        e->h = w->result.h;
+        e->w       = w->result.w;
+        e->h       = w->result.h;
+        e->backend = b;
         if (move) e->src_owned = w->src;
         b->upload(e->id, &e->backend_data,
                   w->result.pixels, w->result.len, e->w, e->h,
@@ -219,8 +233,9 @@ static void on_fetch(const uint8_t *data, size_t len,
     bool move = (result.flags & GECND_FLAG_IMG_MOVE) != 0;
     if (move) e->src_owned = (void *)data;
     else      free((void *)data);
-    e->w = result.w;
-    e->h = result.h;
+    e->w       = result.w;
+    e->h       = result.h;
+    e->backend = pick.backend;
     pick.backend->upload(e->id, &e->backend_data,
                          result.pixels, result.len, e->w, e->h,
                          result.color_format, move ? release_noop : release_free);
@@ -257,7 +272,11 @@ static void dispatch_url(img_entry_t *e, const char *url) {
 void gamely_daemon_img_start(void *loop) {
     s_loop = (uv_loop_t *)loop;
     memset(s_imgs, 0, sizeof(s_imgs));
-    s_next_id  = 1;
+    for (int i = 0; i < IMG_CAP; i++) {
+        s_gen[i]  = 1;                                  /* garante id > 0 no 1º uso do slot */
+        s_free[i] = (uint16_t)(IMG_CAP - 1 - i);         /* topo da pilha = slot 0 (1º a sair) */
+    }
+    s_free_top = IMG_CAP;
 }
 
 void gamely_daemon_img_stop(void) {
@@ -272,7 +291,6 @@ int32_t gamely_daemon_img_get_id(const char *url) {
     if (e) return e->id;
     e = alloc_entry();
     if (!e) { printf("[img] no free slots for '%s'\n", url); return -1; }
-    e->id     = s_next_id++;
     e->url    = strdup(url);
     e->state  = GLY_IMG_SEARCHING;
     e->active = 1;
@@ -299,16 +317,14 @@ void gamely_daemon_img_get_mensure(int32_t id, int16_t *w, int16_t *h) {
 
 void gamely_daemon_img_draw(int32_t id, int16_t x, int16_t y) {
     img_entry_t *e = find_by_id(id);
-    if (!e || e->state != GLY_IMG_READY) return;
-    const gamely_img_backend_t *b = find_backend(e->fmt);
-    if (b) b->draw(id, e->backend_data, x, y);
+    if (!e || e->state != GLY_IMG_READY || !e->backend) return;
+    e->backend->draw(id, e->backend_data, x, y);
 }
 
 void gamely_daemon_img_unload_id(int32_t id) {
     img_entry_t *e = find_by_id(id);
     if (!e) return;
-    const gamely_img_backend_t *b = find_backend(e->fmt);
-    if (b && e->state == GLY_IMG_READY) b->unload(id, e->backend_data);
+    if (e->backend && e->state == GLY_IMG_READY) e->backend->unload(id, e->backend_data);
     entry_free(e);
 }
 
