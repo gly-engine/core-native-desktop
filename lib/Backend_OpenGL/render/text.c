@@ -1,7 +1,7 @@
 #include <stdint.h>
 
 #include "geopengl.h"
-#include "gecnd/font_mono_retro.h"
+#include "gecnd/font_noto_sans.h"
 
 /* Selection state only — all glyph rasterization/atlas/layout logic lives in
  * Daemon_Font (service_font.c + driver_freetype.c) and font_backend.c. */
@@ -12,7 +12,7 @@ static uint8_t current_size    = 16;
 
 static void ensure_default_loaded(void) {
     if (default_font_id != -1) return;
-    default_font_id = gamely_daemon_font_load_memory(font_mono_retro_font_ttf, font_mono_retro_font_ttf_len);
+    default_font_id = gamely_daemon_font_load_memory(Noto_Sans_NotoSans_Regular_ASCII_ttf, Noto_Sans_NotoSans_Regular_ASCII_ttf_len);
     gamely_daemon_font_set_family("default", default_font_id);
     if (current_font_id == -1) current_font_id = default_font_id;
 }

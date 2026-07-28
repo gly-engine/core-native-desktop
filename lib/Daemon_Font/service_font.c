@@ -283,7 +283,8 @@ void gamely_daemon_font_draw_text(int32_t font_id, uint8_t px_size,
         uint32_t cp = utf8_next(&p);
         if (cp == '\n') { cursor_x = x; baseline_y += line_h; continue; }
         gamely_font_glyph_t g;
-        if (!drv->glyph(e->face, px_size, cp, backend, &g)) continue;
+        if (!drv->glyph(e->face, px_size, cp, backend, &g) &&
+            !drv->glyph(e->face, px_size, '?', backend, &g)) continue;
         if (g.w > 0 && g.h > 0) {
             float u0 = (float)g.atlas_x / GAMELY_FONT_ATLAS_SIZE;
             float v0 = (float)g.atlas_y / GAMELY_FONT_ATLAS_SIZE;
@@ -316,7 +317,8 @@ void gamely_daemon_font_mensure_text(int32_t font_id, uint8_t px_size,
         uint32_t cp = utf8_next(&p);
         if (cp == '\n') { if (cursor_x > max_x) max_x = cursor_x; cursor_x = 0; lines++; continue; }
         gamely_font_glyph_t g;
-        if (!drv->glyph(e->face, px_size, cp, backend, &g)) continue;
+        if (!drv->glyph(e->face, px_size, cp, backend, &g) &&
+            !drv->glyph(e->face, px_size, '?', backend, &g)) continue;
         cursor_x += g.advance;
     }
     if (cursor_x > max_x) max_x = cursor_x;

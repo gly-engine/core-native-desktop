@@ -124,6 +124,7 @@ static bool ft_glyph(void *face, uint8_t px_size, uint32_t codepoint,
     }
 
     FT_Set_Pixel_Sizes(f->face, 0, px_size);
+    if (FT_Get_Char_Index(f->face, codepoint) == 0) return false;
     if (FT_Load_Char(f->face, codepoint, FT_LOAD_RENDER) != 0) return false;
 
     FT_GlyphSlot g   = f->face->glyph;

@@ -198,8 +198,9 @@ set(LIBRETRO_DOWNLOAD "https://raw.githubusercontent.com/libretro/RetroArch/ee3e
 # Fonts
 set(FONTS_DIR "${CMAKE_SOURCE_DIR}/vendor/fonts")
 set(FONTS_INCLUDE_DIR "${CMAKE_BINARY_DIR}/include/gecnd")
-set(FONTS_DEFAULT_HEADER "${FONTS_INCLUDE_DIR}/font_mono_retro.h")
-set(FONTS_DEFAULT_DOWNLOAD "https://cdn.jsdelivr.net/npm/@gamely/font-mono-retro/font.ttf")
+set(FONTS_DEFAULT_HEADER "${FONTS_INCLUDE_DIR}/font_noto_sans.h")
+set(NOTO_SANS_DOWNLOAD "https://github.com/gly-engine/archive/archive/refs/heads/fonts.tar.gz")
+set(NOTO_SANS_DIR "${CMAKE_SOURCE_DIR}/vendor/fonts/noto_sans")
 
 # Google GPERF/PPERF
 set(GPERFTOOLS_VERSION "gperftools-2.18")
@@ -247,22 +248,16 @@ endif()
 add_library(tomlc17 STATIC "${TOMLC17_DIR}/src/tomlc17.c")
 target_link_libraries(${PROJECT_NAME} PRIVATE tomlc17)
 
-file(MAKE_DIRECTORY "${FONTS_DIR}/font-mono-retro")
-
-if(NOT EXISTS "${FONTS_DIR}/font-mono-retro/font.ttf")
-    file(DOWNLOAD
-        "${FONTS_DEFAULT_DOWNLOAD}"
-        "${FONTS_DIR}/font-mono-retro/font.ttf"
-        TLS_VERIFY ON
-    )
+if(NOT EXISTS "${NOTO_SANS_DIR}")
+    FetchContent_Populate(noto_sans URL "${NOTO_SANS_DOWNLOAD}" SOURCE_DIR ${NOTO_SANS_DIR})
 endif()
 
 add_custom_command(
     OUTPUT ${FONTS_DEFAULT_HEADER}
     COMMAND ${CMAKE_COMMAND} -E make_directory "${FONTS_INCLUDE_DIR}"
-    COMMAND xxd -i "font-mono-retro/font.ttf" > ${FONTS_DEFAULT_HEADER}
+    COMMAND xxd -i "Noto_Sans/NotoSans-Regular-ASCII.ttf" > ${FONTS_DEFAULT_HEADER}
     COMMENT "Generating default font header"
-    WORKING_DIRECTORY ${FONTS_DIR}
+    WORKING_DIRECTORY ${NOTO_SANS_DIR}
 )
 
 add_custom_target(gecnd_fonts_headers DEPENDS
