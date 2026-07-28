@@ -13,6 +13,7 @@
 bool        native_libretro_load               (const char *core_path);
 bool        native_libretro_game               (const char *rom_path);
 bool        native_libretro_game_load_only     (const char *rom_path);
+bool        native_libretro_game_none          (void);
 bool        native_libretro_game_from_buffer   (const uint8_t *data, size_t size, const char *name);
 void        native_libretro_game_finalize      (void);
 bool        native_libretro_url                (const char *url);
@@ -162,8 +163,14 @@ static gdmsp_fsm_t libretro_set(uint8_t channel, gdmsp_cmd_t cmd, gdmsp_value_t 
             break;
         case GDMSP_CMD_TICK: {
             if (s_needs_finalize) {
-                libretro_hw_gl_ready();
+                /* finalize() is what populates the pending FBO size (via
+                 * libretro_hw_context_reset) — it must run before gl_ready(),
+                 * never after, or gl_ready() sees s_pending_w == 0 and skips
+                 * the core's context_reset() forever (no glad, no FBO —
+                 * whatever the core does in retro_run() next is on borrowed
+                 * time). */
                 native_libretro_game_finalize();
+                libretro_hw_gl_ready();
                 s_needs_finalize = false;
             }
             libretro_run_frame();
@@ -185,6 +192,54 @@ static gdmsp_value_t libretro_get(uint8_t channel, gdmsp_cmd_t cmd, void *usr) {
 
 static gdmsp_player_t libretro_file_player = {
     .src = libretro_file_source,
+    .set = libretro_set,
+    .get = libretro_get,
+};
+
+/* ── player: libretro://? (core sem conteúdo — bare scheme, sem "+nome") ──
+ *
+ * "libretro+$l$0" (acima) exige um core name antes de "://"; este pattern
+ * bate quando não há "+nome" nenhum, e trata o location como o próprio
+ * core (retro_load_game(NULL), sem tocar em nenhum arquivo de rom). */
+
+static gdmsp_fsm_t libretro_nogame_source(uint8_t channel, const char *url, void *usr) {
+    (void)channel; (void)usr;
+
+    native_libretro_exit();
+
+    libretro_url_t u = libretro_url_split(url);
+    url_env_set(url);
+
+    char core_name[512];
+    snprintf(core_name, sizeof(core_name), "%.*s", (int)u.location_len, u.location ? u.location : "");
+
+    const char *core_path = scanner_resolve_core(core_name);
+    if (!core_path) {
+        native_libretro_set_error("core not found: %s", core_name);
+        return GDMSP_FSM_ERROR;
+    }
+    /* scanner_resolve_* retorna ponteiro para buffer estático — copia antes
+     * da próxima chamada para não sobrescrever. */
+    char core_buf[1024];
+    strncpy(core_buf, core_path, sizeof(core_buf) - 1);
+    core_buf[sizeof(core_buf) - 1] = '\0';
+
+    if (!native_libretro_load(core_buf)) {
+        native_libretro_set_error("failed to load core: %s", core_buf);
+        return GDMSP_FSM_ERROR;
+    }
+    if (!native_libretro_game_none()) {
+        native_libretro_set_error("core does not support running without content: %s", core_buf);
+        native_libretro_exit();
+        return GDMSP_FSM_ERROR;
+    }
+    /* finalize (GL/audio) deve rodar no main thread — primeiro TICK vai consumir */
+    s_needs_finalize = true;
+    return GDMSP_FSM_LOADING;
+}
+
+static gdmsp_player_t libretro_nogame_player = {
+    .src = libretro_nogame_source,
     .set = libretro_set,
     .get = libretro_get,
 };
@@ -418,6 +473,7 @@ void coreopen_libretro_gecnd(gecnd_plugin_t *const plugin) {
     api->registry("set", "lua_global_ffi:native_libretro_is_running+$0+$b", lua_native_libretro_is_running, NULL);
     api->registry("set", "lua_global_ffi:native_libretro_keyboard+$u8+$u8+$b+$0", lua_native_libretro_keyboard, NULL);
     api->registry("set", "media_player:libretro+$l$0", &libretro_file_player, NULL);
+    api->registry("set", "media_player:libretro$0", &libretro_nogame_player, NULL);
     api->registry("set", "media_player:libretro+$l+http$0", &libretro_http_player, NULL);
     api->registry("set", "media_player:libretro+$l+https$0", &libretro_http_player, NULL);
     api->registry("set", "media_player:libretro+$l+tmp+http$0", &libretro_tmp_http_player, NULL);
