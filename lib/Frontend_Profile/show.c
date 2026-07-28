@@ -90,7 +90,7 @@ void gecnd_metrics_render(gecnd_t *gly)
 
     native_draw_color(0x000000FF);
     native_text_font_default(1);
-    native_text_font_size(11);
+    native_text_font_size(14);
 
     int16_t tx = box_x + (padding / 2);
     int16_t ty = box_y + (padding / 2);

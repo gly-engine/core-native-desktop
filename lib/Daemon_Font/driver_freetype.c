@@ -21,17 +21,22 @@ static FT_Library s_ft = NULL;
 
 static int16_t s_pack_x, s_pack_y, s_pack_row_h;
 
+/* 1px gutter between slots (mirrors ge_atlas_acquire in pipeline/atlas.c)
+ * so GL_LINEAR sampling at a glyph's edge can't bleed into the neighbor
+ * packed right next to it in the shelf. */
 static bool pack_alloc(int16_t w, int16_t h, int16_t *ox, int16_t *oy) {
-    if (s_pack_x + w > GAMELY_FONT_ATLAS_SIZE) {
+    int16_t slot_w = (int16_t)(w + 1);
+    int16_t slot_h = (int16_t)(h + 1);
+    if (s_pack_x + slot_w > GAMELY_FONT_ATLAS_SIZE) {
         s_pack_x     = 0;
         s_pack_y    += s_pack_row_h;
         s_pack_row_h = 0;
     }
-    if (s_pack_y + h > GAMELY_FONT_ATLAS_SIZE) return false;
+    if (s_pack_y + slot_h > GAMELY_FONT_ATLAS_SIZE) return false;
     *ox = s_pack_x;
     *oy = s_pack_y;
-    s_pack_x += w;
-    if (h > s_pack_row_h) s_pack_row_h = h;
+    s_pack_x += slot_w;
+    if (slot_h > s_pack_row_h) s_pack_row_h = slot_h;
     return true;
 }
 
@@ -99,10 +104,14 @@ static void ft_face_free(void *face) {
 
 /* ── metrics ──────────────────────────────────────────────────────── */
 
+static inline uint8_t shrink_size(uint8_t px_size) {
+    return px_size > 3 ? (uint8_t)(px_size - 3) : 1;
+}
+
 static void ft_metrics(void *face, uint8_t px_size,
                        int16_t *ascent, int16_t *descent, int16_t *line_height) {
     font_face_t *f = (font_face_t *)face;
-    FT_Set_Pixel_Sizes(f->face, 0, px_size);
+    FT_Set_Pixel_Sizes(f->face, 0, shrink_size(px_size));
     FT_Size_Metrics *m = &f->face->size->metrics;
     if (ascent)      *ascent      = (int16_t)(m->ascender  >> 6);
     if (descent)     *descent     = (int16_t)(-m->descender >> 6);
@@ -123,7 +132,7 @@ static bool ft_glyph(void *face, uint8_t px_size, uint32_t codepoint,
         return true;
     }
 
-    FT_Set_Pixel_Sizes(f->face, 0, px_size);
+    FT_Set_Pixel_Sizes(f->face, 0, shrink_size(px_size));
     if (FT_Get_Char_Index(f->face, codepoint) == 0) return false;
     if (FT_Load_Char(f->face, codepoint, FT_LOAD_RENDER) != 0) return false;
 
