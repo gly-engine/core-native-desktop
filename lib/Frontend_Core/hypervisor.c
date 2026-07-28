@@ -54,8 +54,10 @@ void gamely_hypervisor_init(gecnd_t *gly) {
     gdweb_control_client()->start(gly->loop);
     gdweb_control_server()->start(gly->loop, g_display.port);
     gamely_daemon_img_start(gly->loop);
+    gamely_daemon_font_start(gly->loop);
 
     gamely_daemon_img_opengl_register();
+    gamely_daemon_font_opengl_register();
 
     if (g_display.game_base_url[0])
         gecnd_registry("set", "image_resolver:$s", gamely_resolver_image_base_url, NULL);
