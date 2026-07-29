@@ -24,9 +24,11 @@ static gecnd_registry_entry_t *entries;
 static size_t count;
 static size_t capacity;
 
+/* valor chega codificado no próprio ponteiro (ex.: (void*)(intptr_t)val),
+ * mesma convenção usada por set_toml.c pra INT64/BOOLEAN — não é endereço. */
 #define BIND_HANDLER(suffix, type)                                  \
     static void bind_set_##suffix(const char *k, void *v, void *usr) { \
-        (void)k; *(type *)usr = *(type *)v;                         \
+        (void)k; *(type *)usr = (type)(intptr_t)v;                  \
     }
 
 static void bind_set_ptr(const char *k, void *v, void *usr) {
@@ -42,6 +44,9 @@ BIND_HANDLER(i8,  int8_t)
 BIND_HANDLER(i16, int16_t)
 BIND_HANDLER(i32, int32_t)
 BIND_HANDLER(i64, int64_t)
+/** @todo f32/f64 não cabem na codificação via intptr_t (bits truncados/
+ * reinterpretados errado) — hoje nada faz "set" tipado de float por aqui
+ * (font_factor é setado direto na struct), então segue igual por ora. */
 BIND_HANDLER(f32, float)
 BIND_HANDLER(f64, double)
 #undef BIND_HANDLER

@@ -111,7 +111,7 @@ void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
         gecnd_get_display()->disable_radius = true;
     }
     if (c == 1313) {
-        gecnd_get_display()->mojibake = true;
+        gecnd_registry("set", "option:mojibake", (void *)(intptr_t)true, NULL);
     }
     if (c == 1310 && (sscanf(opt.arg, "%hu", &gecnd_get_display()->port) != 1))
         gecnd_add_error(gly, "invalid port!");
