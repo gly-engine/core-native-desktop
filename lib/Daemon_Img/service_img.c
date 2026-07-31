@@ -311,8 +311,9 @@ const char *gamely_daemon_img_get_error(int32_t id) {
 
 void gamely_daemon_img_get_mensure(int32_t id, int16_t *w, int16_t *h) {
     img_entry_t *e = find_by_id(id);
-    if (w) *w = e ? e->w : 0;
-    if (h) *h = e ? e->h : 0;
+    bool ready = e && e->state == GLY_IMG_READY;
+    if (w) *w = ready ? e->w : 0;
+    if (h) *h = ready ? e->h : 0;
 }
 
 void gamely_daemon_img_draw(int32_t id, int16_t x, int16_t y) {
