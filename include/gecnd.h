@@ -485,7 +485,7 @@ void                 gamely_daemon_font_unload_id   (int32_t id);
 void                 gamely_daemon_font_unload_url  (const char *url);
 void                 gamely_daemon_font_unload_all  (void);
 
-/* name -> id alias, used by native_text_font_family / native_text_font_name */
+/* name -> id alias, used by native_text_font_face / native_text_font_name */
 void    gamely_daemon_font_set_family      (const char *name, int32_t id);
 int32_t gamely_daemon_font_get_id_by_family(const char *name); /* -1 if not found */
 

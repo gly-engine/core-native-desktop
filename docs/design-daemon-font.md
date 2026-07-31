@@ -80,7 +80,7 @@ via `gecnd_registry`:
   porque tem N formatos de pixel, fonte não)
 - `font_backend:<atlas-fmt>` — registrado pelo backend gráfico
 - alias nome→id (`gamely_daemon_font_set_family` / `get_id_by_family`), usado
-  por `native_text_font_family`/`native_text_font_name`
+  por `native_text_font_face`/`native_text_font_name`
 
 ### Máquina de estados (idêntica à de imagem)
 
@@ -207,7 +207,7 @@ Sem fontstash. Só guarda seleção local (`current_font_id`, `current_size`):
 
 - `native_text_font_size(size)` → guarda `current_size`.
 - `native_text_font_name(name)` → **só aceita nome de família registrado**
-  via `native_text_font_family` antes; `get_id_by_family(name)`. Path/URL cru
+  via `native_text_font_face` antes; `get_id_by_family(name)`. Path/URL cru
   não é mais aceito neste backend.
 - `native_text_font_default(index)` → `(void)index`; garante a fonte
   embutida carregada (`ensure_default_loaded()`, ver abaixo) e seleciona
@@ -231,16 +231,16 @@ Nova função, backend-agnóstica (estilo `image.c`, via `GECND_NATIVE_DAEMON`
 — não passa pelo `backend_func` por-backend):
 
 ```c
-GECND_NATIVE_DAEMON(native_text_font_family, (const char *name, const char *url, int32_t *out_id));
+GECND_NATIVE_DAEMON(native_text_font_face, (const char *name, const char *url, int32_t *out_id));
 
-static void daemon_native_text_font_family(const char *name, const char *url, int32_t *out_id) {
+static void daemon_native_text_font_face(const char *name, const char *url, int32_t *out_id) {
     int32_t id = gamely_daemon_font_get_id(url);
     gamely_daemon_font_set_family(name, id);
     *out_id = id;
 }
 ```
 
-Lua: `native_text_font_family(name, url)`. `url` pode ser path local ou
+Lua: `native_text_font_face(name, url)`. `url` pode ser path local ou
 `http(s)://`. `native_text_font_previous` continua como está (já marcado
 `@todo remove on 0.4.X`, fora de escopo).
 
@@ -273,5 +273,5 @@ Lua: `native_text_font_family(name, url)`. `url` pode ser path local ou
 | Cache/pack de glifos | Vive no driver FreeType (backend-agnóstico), não no backend gráfico |
 | Layout de texto (draw/mensure) | Centralizado no daemon, não em cada backend |
 | Atlas cheio | Sem eviction nesta rodada — igual ao fontstash hoje, só libera em `unload_all()` |
-| `native_text_font_name(arg)` | Só aceita nome de família registrado via `native_text_font_family`; path/URL cru não é mais aceito |
+| `native_text_font_name(arg)` | Só aceita nome de família registrado via `native_text_font_face`; path/URL cru não é mais aceito |
 | Fonte padrão (`font-mono-retro`) | Lazy: carregada só quando `print`/`mensure` rodam sem fonte selecionada, ou quando `native_text_font_default()` é chamado — o que vier primeiro. `Daemon_Font.start()` não carrega nada sozinho |
