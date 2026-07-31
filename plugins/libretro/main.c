@@ -440,7 +440,11 @@ static gdmsp_player_t libretro_tmp_http_player = {
 
 static char* lua_native_libretro_url(char* url) {
     char media_url[2048];
-    snprintf(media_url, sizeof(media_url), "libretro+%s", url);
+    if (strncmp(url, "libretro", 8) == 0) {
+        snprintf(media_url, sizeof(media_url), "%s", url);
+    } else {
+        snprintf(media_url, sizeof(media_url), "libretro+%s", url);
+    }
     if (host_bind()) host.control()->source(0, media_url);
     return NULL;
 }
