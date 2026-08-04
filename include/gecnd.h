@@ -258,8 +258,6 @@ void gecnd_dispatch_key_event(const char *name, bool pressed, int port, void *us
 // utils
 uint32_t gecnd_get_delta_ms(void);
 uint64_t gecnd_get_cur_time(void);
-size_t gecnd_utils_get_exe_cwd(char *buffer, size_t max_size);
-size_t gecnd_utils_get_cwd(char *buffer, size_t max_size);
 // filters
 void gecnd_filter_set_brightness(float v);
 void gecnd_filter_set_contrast(float v);

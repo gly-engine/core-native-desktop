@@ -271,13 +271,10 @@ bool native_libretro_url(const char *url) {
     return true;
 }
 
-static typeof(gecnd_utils_get_exe_cwd) *fn_exe_cwd;
-
-static void exe_cwd(char *buf, size_t cap) {
-    if (!fn_exe_cwd)
-        api->registry("get", "function:gecnd_utils_get_exe_cwd", (void *)&fn_exe_cwd, NULL);
-    if (fn_exe_cwd) fn_exe_cwd(buf, cap);
-    else buf[0] = '\0';
+static const char *exe_cwd(void) {
+    static const char *pwd;
+    if (!pwd) api->registry("get", "pwd", (void *)&pwd, NULL);
+    return pwd ? pwd : "";
 }
 
 bool native_libretro_load(const char *path) {
@@ -286,8 +283,7 @@ bool native_libretro_load(const char *path) {
     reset_pointers();
     s_core_supports_no_game = false;
 
-    char exe_dir[512];
-    exe_cwd(exe_dir, sizeof(exe_dir));
+    const char *exe_dir = exe_cwd();
     strncpy(system_dir, exe_dir[0] ? exe_dir : ".", sizeof(system_dir));
 
     core_handle = load_library(path);
@@ -335,9 +331,7 @@ bool native_libretro_game_load_only(const char *path) {
 
     char full_path[1024];
     if (path[0] != '/' && path[0] != '.' && !(path[0] != '\0' && path[1] == ':')) {
-        char exe_dir[512];
-        exe_cwd(exe_dir, sizeof(exe_dir));
-        snprintf(full_path, sizeof(full_path), "%s/%s", exe_dir, path);
+        snprintf(full_path, sizeof(full_path), "%s/%s", exe_cwd(), path);
     } else {
         strncpy(full_path, path, sizeof(full_path));
     }

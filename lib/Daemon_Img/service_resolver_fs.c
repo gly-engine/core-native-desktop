@@ -64,9 +64,11 @@ void gamely_resolver_image_file(const char *url, void *schema_usr,
     strncpy(ctx->hint, hint, sizeof(ctx->hint) - 1);
     ctx->hint[sizeof(ctx->hint) - 1] = '\0';
 
-    char cwd[512], exe[512];
-    gecnd_utils_get_cwd(cwd, sizeof(cwd));
-    gecnd_utils_get_exe_cwd(exe, sizeof(exe));
+    const char *cwd = NULL, *exe = NULL;
+    gecnd_registry("get", "cwd", &cwd, NULL);
+    gecnd_registry("get", "pwd", &exe, NULL);
+    if (!cwd) cwd = "";
+    if (!exe) exe = "";
 
     /* PNG asked: prefer a sibling in one of the configured fallback formats
      * (e.g. .etc1/.tga/.jpeg), in priority order, skipping any without a usable

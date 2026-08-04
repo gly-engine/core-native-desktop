@@ -91,9 +91,10 @@ static const char *load_via_resolver(gecnd_t *gly, const gecnd_lua_source_t *src
         return NULL;
     }
 
+    const char *pwd = NULL;
+    gecnd_registry("get", "pwd", &pwd, NULL);
     char path[512];
-    size_t len = gecnd_utils_get_exe_cwd(path, sizeof(path));
-    snprintf(path + len, sizeof(path) - len, "/%s.lua", lua_name);
+    snprintf(path, sizeof(path), "%s/%s.lua", pwd ? pwd : "", lua_name);
     load_status_t s = load_file_path(gly, path, lua_name, lua_ret, &err);
     if (s == LOAD_OK)          return NULL;
     if (s == LOAD_PARSE_ERROR) return err;

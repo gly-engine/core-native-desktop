@@ -39,9 +39,11 @@ void gamely_resolver_font_file(const char *url, void *schema_usr,
 
     if (gamely_daemon_fs_read(path, NULL, NULL, on_fs_read, ctx) == 0) return;
 
-    char cwd[512], exe[512];
-    gecnd_utils_get_cwd(cwd, sizeof(cwd));
-    gecnd_utils_get_exe_cwd(exe, sizeof(exe));
+    const char *cwd = NULL, *exe = NULL;
+    gecnd_registry("get", "cwd", &cwd, NULL);
+    gecnd_registry("get", "pwd", &exe, NULL);
+    if (!cwd) cwd = "";
+    if (!exe) exe = "";
 
     const char *paths[] = { cwd, exe, NULL };
     const char *files[] = { path, NULL };
