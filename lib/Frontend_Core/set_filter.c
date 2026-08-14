@@ -111,8 +111,21 @@ void gecnd_filter_set_jitter(float v) {
     filter->video_dirty = true;
 }
 
+/* canvas lógico fixo em que os players expressam x/y/w/h — mesma convenção
+ * dos players de hardware (aui/dvb/suplayer: alitech_firmware_set_video_pos(
+ * ..., 1280, 720)), independente da resolução real da tela. */
+#define GECND_VIDEO_POS_REF_W 1280.0f
+#define GECND_VIDEO_POS_REF_H 720.0f
+
 void gecnd_filter_set_video_pos(float x, float y, float w, float h) {
     gecnd_filter_t *filter = gecnd_filter_get_config();
+
+    float real_w = (float)gecnd_get_display()->window_width;
+    float real_h = (float)gecnd_get_display()->window_height;
+    float sx = real_w / GECND_VIDEO_POS_REF_W;
+    float sy = real_h / GECND_VIDEO_POS_REF_H;
+    x *= sx; y *= sy; w *= sx; h *= sy;
+
     update_video_vertices(filter, x, y, w, h);
 }
 
@@ -159,9 +172,9 @@ void gecnd_filter_reset_corners() {
 }
 
 void gecnd_filter_reset_video_pos() {
-    float width  = (float)gecnd_get_display()->window_width;
-    float height = (float)gecnd_get_display()->window_height;
-    gecnd_filter_set_video_pos(0, 0, width, height);
+    /* fullscreen = todo o canvas lógico de referência; set_video_pos
+     * reescala pro tamanho real da tela internamente. */
+    gecnd_filter_set_video_pos(0, 0, GECND_VIDEO_POS_REF_W, GECND_VIDEO_POS_REF_H);
 }
 
 bool gencd_filter_is_zero_corners() {
