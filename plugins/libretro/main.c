@@ -475,7 +475,7 @@ void coreopen_libretro_gecnd(gecnd_plugin_t *const plugin) {
     api->registry("set", "lua_global_ffi:native_libretro_exit+$0+$0", lua_native_libretro_exit, NULL);
     api->registry("set", "lua_global_ffi:native_libretro_get_error+$0+$s", lua_native_libretro_get_error, NULL);
     api->registry("set", "lua_global_ffi:native_libretro_is_running+$0+$b", lua_native_libretro_is_running, NULL);
-    api->registry("set", "lua_global_ffi:native_libretro_keyboard+$u8+$u8+$b+$0", lua_native_libretro_keyboard, NULL);
+    api->registry("set", "lua_global_ffi:native_libretro_keyboard+$u8$u8$b+$0", lua_native_libretro_keyboard, NULL);
     api->registry("set", "media_player:libretro+$l$0", &libretro_file_player, NULL);
     api->registry("set", "media_player:libretro$0", &libretro_nogame_player, NULL);
     api->registry("set", "media_player:libretro+$l+http$0", &libretro_http_player, NULL);
