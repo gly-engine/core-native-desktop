@@ -602,10 +602,13 @@ int  gamely_daemon_media_transmit_get_idr_cache(const uint8_t **out);
 
 typedef void (*gamely_audio_cb_t)(const int16_t *data, size_t frames,
                                    unsigned rate, unsigned channels, void *usr);
+typedef void (*gamely_audio_stop_cb_t)(void *usr);
 
 void gamely_daemon_media_audio_subscribe(gamely_audio_cb_t cb, void *usr);
+void gamely_daemon_media_audio_on_stop  (gamely_audio_stop_cb_t cb, void *usr);
 void gamely_daemon_media_audio_configure(unsigned rate, unsigned channels);
 void gamely_daemon_media_audio_push     (const int16_t *data, size_t frames);
+void gamely_daemon_media_audio_stop     (void);
 
 void gamely_daemon_media_init    (void);
 void gamely_daemon_media_shutdown(void);

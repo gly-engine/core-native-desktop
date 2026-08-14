@@ -89,6 +89,7 @@ static struct {
     typeof(gamely_daemon_media_background_get_frame)     *get_frame;
     typeof(gamely_daemon_media_audio_configure)          *audio_configure;
     typeof(gamely_daemon_media_audio_push)               *audio_push;
+    typeof(gamely_daemon_media_audio_stop)               *audio_stop;
 } media;
 
 static bool media_bind(void) {
@@ -100,6 +101,7 @@ static bool media_bind(void) {
     api->registry("get", "function:gamely_daemon_media_background_get_frame",     (void *)&media.get_frame,       NULL);
     api->registry("get", "function:gamely_daemon_media_audio_configure",         (void *)&media.audio_configure, NULL);
     api->registry("get", "function:gamely_daemon_media_audio_push",              (void *)&media.audio_push,      NULL);
+    api->registry("get", "function:gamely_daemon_media_audio_stop",              (void *)&media.audio_stop,      NULL);
     return media.claim != NULL;
 }
 
@@ -551,7 +553,10 @@ static void libretro_deinit_core(void) {
         else
             media.push_rgb565(blank, 1, 1, 2);
     }
-    if (media_bind()) media.release();
+    if (media_bind()) {
+        if (media.audio_stop) media.audio_stop();
+        media.release();
+    }
     core_initialized = core_init_done = false;
     core_handle = NULL;
     reset_pointers();
