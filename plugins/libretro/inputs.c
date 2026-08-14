@@ -12,15 +12,21 @@
 
 static bool s_pressed[4][16];
 
-static void on_key(uint32_t code, bool pressed, int port) {
+static bool s_manual_mode = false;
+
+static void set_pressed(int port, uint32_t code, bool pressed) {
     if ((unsigned)port > 3 || code >= 16) return;
     s_pressed[port][code] = pressed;
 }
 
-/* Injeção direta de botão (ex.: controle virtual via Lua/FFI).
- * keyidx = RETRO_DEVICE_ID_JOYPAD_* (0..15). */
+static void on_key(uint32_t code, bool pressed, int port) {
+    if (s_manual_mode) return;
+    set_pressed(port, code, pressed);
+}
+
 void native_libretro_keyboard(uint8_t port, uint8_t keyidx, bool press) {
-    on_key(keyidx, press, port);
+    s_manual_mode = true;
+    set_pressed(port, keyidx, press);
 }
 
 static struct {
