@@ -1,4 +1,3 @@
-option(GECND_USE_SQLITE3 "Fetch and build sqlite3" ON)
 option(FETCH_SQLITE3 "Fetch and build sqlite3" OFF)
 
 set(SQLITE_VERSION "3410200") # exemplo: 3.41.2

@@ -1,5 +1,3 @@
-option(GECND_USE_QRCODE "fetch qrcodegen" ON)
-
 set(QRCODE_VERSION "v1.8.0")
 set(QRCODE_DIR "${CMAKE_SOURCE_DIR}/vendor/qrcodegenerator")
 set(QRCODE_DOWNLOAD "https://github.com/nayuki/QR-Code-generator/archive/refs/tags/${QRCODE_VERSION}.tar.gz")

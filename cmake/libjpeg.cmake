@@ -1,5 +1,3 @@
-option(GECND_USE_JPEGTURBO "use libjpeg-turbo to decode jpeg straight to planar YUV" OFF)
-
 set(JPEGTURBO_VERSION "3.0.4")
 set(JPEGTURBO_REPO "https://github.com/libjpeg-turbo/libjpeg-turbo.git")
 set(JPEGTURBO_DIR "${CMAKE_SOURCE_DIR}/vendor/libjpeg-turbo")

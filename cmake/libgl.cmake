@@ -1,7 +1,3 @@
-option(GECND_USE_GL_EGL "Use EGL window backend" ON)
-option(GECND_USE_GL_GLFW "Use GLFW window backend" ON)
-option(GECND_USE_GL_WAYLAND "Use Wayland window backend" OFF)
-
 set(GLAD_DOWNLOAD "https://github.com/gly-engine/archive/archive/refs/heads/glad.tar.gz")
 set(GLAD_DIR "${CMAKE_SOURCE_DIR}/vendor/opengl/glad")
 
@@ -164,4 +160,38 @@ if(GECND_USE_GL_EGL OR GECND_USE_GL_GLFW OR GECND_USE_GL_WAYLAND)
     endif()
     target_sources(${PROJECT_NAME} PRIVATE "${gecnd_bakend_files}")
     target_link_libraries(${PROJECT_NAME} PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
+if(false)
+# TODO
+set(SDL_VERSION "2.30.6")
+set(SDLTTF_VERSION "2.22.0")
+set(SDL_DIR "${CMAKE_SOURCE_DIR}/vendor/SDL2")
+set(SDLTTF_DIR "${CMAKE_SOURCE_DIR}/vendor/SDL_ttf")
+set(SDL2_TEST OFF CACHE BOOL "" FORCE)
+set(SDL2_SHARED OFF CACHE BOOL "" FORCE)
+set(SDL2_STATIC ON CACHE BOOL "" FORCE)
+set(SDL2TTF_VENDORED ON CACHE BOOL "" FORCE)
+set(SDL2TTF_HARFBUZZ OFF CACHE BOOL "" FORCE)
+set(SDL2TTF_INSTALL OFF CACHE BOOL "" FORCE)
+set(SDL2TTF_SAMPLES OFF CACHE BOOL "" FORCE)
+if(GECND_USE_SDL2)
+    FetchContent_Declare(
+        dep_sdl2
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL
+        GIT_TAG "release-${SDL_VERSION}"
+        SOURCE_DIR ${SDL_DIR}
+    )
+    FetchContent_Declare(
+        dep_sdl2_ttf
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL_ttf
+        GIT_TAG "release-${SDLTTF_VERSION}"
+        SOURCE_DIR ${SDLTTF_DIR}
+    )
+    FetchContent_MakeAvailable(dep_sdl2 dep_sdl2_ttf)
+    file(GLOB_RECURSE SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_SDL2/*.c")
+    target_sources(${PROJECT_NAME} PRIVATE "${SOURCES}")
+    target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2-static SDL2_ttf::SDL2_ttf-static)
+    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${SDLTTF_DIR};${SDL_DIR}/include)
+endif()
 endif()

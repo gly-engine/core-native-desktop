@@ -1,0 +1,16 @@
+set(LIBUV_VERSION "v1.48.0")
+set(LIBUV_REPO "https://github.com/libuv/libuv.git")
+set(LIBUV_DIR "${CMAKE_SOURCE_DIR}/vendor/libuv")
+set(LIBUV_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+
+if (GECND_USE_LIBUV)
+    FetchContent_Declare(uv_a GIT_REPOSITORY ${LIBUV_REPO} GIT_TAG ${LIBUV_VERSION} SOURCE_DIR ${LIBUV_DIR})
+    FetchContent_MakeAvailable(uv_a)
+    target_link_libraries(${PROJECT_NAME} PRIVATE uv_a)
+    target_compile_options(uv_a PRIVATE ${gecnd_cc_options})
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../lib/Daemon_IO/driver_fs_uv.c")
+endif()
+
+if (GECND_COMPAT AND GECND_USE_LIBUV)
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../lib/ThirdParty_Compat/libuv.c")
+endif()

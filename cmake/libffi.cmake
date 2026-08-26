@@ -1,4 +1,3 @@
-option(GECND_USE_FFI "fetch ffi" OFF)
 set(LIBFFI_VERSION "v3.6.0")
 set(LIBFFI_DIR "${CMAKE_SOURCE_DIR}/vendor/libffi")
 set(LIBFFI_BIN "${CMAKE_BINARY_DIR}/libffi")

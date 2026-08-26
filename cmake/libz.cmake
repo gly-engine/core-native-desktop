@@ -1,0 +1,18 @@
+# TODO working here
+set(ZLIB_VERSION "v1.3.1")
+set(ZLIB_REPO "https://github.com/madler/zlib.git")
+set(ZLIB_DIR "${CMAKE_SOURCE_DIR}/vendor/zlib")
+set(ZLIB_ROOT "${ZLIB_DIR}" CACHE STRING "" FORCE)
+set(ZLIB_LIBRARY "${CMAKE_SOURCE_DIR}/build/_deps/zlib-build/libz.a" CACHE FILEPATH "")
+set(ZLIB_INCLUDE_DIR "${ZLIB_DIR}" CACHE PATH "")
+set(ZLIB_FOUND TRUE CACHE BOOL "")
+set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+
+if((GECND_USE_GL_EGL OR GECND_USE_GL_GLFW OR GECND_USE_WARMCAT) AND GECND_USE_ZLIB)
+    FetchContent_Declare(zlib GIT_REPOSITORY ${ZLIB_REPO} GIT_TAG ${ZLIB_VERSION} SOURCE_DIR ${ZLIB_DIR})
+    FetchContent_MakeAvailable(zlib)
+    target_link_libraries(${PROJECT_NAME} PRIVATE zlibstatic)
+    target_compile_options(zlibstatic PRIVATE ${gecnd_cc_options})
+    set_target_properties(zlib PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    add_library(ZLIB::ZLIB ALIAS zlibstatic)
+endif()

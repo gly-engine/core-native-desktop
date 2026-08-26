@@ -1,5 +1,3 @@
-option(GECND_USE_WUFFS "use wuffs for fast PNG decode" OFF)
-
 set(WUFFS_VERSION "0.3.4")
 set(WUFFS_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/wuffs")
 set(WUFFS_DOWNLOAD "https://github.com/google/wuffs-mirror-release-c/archive/refs/tags/v${WUFFS_VERSION}.tar.gz")
