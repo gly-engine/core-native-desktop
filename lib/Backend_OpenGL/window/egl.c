@@ -136,6 +136,20 @@ static void backend_init(gecnd_t *gly, ge_egl_api_t api) {
     bool ok = false;
 
     do {
+        if (!ge_lib_available("libEGL.so.1") && !ge_lib_available("libEGL.so")) {
+            backend_error("[%s] libEGL not available", tag);
+            break;
+        }
+        if (api == GE_EGL_GLES &&
+            !ge_lib_available("libGLESv2.so.2") && !ge_lib_available("libGLESv2.so")) {
+            backend_error("[%s] libGLESv2 not available", tag);
+            break;
+        }
+        if (api == GE_EGL_GL && !ge_lib_available("libGL.so.1")) {
+            backend_error("[%s] libGL.so.1 not available", tag);
+            break;
+        }
+
         const char *why = egl_context_create(api);
         if (why) {
             backend_error("[%s] %s (eglError=0x%x)", tag, why, eglGetError());
@@ -148,6 +162,10 @@ static void backend_init(gecnd_t *gly, ge_egl_api_t api) {
 
         ge_window_ops_set(&egl_ops);
         ge_backend_ready(gly, width, height, api == GE_EGL_GLES);
+
+        static const bool enabled = true;
+        gecnd_registry("set", "internal:gl", &enabled, NULL);
+
         ok = true;
     } while (0);
 
@@ -162,12 +180,6 @@ static void backend_init_gles(gecnd_t *gly) { backend_init(gly, GE_EGL_GLES); }
 
 __attribute__((constructor))
 static void init(void) {
-    if (!ge_lib_available("libEGL.so.1") && !ge_lib_available("libEGL.so")) return;
-
-    if (ge_lib_available("libGL.so.1")) {
-        gecnd_registry("set", "backend:gl_egl", (void *)backend_init_gl, NULL);
-    }
-    if (ge_lib_available("libGLESv2.so.2") || ge_lib_available("libGLESv2.so")) {
-        gecnd_registry("set", "backend:gles_egl", (void *)backend_init_gles, NULL);
-    }
+    gecnd_registry("set", "backend:gl_egl",   (void *)backend_init_gl,   NULL);
+    gecnd_registry("set", "backend:gles_egl", (void *)backend_init_gles, NULL);
 }

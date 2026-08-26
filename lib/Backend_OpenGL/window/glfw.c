@@ -107,6 +107,16 @@ static void backend_init(gecnd_t *gly, ge_glfw_api_t api) {
     last_glfw_error[0] = '\0';
 
     do {
+        if (!ge_lib_available("libGL.so.1")) {
+            backend_error("[%s] libGL.so.1 not available", tag);
+            break;
+        }
+        if (api == GE_GLFW_GLES &&
+            !ge_lib_available("libEGL.so.1") && !ge_lib_available("libEGL.so")) {
+            backend_error("[%s] libEGL not available", tag);
+            break;
+        }
+
         glfwSetErrorCallback(glfw_error_callback);
         if (!glfwInit()) {
             backend_error("[%s] glfwInit failed: %s", tag, glfw_reason());
@@ -145,6 +155,10 @@ static void backend_init(gecnd_t *gly, ge_glfw_api_t api) {
         gamely_input_add_cb("@tick", glfwPollEvents, NULL);
 
         ge_backend_ready(gly, width, height, api == GE_GLFW_GLES);
+
+        static const bool enabled = true;
+        gecnd_registry("set", "internal:gl", &enabled, NULL);
+
         ok = true;
     } while (0);
 
@@ -160,12 +174,6 @@ static void backend_init_gles(gecnd_t *gly) { backend_init(gly, GE_GLFW_GLES); }
 
 __attribute__((constructor))
 static void init(void) {
-    if (ge_lib_available("libGL.so.1")) {
-        gecnd_registry("set", "backend:gl_glfw", (void *)backend_init_gl, NULL);
-    }
-    bool gles_libs = ge_lib_available("libEGL.so.1") &&
-        (ge_lib_available("libGLESv2.so.2") || ge_lib_available("libGLESv2.so"));
-    if (gles_libs) {
-        gecnd_registry("set", "backend:gles_glfw", (void *)backend_init_gles, NULL);
-    }
+    gecnd_registry("set", "backend:gl_glfw",   (void *)backend_init_gl,   NULL);
+    gecnd_registry("set", "backend:gles_glfw", (void *)backend_init_gles, NULL);
 }

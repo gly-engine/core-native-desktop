@@ -28,7 +28,17 @@ if(GECND_USE_JPEGTURBO)
             -DENABLE_STATIC=ON
             -DWITH_TURBOJPEG=ON
         UPDATE_COMMAND ""
+        INSTALL_COMMAND 
+            ${CMAKE_COMMAND} -E make_directory ${JPEGTURBO_BIN}/lib
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${JPEGTURBO_BIN}/include
+            COMMAND ${CMAKE_COMMAND} -E copy
+                <BINARY_DIR>/libturbojpeg.a
+                ${JPEGTURBO_BIN}/lib/libturbojpeg.a
+            COMMAND ${CMAKE_COMMAND} -E copy
+                <SOURCE_DIR>/turbojpeg.h
+                ${JPEGTURBO_BIN}/include/turbojpeg.h
         BUILD_BYPRODUCTS ${JPEGTURBO_BIN}/lib/libturbojpeg.a
+        BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target turbojpeg-static
     )
     add_library(turbojpeg STATIC IMPORTED)
     set_target_properties(turbojpeg PROPERTIES

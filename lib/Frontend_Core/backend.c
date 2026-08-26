@@ -70,11 +70,18 @@ typedef struct {
 static void try_backend(const char *key, void *value, void *usr) {
     backend_try_t *t = (backend_try_t *)usr;
     if (t->done) return;   /* one is already up: ignore the rest of the walk */
-    if (!value) return;
 
     const char *name = key + (sizeof("backend:") - 1);
     if (strchr(name, ':')) return;                       /* sub-key, not a backend */
     if (t->only && strcmp(name, t->only) != 0) return;   /* forced to another one */
+
+    if (!value) {
+        char msg[192];
+        snprintf(msg, sizeof(msg), "[%s] empty handler: registered with no init function", name);
+        s_reasons.failed = true;
+        reasons_append(msg);
+        return;
+    }
 
     s_reasons.failed = false;
     ((void (*)(gecnd_t *))value)(t->gly);

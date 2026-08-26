@@ -22,9 +22,8 @@ set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
 set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
 
-option(GECND_EXPORTS "allow rdynamic" OFF)
+option(GECND_COMPAT "build to old libc devices" OFF)
 option(GECND_AS_LIBRARY "build static lib gecnd intead binary" OFF)
-option(GECND_NO_SANITIZE "disable UB flags on clang/llvm" OFF)
 option(GECND_USE_PROFILER "use google gperftools" OFF)
 option(GECND_MOCK_HTTP "add package http but raise error on request" OFF)
 
@@ -52,10 +51,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE gecnd_header gecnd_cc_flags)
 if(LINUX)
     file(GLOB_RECURSE SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_*/driver_linux_*.c")
     target_sources(${PROJECT_NAME} PRIVATE "${SOURCES}")
-endif()
-
-if(GECND_NO_SANITIZE)
-    target_compile_options(gecnd_cc_flags INTERFACE -fno-sanitize=all -fno-sanitize-recover=all)
 endif()
 
 if(GECND_USE_PROFILER)
@@ -290,6 +285,10 @@ if (GECND_USE_LIBUV)
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_IO/driver_fs_uv.c")
 endif()
 
+if (GECND_COMPAT AND GECND_USE_LIBUV)
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Compat/libuv.c")
+endif()
+
 if((GECND_USE_GL_EGL OR GECND_USE_GL_GLFW OR GECND_USE_WARMCAT) AND GECND_USE_ZLIB)
     FetchContent_Declare(zlib GIT_REPOSITORY ${ZLIB_REPO} GIT_TAG ${ZLIB_VERSION} SOURCE_DIR ${ZLIB_DIR})
     FetchContent_MakeAvailable(zlib)
@@ -474,10 +473,6 @@ set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAK
 set_target_properties(${PROJECT_NAME} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
 target_link_libraries(${PROJECT_NAME} PRIVATE m)
-
-if(GECND_EXPORTS)                                                                                                                                                                                 
-  set_target_properties(${PROJECT_NAME} PROPERTIES ENABLE_EXPORTS ON)
-endif()  
 
 if (GECND_AS_LIBRARY)
 elseif(DEFINED GECND_ENTRYPOINT AND GECND_ENTRYPOINT)
