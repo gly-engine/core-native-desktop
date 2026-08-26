@@ -193,6 +193,7 @@ static void on_core_state(const char *key, void *value, void *usr) {
 }
 
 static bool state_boot(gecnd_t *gly) {
+    if (!gecnd_boot_backend(gly)) return false;
     gecnd_registry("set", "core:pre_init", gly, NULL);
     gly_hook_display_init(gly->width, gly->height);
     if (gecnd_is_root(gly)) {

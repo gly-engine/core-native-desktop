@@ -8,17 +8,17 @@
 #include "kvec.h"
 #include "gecnd.h"
 
-#if !defined(GECND_OPENGLES)
-#error WTF?
-#elif GECND_OPENGLES == 1
-#include <glad/egl.h>
-#include <glad/gles2.h>
-#define GE_LINE_WIDTH 2.0f
-#else
+/* Single loader for every window backend. glad/gl.h is generated with both the
+ * desktop GL and the GLES2 API, so it declares one glad_gl* function table
+ * plus both gladLoadGL and gladLoadGLES2 — GL and GLES contexts share the
+ * entry point names, so whichever backend wins runtime selection fills the
+ * same table. This is what lets glfw.c and egl.c be linked in together
+ * instead of being mutually exclusive at build time.
+ *
+ * Each backend includes its own window-system header (GLFW/glfw3.h,
+ * glad/egl.h); none of them belongs here. */
 #include <glad/gl.h>
-#include <GLFW/glfw3.h>
 #define GE_LINE_WIDTH 2.0f
-#endif
 
 // Metaatlas Size
 #define GE_ATLAS_SIZE 2048
@@ -50,6 +50,20 @@ typedef struct {
 typedef struct {
     int x, y, w, h;
 } GEAtlasRect;
+
+/* Per-window-system function table. Each window/*.c backend implements one and
+ * hands it to ge_window_ops_set once its context is current, so the platform_*
+ * entry points called from the rest of Backend_OpenGL (draw.c, video.c,
+ * libretro_hw.c) dispatch to whichever backend won runtime selection, instead
+ * of every backend defining its own colliding copy of
+ * platform_swap_buffers/get_time/etc. */
+typedef struct {
+    void   (*swap_buffers)(void);
+    double (*get_time)(void);
+    void*  (*get_proc_address)(const char *name);
+    void   (*poll_should_close)(bool *should_close);
+    void   (*terminate)(void);
+} GEWindowOps;
 
 /* One atlas page. The texture handle(s) live in an anonymous union keyed by
  * color_format: single texture (rgba8888/rgba5551), the YUV420P triplet, or a
@@ -203,6 +217,8 @@ typedef struct {
     int hw_fbo_height;
     bool hw_render_active;       // true after first RETRO_HW_FRAME_BUFFER_VALID
     bool hw_bottom_left_origin;  // core uses GL bottom-left UV convention
+
+    GEWindowOps ops; // set by whichever window/*.c backend won runtime selection
 } GLBackendState;
 
 GLBackendState* geogl_get_state(void);
@@ -258,5 +274,22 @@ void platform_swap_buffers(void);
 double platform_get_time(void);
 void* platform_get_proc_address(const char *name);
 void ge_hw_register(void);
+
+/* Shared window-backend plumbing (lib/Backend_OpenGL/window/common.c).
+ * A backend calls ge_window_ops_set once its context is current, then
+ * ge_backend_ready to run the backend-agnostic pipeline/shader/blend bring-up
+ * that would otherwise be duplicated in every backend. */
+void ge_window_ops_set(const GEWindowOps *ops);
+void ge_backend_ready(gecnd_t *gly, uint16_t width, uint16_t height, bool is_gles);
+
+/* Undo a partial bring-up so the selector can try the next candidate in the
+ * same process: drops the ops table and clears the GL-ready flag. The caller
+ * is responsible for tearing down its own window-system state first. */
+void ge_backend_reset(gecnd_t *gly);
+
+/* Cheap availability probe (dlopen + immediate dlclose, no side effects) that
+ * backends use to decide whether to register at all, so runtime selection only
+ * ever sees candidates whose shared libs are actually present here. */
+bool ge_lib_available(const char *soname);
 
 #endif

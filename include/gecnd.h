@@ -226,6 +226,11 @@ typedef void (*gecnd_registry_handler)(const char *key, void *value, void *usr);
 
 int gecnd_registry(const char* cmd, const char *key, void *const value, void *const usr);
 
+/* Runs the backend selection in Frontend_Core/backend.c: walks "backend:*" and
+ * calls each candidate until one starts without signalling "error:backend".
+ * Returns false (with the collected reasons in gly's errors) if none did. */
+bool gecnd_boot_backend(gecnd_t *gly);
+
 // plugins
 bool gecnd_plugin_load(gecnd_t *gly, const char *path);
 const char *gecnd_plugins_open_lua(lua_State *L);

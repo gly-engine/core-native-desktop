@@ -37,9 +37,16 @@ static ko_longopt_t longopts[] = {
     { "remote",         ko_required_argument, 1503 },
     { "plugin",         ko_required_argument, 2501 },
     { "input",          ko_required_argument, 2502 },
+    { "backend",        ko_required_argument, 1314 },
+    { "list-backends",  ko_no_argument,       1315 },
     { "conf",           ko_required_argument, 9999 },
     { NULL, 0, 0 }
 };
+
+static void print_backend(const char *key, void *value, void *usr) {
+    (void)value; (void)usr;
+    printf("%s\n", key + (sizeof("backend:") - 1));
+}
 
 static void check_range(gecnd_t *gly, float val, float min, float max, const char *name) {
     if (val < min || val > max)
@@ -164,6 +171,13 @@ void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt)
     }
     if (c == 2502) {
         gamely_input_add_url(opt.arg);
+    }
+    if (c == 1314) {
+        gecnd_registry("set", "core:backend", (void *)opt.arg, "strdup=val");
+    }
+    if (c == 1315) {
+        gecnd_registry("get", "backend:*", (void *)print_backend, NULL);
+        exit(0);
     }
     if (c == 9999) {
         gamely_set_toml(gly, opt.arg, longopts);
