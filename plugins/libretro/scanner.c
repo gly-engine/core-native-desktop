@@ -30,15 +30,15 @@ static const char *s_rom_dirs[] = {
 static char s_found[PATH_CAP];
 
 static struct {
-    typeof(gecnd_utils_get_cwd)     *get_cwd;
-    typeof(gecnd_utils_get_exe_cwd) *get_exe_cwd;
+    const char *cwd;
+    const char *pwd;
 } paths;
 
 static bool paths_bind(void) {
-    if (paths.get_cwd) return true;
-    api->registry("get", "function:gecnd_utils_get_cwd",     (void *)&paths.get_cwd,     NULL);
-    api->registry("get", "function:gecnd_utils_get_exe_cwd", (void *)&paths.get_exe_cwd, NULL);
-    return paths.get_cwd != NULL;
+    if (paths.cwd) return true;
+    api->registry("get", "cwd", (void *)&paths.cwd, NULL);
+    api->registry("get", "pwd", (void *)&paths.pwd, NULL);
+    return paths.cwd != NULL;
 }
 
 static int file_exists(const char *path) {
@@ -142,13 +142,13 @@ const char *scanner_resolve_core(const char *name) {
         }
     }
 
-    char cwd[PATH_CAP], exedir[PATH_CAP], homedir[PATH_CAP];
-    cwd[0] = exedir[0] = '\0';
+    const char *cwd = "", *exedir = "";
+    char        homedir[PATH_CAP];
     if (paths_bind()) {
-        paths.get_cwd(cwd, PATH_CAP);
-        paths.get_exe_cwd(exedir, PATH_CAP);
+        cwd    = paths.cwd ? paths.cwd : "";
+        exedir = paths.pwd ? paths.pwd : "";
     }
-    
+
     const char *home = getenv("HOME");
     if (home) strncpy(homedir, home, PATH_CAP - 1);
     else homedir[0] = '\0';
@@ -187,13 +187,13 @@ const char *scanner_resolve_rom(const char *name) {
     if ((name[0] == '/' || (name[0] && name[1] == ':')) && file_exists(name))
         return name;
 
-    char cwd[PATH_CAP], exedir[PATH_CAP], homedir[PATH_CAP];
-    cwd[0] = exedir[0] = '\0';
+    const char *cwd = "", *exedir = "";
+    char        homedir[PATH_CAP];
     if (paths_bind()) {
-        paths.get_cwd(cwd, PATH_CAP);
-        paths.get_exe_cwd(exedir, PATH_CAP);
+        cwd    = paths.cwd ? paths.cwd : "";
+        exedir = paths.pwd ? paths.pwd : "";
     }
-    
+
     const char *home = getenv("HOME");
     if (home) strncpy(homedir, home, PATH_CAP - 1);
     else homedir[0] = '\0';

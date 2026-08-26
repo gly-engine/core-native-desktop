@@ -22,6 +22,16 @@ GECND_NATIVE_STUB(native_text_font_name, (const char *));
 GECND_NATIVE_STUB(native_text_font_default, (uint8_t));
 GECND_NATIVE_STUB(native_text_font_previous, ());
 
+/* Backend-agnostic: talks to Daemon_Font directly (like Frontend_Api/image.c),
+ * not through a per-backend backend_func. */
+GECND_NATIVE_DAEMON(native_text_font_face, (const char *name, const char *url, int32_t *out_id));
+
+static void daemon_native_text_font_face(const char *name, const char *url, int32_t *out_id) {
+    int32_t id = gamely_daemon_font_get_id(url);
+    gamely_daemon_font_set_family(name, id);
+    *out_id = id;
+}
+
 static const uint16_t cp1252_high[32] = {
     0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
     0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
@@ -103,6 +113,16 @@ static int lua_native_text_font_previous(lua_State *L) {
     return 0;
 }
 
+static int lua_native_text_font_face(lua_State *L) {
+    const char *name = luaL_checkstring(L, 1);
+    const char *url  = luaL_checkstring(L, 2);
+    int32_t     id   = -1;
+    native_text_font_face(name, url, &id);
+    lua_settop(L, 0);
+    lua_pushinteger(L, id);
+    return 1;
+}
+
 __attribute__((constructor))
 static void init() {
     gecnd_registry("set", "lua_global_func:native_text_print", lua_native_text_print, NULL);
@@ -111,19 +131,19 @@ static void init() {
     gecnd_registry("set", "lua_global_func:native_text_font_name", lua_native_text_font_name, NULL);
     gecnd_registry("set", "lua_global_func:native_text_font_default", lua_native_text_font_default, NULL);
     gecnd_registry("set", "lua_global_func:native_text_font_previous", lua_native_text_font_previous, NULL);
+    gecnd_registry("set", "lua_global_func:native_text_font_face", lua_native_text_font_face, NULL);
     gecnd_registry("bind", "backend_func:native_text_print", &native_text_print, (void*) GECND_TYPE_VOID);
     gecnd_registry("bind", "backend_func:native_text_mensure", &native_text_mensure, (void*) GECND_TYPE_VOID);
     gecnd_registry("bind", "backend_func:native_text_font_size", &native_text_font_size, (void*) GECND_TYPE_VOID);
     gecnd_registry("bind", "backend_func:native_text_font_name", &native_text_font_name, (void*) GECND_TYPE_VOID);
     gecnd_registry("bind", "backend_func:native_text_font_default", &native_text_font_default, (void*) GECND_TYPE_VOID);
     gecnd_registry("bind", "backend_func:native_text_font_previous", &native_text_font_previous, (void*) GECND_TYPE_VOID);
+    gecnd_registry("bind", "backend_func:native_text_font_face", &native_text_font_face, (void*) GECND_TYPE_VOID);
     gecnd_registry("bind", "option:font_factor", &option_font_factor, (void*) GECND_TYPE_F32);
     gecnd_registry("bind", "option:mojibake", &option_mojibake, (void*) GECND_TYPE_BOOLEAN);
 }
 
 __attribute__((destructor))
 static void cleanup() {
-    /**
-     * @todo unload all fonts
-     */
+    gamely_daemon_font_unload_all();
 }

@@ -22,6 +22,10 @@ static LIB_HANDLE core_handle = NULL;
 static char system_dir[1024] = ".";
 static char s_error[256]     = "";
 
+/* Set from RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME during retro_set_environment;
+ * native_libretro_game_none() refuses to run if the core never declared it. */
+static bool s_core_supports_no_game = false;
+
 /* ROM temporária gravada em /tmp quando o core exige need_fullpath;
  * removida no deinit (cores de CD podem ler o arquivo depois do load). */
 static char s_tmp_rom_path[512] = "";
@@ -85,6 +89,7 @@ static struct {
     typeof(gamely_daemon_media_background_get_frame)     *get_frame;
     typeof(gamely_daemon_media_audio_configure)          *audio_configure;
     typeof(gamely_daemon_media_audio_push)               *audio_push;
+    typeof(gamely_daemon_media_audio_stop)               *audio_stop;
 } media;
 
 static bool media_bind(void) {
@@ -96,6 +101,7 @@ static bool media_bind(void) {
     api->registry("get", "function:gamely_daemon_media_background_get_frame",     (void *)&media.get_frame,       NULL);
     api->registry("get", "function:gamely_daemon_media_audio_configure",         (void *)&media.audio_configure, NULL);
     api->registry("get", "function:gamely_daemon_media_audio_push",              (void *)&media.audio_push,      NULL);
+    api->registry("get", "function:gamely_daemon_media_audio_stop",              (void *)&media.audio_stop,      NULL);
     return media.claim != NULL;
 }
 
@@ -171,6 +177,7 @@ static bool core_environment(unsigned cmd, void *data) {
             if (data) *(unsigned*)data = 1;
             return true;
         case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
+            if (data) s_core_supports_no_game = *(const bool*)data;
             return true;
         case RETRO_ENVIRONMENT_SET_HW_RENDER:
         case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER:
@@ -201,6 +208,7 @@ static bool core_environment(unsigned cmd, void *data) {
 bool native_libretro_load(const char *path);
 bool native_libretro_game(const char *path);
 bool native_libretro_game_load_only(const char *path);
+bool native_libretro_game_none(void);
 bool native_libretro_game_from_buffer(const uint8_t *data, size_t size, const char *name);
 void native_libretro_game_finalize(void);
 static void libretro_deinit_core(void);
@@ -265,22 +273,19 @@ bool native_libretro_url(const char *url) {
     return true;
 }
 
-static typeof(gecnd_utils_get_exe_cwd) *fn_exe_cwd;
-
-static void exe_cwd(char *buf, size_t cap) {
-    if (!fn_exe_cwd)
-        api->registry("get", "function:gecnd_utils_get_exe_cwd", (void *)&fn_exe_cwd, NULL);
-    if (fn_exe_cwd) fn_exe_cwd(buf, cap);
-    else buf[0] = '\0';
+static const char *exe_cwd(void) {
+    static const char *pwd;
+    if (!pwd) api->registry("get", "pwd", (void *)&pwd, NULL);
+    return pwd ? pwd : "";
 }
 
 bool native_libretro_load(const char *path) {
     if (core_handle) close_library(core_handle);
     core_handle = NULL;
     reset_pointers();
+    s_core_supports_no_game = false;
 
-    char exe_dir[512];
-    exe_cwd(exe_dir, sizeof(exe_dir));
+    const char *exe_dir = exe_cwd();
     strncpy(system_dir, exe_dir[0] ? exe_dir : ".", sizeof(system_dir));
 
     core_handle = load_library(path);
@@ -328,9 +333,7 @@ bool native_libretro_game_load_only(const char *path) {
 
     char full_path[1024];
     if (path[0] != '/' && path[0] != '.' && !(path[0] != '\0' && path[1] == ':')) {
-        char exe_dir[512];
-        exe_cwd(exe_dir, sizeof(exe_dir));
-        snprintf(full_path, sizeof(full_path), "%s/%s", exe_dir, path);
+        snprintf(full_path, sizeof(full_path), "%s/%s", exe_cwd(), path);
     } else {
         strncpy(full_path, path, sizeof(full_path));
     }
@@ -383,6 +386,42 @@ bool native_libretro_game_load_only(const char *path) {
     bool ok = p_retro_load_game ? p_retro_load_game(&info) : false;
 
     if (info.data) free((void*)info.data);
+
+    if (ok) {
+        memset(&s_pending_av_info, 0, sizeof(s_pending_av_info));
+        if (p_retro_get_system_av_info) p_retro_get_system_av_info(&s_pending_av_info);
+        s_pending_finalize = true;
+    }
+    return ok;
+}
+
+/* For cores that carry their own content (RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME):
+ * retro_load_game(NULL), no file touched at all. */
+bool native_libretro_game_none(void) {
+    if (!core_handle) return false;
+    if (!s_core_supports_no_game) {
+        fprintf(stderr, "Libretro: core did not declare SET_SUPPORT_NO_GAME, refusing to load without content\n");
+        return false;
+    }
+
+    if (p_retro_set_video_refresh)      p_retro_set_video_refresh(core_video_refresh);
+    if (p_retro_set_audio_sample)       p_retro_set_audio_sample(core_audio_sample);
+    if (p_retro_set_audio_sample_batch) p_retro_set_audio_sample_batch(core_audio_sample_batch);
+    if (p_retro_set_input_poll)         p_retro_set_input_poll(core_input_poll);
+    if (p_retro_set_input_state)        p_retro_set_input_state(engine_input_state_cb);
+
+    if (!core_init_done) {
+        if (p_retro_init) {
+            printf("Libretro: calling retro_init\n");
+            p_retro_init();
+        }
+        core_init_done = true;
+    }
+
+    if (p_retro_set_controller_port_device) p_retro_set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
+
+    printf("Libretro: loading with no game content\n");
+    bool ok = p_retro_load_game ? p_retro_load_game(NULL) : false;
 
     if (ok) {
         memset(&s_pending_av_info, 0, sizeof(s_pending_av_info));
@@ -514,7 +553,10 @@ static void libretro_deinit_core(void) {
         else
             media.push_rgb565(blank, 1, 1, 2);
     }
-    if (media_bind()) media.release();
+    if (media_bind()) {
+        if (media.audio_stop) media.audio_stop();
+        media.release();
+    }
     core_initialized = core_init_done = false;
     core_handle = NULL;
     reset_pointers();

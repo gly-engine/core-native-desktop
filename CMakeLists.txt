@@ -195,18 +195,12 @@ option(GECND_USE_ZLIB "fetch zlib" ON)
 set(LIBRETRO_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/retroarch")
 set(LIBRETRO_DOWNLOAD "https://raw.githubusercontent.com/libretro/RetroArch/ee3eae34c425a1645b923395854dda7f2543df31/libretro-common/include/libretro.h")
 
-# FontStash
-set(FONTSTASH_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/fontstash")
-set(FONTSTASH_DOWNLOAD "https://github.com/memononen/fontstash/archive/b5ddc9741061343740d85d636d782ed3e07cf7be.tar.gz")
-target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE "${FONTSTASH_DIR}/src")
-
 # Fonts
 set(FONTS_DIR "${CMAKE_SOURCE_DIR}/vendor/fonts")
 set(FONTS_INCLUDE_DIR "${CMAKE_BINARY_DIR}/include/gecnd")
-set(FONTS_HEADER "${FONTS_INCLUDE_DIR}/notosans.h")
-set(FONTS_ROBOTO_REGULAR_HEADER "${FONTS_INCLUDE_DIR}/roboto_regular.h")
-set(FONTS_DOWNLOAD "https://github.com/gly-engine/archive/archive/refs/heads/fonts.zip")
-set(FONTS_ROBOTO_REGULAR_DOWNLOAD "https://cdn.jsdelivr.net/npm/roboto-font@0.1.0/fonts/Roboto/roboto-regular-webfont.ttf")
+set(FONTS_DEFAULT_HEADER "${FONTS_INCLUDE_DIR}/font_noto_sans.h")
+set(NOTO_SANS_DOWNLOAD "https://github.com/gly-engine/archive/archive/refs/heads/fonts.tar.gz")
+set(NOTO_SANS_DIR "${CMAKE_SOURCE_DIR}/vendor/fonts/noto_sans")
 
 # Google GPERF/PPERF
 set(GPERFTOOLS_VERSION "gperftools-2.18")
@@ -254,41 +248,20 @@ endif()
 add_library(tomlc17 STATIC "${TOMLC17_DIR}/src/tomlc17.c")
 target_link_libraries(${PROJECT_NAME} PRIVATE tomlc17)
 
-if(NOT EXISTS "${FONTS_DIR}/Noto_Sans/NotoSans-Regular.ttf")
-    FetchContent_Populate(fonts URL "${FONTS_DOWNLOAD}" SOURCE_DIR ${FONTS_DIR})
+if(NOT EXISTS "${NOTO_SANS_DIR}")
+    FetchContent_Populate(noto_sans URL "${NOTO_SANS_DOWNLOAD}" SOURCE_DIR ${NOTO_SANS_DIR})
 endif()
 
-file(MAKE_DIRECTORY "${FONTS_DIR}/Roboto")
-
-if(NOT EXISTS "${FONTS_DIR}/Roboto/roboto-regular-webfont.ttf")
-    file(DOWNLOAD
-        "${FONTS_ROBOTO_REGULAR_DOWNLOAD}"
-        "${FONTS_DIR}/Roboto/roboto-regular-webfont.ttf"
-        TLS_VERIFY ON
-    )
-endif()
-
-
 add_custom_command(
-    OUTPUT ${FONTS_HEADER}
+    OUTPUT ${FONTS_DEFAULT_HEADER}
     COMMAND ${CMAKE_COMMAND} -E make_directory "${FONTS_INCLUDE_DIR}"
-    COMMAND xxd -i "Noto_Sans/NotoSans-Regular.ttf" > ${FONTS_HEADER}
-    COMMENT "Generating Noto Sans font header"
-    WORKING_DIRECTORY ${FONTS_DIR}
+    COMMAND xxd -i "Noto_Sans/NotoSans-Regular-ASCII.ttf" > ${FONTS_DEFAULT_HEADER}
+    COMMENT "Generating default font header"
+    WORKING_DIRECTORY ${NOTO_SANS_DIR}
 )
-
-add_custom_command(
-    OUTPUT ${FONTS_ROBOTO_REGULAR_HEADER}
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${FONTS_INCLUDE_DIR}"
-    COMMAND xxd -i "Roboto/roboto-regular-webfont.ttf" > ${FONTS_ROBOTO_REGULAR_HEADER}
-    COMMENT "Generating Roboto regular font header"
-    WORKING_DIRECTORY ${FONTS_DIR}
-)
-
 
 add_custom_target(gecnd_fonts_headers DEPENDS
-    ${FONTS_HEADER}
-    ${FONTS_ROBOTO_REGULAR_HEADER}
+    ${FONTS_DEFAULT_HEADER}
 )
 add_dependencies(${PROJECT_NAME} gecnd_fonts_headers)
 
@@ -464,10 +437,6 @@ if((GECND_USE_OPENGL OR GECND_USE_WARMCAT) AND GECND_USE_ZLIB)
     add_library(ZLIB::ZLIB ALIAS zlibstatic)
 endif()
 
-if(GECND_USE_OPENGL AND NOT EXISTS "${FONTSTASH_DIR}")
-    FetchContent_Populate(fontstash URL "${FONTSTASH_DOWNLOAD}" SOURCE_DIR ${FONTSTASH_DIR})
-endif()
-
 if((GECND_USE_WARMCAT) AND GECND_USE_MBEDTLS)
     FetchContent_Declare(mbedtls GIT_REPOSITORY ${MBEDTLS_REPO} GIT_TAG ${MBEDTLS_VERSION} SOURCE_DIR "${MBEDTLS_DIR}")
     FetchContent_MakeAvailable(mbedtls)
@@ -604,6 +573,7 @@ if(GECND_USE_PLUGIN_WPA)
 endif()
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/libffi.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/libfreetype.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/libjpeg.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/liblua.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/libqr.cmake)

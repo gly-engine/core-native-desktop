@@ -258,8 +258,6 @@ void gecnd_dispatch_key_event(const char *name, bool pressed, int port, void *us
 // utils
 uint32_t gecnd_get_delta_ms(void);
 uint64_t gecnd_get_cur_time(void);
-size_t gecnd_utils_get_exe_cwd(char *buffer, size_t max_size);
-size_t gecnd_utils_get_cwd(char *buffer, size_t max_size);
 // filters
 void gecnd_filter_set_brightness(float v);
 void gecnd_filter_set_contrast(float v);
@@ -408,6 +406,94 @@ bool               gamely_daemon_img_has_backend(const char *fmt);
 bool               gamely_daemon_img_can_decode (const char *from);
 int32_t            gamely_daemon_img_loading_count(void);
 
+/* ---- Daemon_Font ---- */
+
+/* Logical size (px) of the glyph atlas region every font_backend must expose,
+ * regardless of how big its actual GPU texture is. Keeps driver_freetype.c's
+ * packer backend-agnostic. */
+#define GAMELY_FONT_ATLAS_SIZE 1024
+
+typedef enum {
+    GLY_FONT_SEARCHING = 0,
+    GLY_FONT_DECODING  = 1,
+    GLY_FONT_READY     = 2,
+    GLY_FONT_ERROR     = 3,
+} gamely_font_state_t;
+
+/* Decoder: raw file bytes -> opaque face handle (e.g. FT_Face). NULL on error.
+ * `data` ownership stays with the caller once the decoder returns. */
+typedef void *(*gamely_font_decoder_cb)(const uint8_t *data, size_t len);
+
+typedef void (*gamely_font_on_fetch_cb)(
+    const uint8_t *data, size_t len, const char *hint, void *usr
+);
+
+typedef void (*gamely_font_schema_cb)(
+    const char *url, void *schema_usr,
+    gamely_font_on_fetch_cb on_done, void *on_done_usr
+);
+
+typedef struct {
+    int16_t atlas_x, atlas_y, w, h;   /* position/size within the shared atlas */
+    int16_t bearing_x, bearing_y;
+    int16_t advance;
+} gamely_font_glyph_t;
+
+/* Graphics backend: dumb — only knows how to upload an alpha8 region into its
+ * atlas and draw a textured quad. All glyph/atlas-packing smarts live in the
+ * font decoder driver (e.g. driver_freetype.c), not here. */
+typedef struct {
+    void (*atlas_upload)(int16_t x, int16_t y, int16_t w, int16_t h, const uint8_t *bitmap);
+    void (*draw_quad)(int16_t dst_x, int16_t dst_y, int16_t dst_w, int16_t dst_h,
+                       float u0, float v0, float u1, float v1, uint32_t rgba);
+    void (*unload_all)(void);
+} gamely_font_backend_t;
+
+/* Rasterizes (or returns from cache) the glyph for `codepoint` at `px_size`,
+ * packing it into `backend`'s atlas via atlas_upload on a cache miss. Returns
+ * false if the codepoint has no glyph. Coordinates in *out are relative to
+ * GAMELY_FONT_ATLAS_SIZE regardless of the backend's real texture size. */
+typedef bool (*gamely_font_glyph_cb)(void *face, uint8_t px_size, uint32_t codepoint,
+                                      const gamely_font_backend_t *backend,
+                                      gamely_font_glyph_t *out);
+
+typedef void (*gamely_font_metrics_cb)(void *face, uint8_t px_size,
+                                        int16_t *ascent, int16_t *descent, int16_t *line_height);
+
+/* One driver bundles decode + the dynamic glyph loader for the formats it
+ * understands (see driver_freetype.c). Registered under "font_driver:*". */
+typedef struct {
+    gamely_font_decoder_cb decode;
+    gamely_font_glyph_cb   glyph;
+    gamely_font_metrics_cb metrics;
+    void (*face_free)(void *face);
+} gamely_font_driver_t;
+
+void gamely_daemon_font_start(void *loop);
+void gamely_daemon_font_stop (void);
+
+/* Returns the ID for url. Starts async load on first call.
+ * Every URL keeps its ID until an unload is called. */
+int32_t              gamely_daemon_font_get_id     (const char *url);
+/* Loads from memory (e.g. an embedded default font); no resolver involved. */
+int32_t              gamely_daemon_font_load_memory (const void *data, size_t len);
+gamely_font_state_t  gamely_daemon_font_get_state   (int32_t id);
+const char          *gamely_daemon_font_get_error   (int32_t id);
+void                 gamely_daemon_font_unload_id   (int32_t id);
+void                 gamely_daemon_font_unload_url  (const char *url);
+void                 gamely_daemon_font_unload_all  (void);
+
+/* name -> id alias, used by native_text_font_face / native_text_font_name */
+void    gamely_daemon_font_set_family      (const char *name, int32_t id);
+int32_t gamely_daemon_font_get_id_by_family(const char *name); /* -1 if not found */
+
+/* Centralized text layout: walks utf-8, resolves/rasterizes each glyph via the
+ * registered decoder driver, draws through the registered font_backend. */
+void gamely_daemon_font_draw_text   (int32_t font_id, uint8_t px_size,
+                                      int16_t x, int16_t y, const char *utf8, uint32_t rgba);
+void gamely_daemon_font_mensure_text(int32_t font_id, uint8_t px_size,
+                                      const char *utf8, int16_t *w, int16_t *h);
+
 /* ---- Web Daemons: include/gdweb.h ---- */
 
 /* ---- Backends ---- */
@@ -415,6 +501,10 @@ int32_t            gamely_daemon_img_loading_count(void);
 /* Registers the OpenGL atlas backend for "rgba" with Daemon_Img.
  * Call after gamely_daemon_img_start(). */
 void gamely_daemon_img_opengl_register(void);
+
+/* Registers the OpenGL glyph-atlas backend with Daemon_Font.
+ * Call after gamely_daemon_font_start(). */
+void gamely_daemon_font_opengl_register(void);
 
 /* ---- Hypervisor ---- */
 
@@ -512,10 +602,13 @@ int  gamely_daemon_media_transmit_get_idr_cache(const uint8_t **out);
 
 typedef void (*gamely_audio_cb_t)(const int16_t *data, size_t frames,
                                    unsigned rate, unsigned channels, void *usr);
+typedef void (*gamely_audio_stop_cb_t)(void *usr);
 
 void gamely_daemon_media_audio_subscribe(gamely_audio_cb_t cb, void *usr);
+void gamely_daemon_media_audio_on_stop  (gamely_audio_stop_cb_t cb, void *usr);
 void gamely_daemon_media_audio_configure(unsigned rate, unsigned channels);
 void gamely_daemon_media_audio_push     (const int16_t *data, size_t frames);
+void gamely_daemon_media_audio_stop     (void);
 
 void gamely_daemon_media_init    (void);
 void gamely_daemon_media_shutdown(void);

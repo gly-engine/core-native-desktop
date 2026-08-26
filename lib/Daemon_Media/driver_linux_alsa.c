@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <dlfcn.h>
@@ -53,6 +54,7 @@ static void on_audio(const int16_t *data, size_t frames,
 void coreopen_alsa_gecnd()
 {
     do {
+        if (getenv("DISABLE_ALSA")) break;
         g_lib = dlopen("libasound.so.2", RTLD_LAZY);
         if (!g_lib) break;
 
