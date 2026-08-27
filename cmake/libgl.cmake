@@ -115,9 +115,6 @@ if(GECND_USE_GL_EGL OR GECND_USE_GL_GLFW OR GECND_USE_GL_WAYLAND)
         FetchContent_MakeAvailable(glfw)
         target_link_libraries(${PROJECT_NAME} PRIVATE glfw)
         target_include_directories(glfw SYSTEM PRIVATE "${X11_HEADERS};${X11_HEADERS_EXTRA}")
-        set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/../lib/Daemon_Inputs/service_keymap.c"
-            PROPERTIES COMPILE_DEFINITIONS "GLFW_DEFAULT_INPUT_CLASS=\"void://glfw\""
-        )
         list(APPEND gecnd_bakend_files "${CMAKE_CURRENT_LIST_DIR}/../lib/Backend_OpenGL/window/glfw.c")
     endif()
 
