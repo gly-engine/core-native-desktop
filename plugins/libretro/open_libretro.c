@@ -211,10 +211,15 @@ bool native_libretro_game_load_only(const char *path);
 bool native_libretro_game_none(void);
 bool native_libretro_game_from_buffer(const uint8_t *data, size_t size, const char *name);
 void native_libretro_game_finalize(void);
+void native_libretro_clear_error(void);
 static void libretro_deinit_core(void);
 
 const char *native_libretro_error(void) {
     return s_error;
+}
+
+void native_libretro_clear_error(void) {
+    s_error[0] = '\0';
 }
 
 void native_libretro_set_error(const char *fmt, ...) {
@@ -233,6 +238,7 @@ void native_libretro_track_tmp_rom(const char *path) {
 
 bool native_libretro_url(const char *url) {
     char buf[2048];
+    native_libretro_clear_error();
     strncpy(buf, url, sizeof(buf) - 1);
     buf[sizeof(buf) - 1] = '\0';
 
@@ -280,6 +286,7 @@ static const char *exe_cwd(void) {
 }
 
 bool native_libretro_load(const char *path) {
+    native_libretro_clear_error();
     if (core_handle) close_library(core_handle);
     core_handle = NULL;
     reset_pointers();
