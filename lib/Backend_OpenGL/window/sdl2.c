@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <dlfcn.h>
+#include <time.h>
 #include "gecnd.h"
 #include "gehook.h"
 #include "geopengl.h"
@@ -25,8 +26,7 @@ typedef enum { GE_SDL_GL, GE_SDL_GLES } ge_sdl_api_t;
     X(SDL_GL_SwapWindow) \
     X(SDL_GL_GetProcAddress) \
     X(SDL_GL_SetSwapInterval) \
-    X(SDL_PollEvent) \
-    X(SDL_GetTicks64)
+    X(SDL_PollEvent)
 
 #define SDL_DECLARE_PTR(name) static typeof(name) *p_##name;
 SDL_FOREACH_SYM(SDL_DECLARE_PTR)
@@ -95,7 +95,9 @@ static void sdl_swap_buffers(void) {
 }
 
 static double sdl_get_time(void) {
-    return (double)p_SDL_GetTicks64() / 1000.0;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
 }
 
 static void *sdl_proc_address(const char *name) {
