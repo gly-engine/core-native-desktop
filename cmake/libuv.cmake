@@ -11,6 +11,6 @@ if (GECND_USE_LIBUV)
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../lib/Daemon_IO/driver_fs_uv.c")
 endif()
 
-if (GECND_COMPAT AND GECND_USE_LIBUV)
+if (GECND_USE_COMPAT AND GECND_USE_LIBUV)
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../lib/ThirdParty_Compat/libuv.c")
 endif()
