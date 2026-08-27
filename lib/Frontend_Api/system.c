@@ -75,9 +75,17 @@ static int lua_native_system_get_env(lua_State *L) {
     return 1;
 }
 
+static int lua_native_system_title(lua_State *L) {
+    const char *title = luaL_checkstring(L, 1);
+    gecnd_registry("set", "core:title", title, "strdup=val");
+    lua_settop(L, 0);
+    return 0;
+}
+
 __attribute__((constructor))
 static void init() {
     gecnd_registry("set", "lua_global_func:native_system_get_language", lua_native_system_get_language, NULL);
     gecnd_registry("set", "lua_global_func:native_system_get_env", lua_native_system_get_env, NULL);
+    gecnd_registry("set", "lua_global_func:native_system_title", lua_native_system_title, NULL);
     gecnd_registry("set", "lua_global_func:native_system_exit", lua_native_system_exit, NULL);
 }
