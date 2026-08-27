@@ -156,6 +156,10 @@ target_sources(${PROJECT_NAME} PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_read.c"
 )
 
+if (GECND_USE_COMPAT AND NOT GECND_USE_LUAJIT)
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Compat/gcc_scanf.c")
+endif()
+
 if(GECND_USE_PROFILER)
     enable_language(CXX)
     FetchContent_Declare(profiler GIT_REPOSITORY ${GPERFTOOLS_REPO} GIT_TAG ${GPERFTOOLS_VERSION} SOURCE_DIR ${GPERFTOOLS_DIR})
