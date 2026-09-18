@@ -56,15 +56,16 @@ static uint64_t now_ms(void)
 
 #define QUEUE_SIZE 128
 
-/* src == -1 means injected via push_name (no source class) */
-typedef struct { char name[8]; bool pressed; int port; int8_t src; } gamely_io_event_t;
+/* src == -1 means injected via push_name (no source class)
+ * name[0] == '\0' means discovery event: source sem keymap, chaveado por code */
+typedef struct { char name[8]; bool pressed; int port; int8_t src; uint32_t ttl_ms; uint32_t code; } gamely_io_event_t;
 
 static gamely_io_event_t  g_queue[QUEUE_SIZE];
 static atomic_int         g_head = 0;
 static atomic_int         g_tail = 0;
 static pthread_mutex_t    g_enq_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-static void enqueue(const char *name, bool pressed, int port, int src)
+static void enqueue(const char *name, bool pressed, int port, int src, uint32_t ttl_ms, uint32_t code)
 {
     pthread_mutex_lock(&g_enq_mutex);
     int cur  = atomic_load_explicit(&g_head, memory_order_relaxed);
@@ -75,6 +76,8 @@ static void enqueue(const char *name, bool pressed, int port, int src)
         g_queue[cur].pressed = pressed;
         g_queue[cur].port    = port;
         g_queue[cur].src     = (int8_t)src;
+        g_queue[cur].ttl_ms  = ttl_ms;
+        g_queue[cur].code    = code;
         atomic_store_explicit(&g_head, next, memory_order_release);
     }
     pthread_mutex_unlock(&g_enq_mutex);
@@ -87,6 +90,14 @@ typedef struct { char name[8]; bool pressed[4]; } gamely_key_state_t;
 static gamely_key_state_t *g_states    = NULL;
 static int                 g_state_cnt = 0;
 static int                 g_state_cap = 0;
+
+static bool key_state_get(int port, const char *name)
+{
+    if (port < 0 || port >= 4 || !name) return false;
+    for (int i = 0; i < g_state_cnt; i++)
+        if (strcmp(g_states[i].name, name) == 0) return g_states[i].pressed[port];
+    return false;
+}
 
 static void key_state_set(int port, const char *name, bool pressed)
 {
@@ -111,7 +122,13 @@ static void key_state_set(int port, const char *name, bool pressed)
     g_state_cnt++;
 }
 
-/* -- TTL -- */
+/* -- TTL --
+ *
+ * only the main thread touches this. a driver pushes the ttl along with
+ * the event and the upsert happens in the tick drain: the TTL array has no
+ * lock, and the queue (mutex + atomic head/tail) already is the boundary
+ * between threads.
+ */
 
 typedef struct { char name[8]; int port; int8_t src; uint64_t expiry_ms; } gamely_ttl_entry_t;
 
@@ -142,6 +159,31 @@ static void ttl_upsert(const char *name, int port, int src, uint64_t expiry_ms)
     g_ttl_cnt++;
 }
 
+static void fire(const char *name, bool pressed, int port, int src);
+
+/*
+ * a ttl source (IR, serial) cannot report a release: what it can tell us is
+ * that it only ever sends one button at a time. so a new code releases the
+ * previous one right away instead of waiting for the old ttl to expire —
+ * otherwise a quick up->down leaves both keys held together.
+ */
+static void ttl_release_others(const char *name, int port, int src)
+{
+    for (int i = g_ttl_cnt - 1; i >= 0; i--) {
+        if (g_ttl[i].port != port || g_ttl[i].src != (int8_t)src) continue;
+        if (strcmp(g_ttl[i].name, name) == 0) continue;
+
+        char old[8];
+        memcpy(old, g_ttl[i].name, 8);
+        g_ttl[i] = g_ttl[--g_ttl_cnt];
+        if (src >= 0 && gamely_keymap_source_debug(src))
+            fprintf(stderr, "[core:debug:input] src= %d key= %s port= %d press= 0 (switch)\n",
+                    src, old, port);
+        key_state_set(port, old, false);
+        fire(old, false, port, src);
+    }
+}
+
 static void ttl_remove(const char *name, int port, int src)
 {
     for (int i = 0; i < g_ttl_cnt; i++) {
@@ -150,6 +192,70 @@ static void ttl_remove(const char *name, int port, int src)
             return;
         }
     }
+}
+
+/* -- discovery (?debug=1 on a source with no keymap) --
+ *
+ * same edge and ttl semantics as mapped keys, only keyed by the hex: lets
+ * you watch press=1/press=0 before writing the keymap in the toml.
+ * only the main thread touches this, like the rest of the state.
+ */
+
+#define DBG_MAX 16
+
+typedef struct { uint32_t code; int port; int8_t src; uint64_t expiry_ms; } gamely_dbg_entry_t;
+
+static gamely_dbg_entry_t g_dbg[DBG_MAX];
+static int                g_dbg_cnt = 0;
+
+static void dbg_print(int src, uint32_t code, bool pressed, int port, const char *how)
+{
+    const char *cls  = NULL;
+    const char *name = gamely_keymap_lookup_debug(code, &cls);
+    fprintf(stderr, "[core:debug:input] src= %d hex= 0x%08X class= %s key= %s port= %d press= %d%s\n",
+            src, code, cls ? cls : "?", name ? name : "?", port, pressed, how);
+}
+
+static void dbg_event(int src, uint32_t code, bool pressed, int port, uint32_t ttl_ms, uint64_t now)
+{
+    int at = -1;
+    for (int i = 0; i < g_dbg_cnt; i++)
+        if (g_dbg[i].src == (int8_t)src && g_dbg[i].code == code) { at = i; break; }
+
+    if (!pressed) {
+        if (at < 0) return;                    /* already released: no repeated edge */
+        g_dbg[at] = g_dbg[--g_dbg_cnt];
+        dbg_print(src, code, false, port, "");
+        return;
+    }
+
+    if (at >= 0) {                             /* already held: just renew */
+        g_dbg[at].expiry_ms = ttl_ms ? now + ttl_ms : 0;
+        return;
+    }
+
+    if (ttl_ms) {                              /* one button at a time, same as the ttl */
+        for (int i = g_dbg_cnt - 1; i >= 0; i--) {
+            if (g_dbg[i].src != (int8_t)src || g_dbg[i].port != port) continue;
+            if (!g_dbg[i].expiry_ms) continue;
+            gamely_dbg_entry_t e = g_dbg[i];
+            g_dbg[i] = g_dbg[--g_dbg_cnt];
+            dbg_print(e.src, e.code, false, e.port, " (switch)");
+        }
+    }
+
+    if (g_dbg_cnt == DBG_MAX) {                /* drop the one closest to expiring */
+        int old = 0;
+        for (int i = 1; i < g_dbg_cnt; i++)
+            if (g_dbg[i].expiry_ms < g_dbg[old].expiry_ms) old = i;
+        g_dbg[old] = g_dbg[--g_dbg_cnt];
+    }
+    g_dbg[g_dbg_cnt].code      = code;
+    g_dbg[g_dbg_cnt].port      = port;
+    g_dbg[g_dbg_cnt].src       = (int8_t)src;
+    g_dbg[g_dbg_cnt].expiry_ms = ttl_ms ? now + ttl_ms : 0;
+    g_dbg_cnt++;
+    dbg_print(src, code, true, port, "");
 }
 
 /* -- unified callbacks -- */
@@ -255,30 +361,13 @@ void gamely_daemon_input_push(uint32_t code, bool pressed, uint32_t ttl_ms)
 
     int n = gamely_keymap_source_count();
     for (int s = 0; s < n; s++) {
-        /* debug antes do filtro: a graça do ?debug=1 é ver o hex de tecla
-         * que AINDA não está mapeada na classe da source */
-        if (gamely_keymap_source_debug(s)) {
-            const char *dbg_class = NULL;
-            const char *dbg_name  = gamely_keymap_lookup_debug(code, &dbg_class);
-            fprintf(stderr, "[core:debug:input] src= %d hex= 0x%08X class= %s key= %s press= %d\n",
-                    s,
-                    code,
-                    dbg_class ? dbg_class : "?",
-                    dbg_name  ? dbg_name  : "?",
-                    pressed);
-        }
-
         const char *name = gamely_keymap_lookup_source(s, code);
-        if (!name) continue;
 
-        int port = gamely_keymap_source_port(s);
+        /* a hex that did not become a key only travels with ?debug=1, and
+         * then takes the discovery path: same edge and ttl, keyed by hex */
+        if (!name && !gamely_keymap_source_debug(s)) continue;
 
-        if (ttl_ms > 0 && pressed)
-            ttl_upsert(name, port, s, now_ms() + ttl_ms);
-        else if (!pressed)
-            ttl_remove(name, port, s);
-
-        enqueue(name, pressed, port, s);
+        enqueue(name ? name : "", pressed, gamely_keymap_source_port(s), s, ttl_ms, code);
     }
 }
 
@@ -287,12 +376,7 @@ void gamely_daemon_input_push_name(const char *name, bool pressed, int port, uin
     if (!name) return;
     if (!gamely_daemon_input_do_init()) return;
 
-    if (ttl_ms > 0 && pressed)
-        ttl_upsert(name, port, -1, now_ms() + ttl_ms);
-    else if (!pressed)
-        ttl_remove(name, port, -1);
-
-    enqueue(name, pressed, port, -1);
+    enqueue(name, pressed, port, -1, ttl_ms, 0);
 }
 
 void gamely_daemon_input_tick(void)
@@ -328,8 +412,19 @@ void gamely_daemon_input_tick(void)
             int   port = g_ttl[i].port;
             int   src  = g_ttl[i].src;
             g_ttl[i] = g_ttl[--g_ttl_cnt];
+            if (src >= 0 && gamely_keymap_source_debug(src))
+                fprintf(stderr, "[core:debug:input] src= %d key= %s port= %d press= 0 (ttl)\n",
+                        src, name, port);
             key_state_set(port, name, false);
             fire(name, false, port, src);
+        }
+    }
+
+    for (int i = g_dbg_cnt - 1; i >= 0; i--) {
+        if (g_dbg[i].expiry_ms && now >= g_dbg[i].expiry_ms) {
+            gamely_dbg_entry_t e = g_dbg[i];
+            g_dbg[i] = g_dbg[--g_dbg_cnt];
+            dbg_print(e.src, e.code, false, e.port, " (ttl)");
         }
     }
 
@@ -339,6 +434,27 @@ void gamely_daemon_input_tick(void)
         gamely_io_event_t ev = g_queue[tail];
         tail = (tail + 1) % QUEUE_SIZE;
         atomic_store_explicit(&g_tail, tail, memory_order_release);
+        if (ev.name[0] == '\0') {
+            dbg_event((int)ev.src, ev.code, ev.pressed, ev.port, ev.ttl_ms, now);
+            continue;
+        }
+
+        if (ev.ttl_ms > 0 && ev.pressed) {
+            ttl_release_others(ev.name, ev.port, (int)ev.src);
+            ttl_upsert(ev.name, ev.port, (int)ev.src, now + ev.ttl_ms);
+        }
+        else if (!ev.pressed)
+            ttl_remove(ev.name, ev.port, (int)ev.src);
+
+        /* only edges become events: a repeating source (held IR, keyboard
+         * autorepeat) renews the ttl above and stops here. whoever wants
+         * repetition reads the state instead of counting events. */
+        if (ev.pressed == key_state_get(ev.port, ev.name)) continue;
+
+        if (ev.src >= 0 && gamely_keymap_source_debug((int)ev.src))
+            fprintf(stderr, "[core:debug:input] src= %d key= %s port= %d press= %d\n",
+                    (int)ev.src, ev.name, ev.port, ev.pressed);
+
         key_state_set(ev.port, ev.name, ev.pressed);
         fire(ev.name, ev.pressed, ev.port, (int)ev.src);
     }

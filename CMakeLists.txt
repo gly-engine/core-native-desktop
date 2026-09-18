@@ -147,11 +147,9 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/libqr.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/libsqlite3.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/libwuffs.cmake)
 
-# todo: lirc only linux
 # todo: move aui to private repo
 target_sources(${PROJECT_NAME} PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_void.c"
-    "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_lirc.c"
     "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_serial.c"
     "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_read.c"
 )

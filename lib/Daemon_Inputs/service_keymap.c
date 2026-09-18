@@ -73,15 +73,21 @@ bool gamely_daemon_input_do_init(void);
 /* -- driver table -- */
 
 extern const gamely_input_driver_t gamely_driver_void;
-extern const gamely_input_driver_t gamely_driver_lirc;
 extern const gamely_input_driver_t gamely_driver_serial;
 extern const gamely_input_driver_t gamely_driver_read;
+#if defined(__linux__)
+extern const gamely_input_driver_t gamely_driver_lirc;
+extern const gamely_input_driver_t gamely_driver_joy;
+#endif
 
 static const struct { const char *proto; const gamely_input_driver_t *drv; } k_drivers[] = {
     {"void",   &gamely_driver_void},
-    {"lirc",   &gamely_driver_lirc},
     {"serial", &gamely_driver_serial},
-    {"read",   &gamely_driver_read}
+    {"read",   &gamely_driver_read},
+#if defined(__linux__)
+    {"lirc",   &gamely_driver_lirc},
+    {"joy",    &gamely_driver_joy}
+#endif
 };
 
 static const int k_driver_count = (int)(sizeof(k_drivers) / sizeof(k_drivers[0]));
