@@ -101,7 +101,15 @@ static const char *egl_context_create(ge_egl_api_t api) {
     if (!eglBindAPI(api == GE_EGL_GLES ? EGL_OPENGL_ES_API : EGL_OPENGL_API))
         return "eglBindAPI failed";
 
-    egl_surface = eglCreateWindowSurface(egl_display, config, (EGLNativeWindowType)0, NULL);
+    /* A platform backend may publish the native window handle it owns: on
+     * Mali/fbdev this is an `fbdev_window *` carrying the visible width and
+     * height, and passing NULL there yields no surface. Falling back to 0 keeps
+     * the platforms whose EGL accepts a default window working unchanged. */
+    void *native_window = NULL;
+    gecnd_registry("get", "egl_native_window", &native_window, NULL);
+
+    egl_surface = eglCreateWindowSurface(egl_display, config,
+                                         (EGLNativeWindowType)(uintptr_t)native_window, NULL);
     if (egl_surface == EGL_NO_SURFACE) return "eglCreateWindowSurface failed";
 
     const EGLint gles_attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
