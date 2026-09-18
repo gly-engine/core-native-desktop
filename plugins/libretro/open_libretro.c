@@ -457,7 +457,7 @@ void native_libretro_game_finalize(void) {
     }
     if (media_bind()) media.claim();
     core_initialized = true;
-    api->registry("set", "core:state", (void *)(uintptr_t)GECND_FSM_RUNNING_PERFORMANCE, NULL);
+    api->registry("set", "core:state", (void *)(uintptr_t)state_wanted(), NULL);
 }
 
 /* Grava o buffer em /tmp/<name> para cores com need_fullpath.

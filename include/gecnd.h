@@ -54,7 +54,6 @@ typedef enum __attribute__((packed)) {
     GECND_FSM_RUNNING_PERFORMANCE,
     GECND_FSM_RUNNING_BACKGROUND,
     GECND_FSM_RUNNING_STANDBY,
-    GECND_FSM_RUNNING_NOGAME,
     GECND_FSM_EXITING,
     GECND_FSM_EXITING_FORCE,
 } gecnd_fsm_t;
@@ -117,6 +116,7 @@ typedef struct {
     uint8_t     frameskip_count;
     uint8_t     flags;
     uint8_t     internal;       /* GECND_INTERNAL_HW_GL_READY */
+    bool        nogame;         /* sem engine/game lua (--play sem --game) */
     gecnd_fsm_t state;
     int16_t     width;
     int16_t     height;

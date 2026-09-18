@@ -171,7 +171,6 @@ typedef enum {
     FSM_GECND_RUNNING_PERFORMANCE, /* idem, sem glFinish (latência > consistência) */
     FSM_GECND_RUNNING_BACKGROUND,  /* sem draw (substitui GECND_INTERNAL_BROWSER) */
     FSM_GECND_RUNNING_STANDBY,     /* sem draw + loop em 1 Hz, economia CPU */
-    FSM_GECND_RUNNING_NOGAME,      /* --play sem --game, sem engine */
     FSM_GECND_ERROR,               /* error_string preenchida */
     FSM_GECND_EXITING,             /* WANT_EXIT visto, aguardando mídia parar */
     FSM_GECND_EXITING_FORCE,       /* segundo SIGINT durante EXITING, sem esperar */
@@ -190,7 +189,7 @@ clara e uma transição de saída:
 ```
 BOOT ──set_args──► ARGS_PARSED ──hypervisor──► DAEMONS_UP
                                                 │
-                       ┌────────────────────────┼─── (sem --game E com --play) ──► RUNNING_NOGAME
+                       ┌────────────────────────┼─── (sem --game E com --play) ──► RUNNING (nogame=1)
                        │                        │
                        │ (engine é URL?)        │ (engine local/vendor)
                        ▼                        ▼
@@ -203,7 +202,7 @@ BOOT ──set_args──► ARGS_PARSED ──hypervisor──► DAEMONS_UP
                        └─error─► ERROR
 
   RUNNING ⇄ RUNNING_PERFORMANCE ⇄ RUNNING_BACKGROUND ⇄ RUNNING_STANDBY    (transições em runtime)
-  RUNNING_NOGAME (independente, sem transições pra outros RUNNING_*)
+  nogame é flag ortogonal (gly->nogame): vale em qualquer RUNNING_*
 
   qualquer estado ──error/signal/WANT_EXIT──► EXITING
 ```
@@ -216,7 +215,9 @@ Comportamento por sub-estado:
 | `RUNNING_PERFORMANCE`  | ✓ | ✓ | ✓ | — | target_fps |
 | `RUNNING_BACKGROUND`   | ✓ | ✓ | — | — | target_fps |
 | `RUNNING_STANDBY`      | ✓ | ✓ | — | — | 1 Hz |
-| `RUNNING_NOGAME`       | ✓ | — | frame de mídia + filtros + metrics | ✓ | target_fps |
+
+Com `nogame = 1` os `callback_loop`/`callback_draw` são pulados em qualquer
+sub-estado — sobra frame de mídia + filtros + metrics.
 
 Transição entre os sub-RUNNING é **disparada externamente** (CLI ou caller
 do binário), via API:
@@ -226,9 +227,11 @@ void gecnd_set_state(gecnd_t *gly, fsm_gecnd_state_t new_state);
 ```
 
 com validação: só permite transições dentro do grupo `RUNNING_*`. Não
-permite voltar pra `BOOT`/`FETCHING_*` etc. `RUNNING_NOGAME` é exclusivo
-(não transita pros outros `RUNNING_*` — quem entra aí não tem engine
-carregada, então não tem como virar `RUNNING` "normal").
+permite voltar pra `BOOT`/`FETCHING_*` etc. `nogame` não é estado e sim
+flag (`gly->nogame`, exposta na registry como `core:nogame`, bool): quem
+está sem engine continua transitando entre os `RUNNING_*` normalmente —
+é assim que um player externo (sdl2) marca `RUNNING_BACKGROUND` mesmo
+rodando `--play` sem `--game`.
 
 ### 2. Lua source plugável + cadeia de fallback
 
@@ -335,7 +338,7 @@ então vai direto pra `NO_GAME`. Nesse modo:
 A fila de `--play` **não pertence ao gecnd**. Pertence ao próprio
 `Daemon_Media`. O gecnd só fornece um **gate**: o playback service consulta
 o estado do gecnd e só drena a fila quando está em `FSM_GECND_RUNNING_*`
-(incluindo `RUNNING_NOGAME`). Antes disso (FETCHING_*, DAEMONS_UP, etc),
+(inclusive com `nogame = 1`). Antes disso (FETCHING_*, DAEMONS_UP, etc),
 pedidos ficam parados.
 
 Isso também resolve a troca de mídia entre players diferentes (caso comum:
@@ -602,7 +605,7 @@ Implementada como `static gecnd_display_t g_display` em `hypervisor.c`.
 ```c
 /* Permite transições dentro do grupo RUNNING_*
  * (RUNNING ↔ RUNNING_PERFORMANCE ↔ RUNNING_BACKGROUND ↔ RUNNING_STANDBY).
- * RUNNING_NOGAME é exclusivo. Transições para ERROR/EXITING não passam aqui. */
+ * Transições para ERROR/EXITING não passam aqui. */
 void gecnd_set_state(gecnd_t *gly, gecnd_fsm_t new_state);
 ```
 
@@ -673,7 +676,7 @@ virou `GECND_FSM_RUNNING_PERFORMANCE`.
 - Função do contrato chama-se `state()` (não `get_state`).
 - Transições entre `RUNNING_*` são disparadas **externamente** (não via Lua
   no momento).
-- `RUNNING_NOGAME` desenha frame de mídia + filtros + metrics.
+- `nogame` é flag, não estado: desenha frame de mídia + filtros + metrics.
 
 ### Lua loading
 - **Sem cache** de game/engine.lua baixado.
@@ -730,6 +733,6 @@ ordem (cada item compilando e testável isoladamente):
    no `update.c`.
 6. Adicionar `gecnd_lua_source_t` + resolver (file primeiro, http depois).
 7. Adicionar `FETCHING_HTTP_ENGINE`/`FETCHING_HTTP_GAME` ao FSM.
-8. Adicionar `RUNNING_NOGAME` (entrada quando `--play` sem `--game`).
+8. Adicionar flag `nogame` (entrada quando `--play` sem `--game`).
 9. Sub-estados `RUNNING_PERFORMANCE`/`BACKGROUND`/`STANDBY` (renomeia/elimina
    `GECND_INTERNAL_BROWSER`).

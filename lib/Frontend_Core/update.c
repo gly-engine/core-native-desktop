@@ -199,6 +199,7 @@ static bool state_boot(gecnd_t *gly) {
     if (gecnd_is_root(gly)) {
         gamely_hypervisor_init(gly);
         gecnd_registry("hook", "core:state", on_core_state, gly);
+        gecnd_registry("bind", "core:nogame", &gly->nogame, (void *)GECND_TYPE_BOOLEAN);
     }
     gly_hook_display_fps(gly->loop ? 0 : gly->target_fps);
     const char *e = gecnd_plugins_open_lua(gly->L);
@@ -218,7 +219,8 @@ static bool state_daemons_up(gecnd_t *gly) {
 #if !defined(GECND_USE_VENDOR_GAME)
     if (gly->game_source.kind == GECND_LUA_SOURCE_NONE &&
         gdmsp_control()->is_active()) {
-        gly->state = GECND_FSM_RUNNING_NOGAME;
+        gly->nogame = true;
+        gly->state  = GECND_FSM_RUNNING;
         return true;
     }
 #endif
@@ -377,7 +379,7 @@ static bool state_running(gecnd_t *gly) {
     if (gly->error_len) return false;
 
     gecnd_registry("set", "core:pre_loop", gly, NULL);
-    if (gly->state != GECND_FSM_RUNNING_NOGAME)
+    if (!gly->nogame)
         callback_loop(gly);
     gecnd_registry("set", "core:post_loop", gly, NULL);
     if (gly->error_len) return false;
@@ -387,7 +389,7 @@ static bool state_running(gecnd_t *gly) {
         if (gly->frameskip_count++ >= gly->frameskip) {
             gly->frameskip_count = 0;
             gecnd_registry("set", "core:pre_draw", gly, NULL);
-            if (gly->state != GECND_FSM_RUNNING_NOGAME) {
+            if (!gly->nogame) {
                 callback_draw(gly);
             }
             gecnd_registry("set", "core:post_draw", gly, NULL);
@@ -400,7 +402,7 @@ static bool state_running(gecnd_t *gly) {
 
     bool close_requested = false;
     gly_hook_should_close(&close_requested);
-    if (gly->state == GECND_FSM_RUNNING_NOGAME && !gdmsp_control()->is_active()) {
+    if (gly->nogame && !gdmsp_control()->is_active()) {
         gecnd_signal = 0;
         gly->state = GECND_FSM_EXITING;
     } else if (close_requested || gecnd_signal != 0) {
@@ -432,8 +434,7 @@ bool gecnd_update(gecnd_t *gly) {
     case GECND_FSM_RUNNING:
     case GECND_FSM_RUNNING_PERFORMANCE:
     case GECND_FSM_RUNNING_BACKGROUND:
-    case GECND_FSM_RUNNING_STANDBY:
-    case GECND_FSM_RUNNING_NOGAME: return state_running(gly);
+    case GECND_FSM_RUNNING_STANDBY: return state_running(gly);
     case GECND_FSM_EXITING:        return state_exiting(gly);
     default:                       return false;
     }

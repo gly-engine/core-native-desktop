@@ -8,52 +8,62 @@
 
 #include "main.h"
 
-static char *cache = NULL;
+static char *cache_param = NULL;
+static char *cache_opt   = NULL;
 
 __attribute__((destructor))
 static void url_env_clear(void) {
-    free(cache);
-    cache = NULL;
+    free(cache_param);
+    free(cache_opt);
+    cache_param = NULL;
+    cache_opt   = NULL;
 }
 
-void url_env_set(const char *url) {
-    free(cache);
-    cache = NULL;
-    if (url == NULL) {
-        return;
-    }
-
+static char *url_collect(const char *url, int kind) {
     size_t       length = 1;
     gecnd_lang_t ctx    = {{ "url", url }};
     while (api->lang(&ctx)) {
-        if (ctx.url.kind == GECND_URL_KIND_PARAM) {
+        if (ctx.url.kind == kind) {
             length += ctx.url.len + 1 + ctx.url.val.len + 1;
         }
     }
 
-    cache = malloc(length);
-    if (cache == NULL) {
-        return;
+    char *out = malloc(length);
+    if (out == NULL) {
+        return NULL;
     }
 
     size_t index = 0;
     ctx.reset = 1;
     while (api->lang(&ctx)) {
-        if (ctx.url.kind == GECND_URL_KIND_PARAM) {
-            memcpy(cache + index, ctx.url.ptr, ctx.url.len);
+        if (ctx.url.kind == kind) {
+            memcpy(out + index, ctx.url.ptr, ctx.url.len);
             index += ctx.url.len;
-            cache[index++] = '\0';
+            out[index++] = '\0';
             if (ctx.url.val.len) {
-                memcpy(cache + index, ctx.url.val.ptr, ctx.url.val.len);
+                memcpy(out + index, ctx.url.val.ptr, ctx.url.val.len);
                 index += ctx.url.val.len;
             }
-            cache[index++] = '\0';
+            out[index++] = '\0';
         }
     }
-    cache[index] = '\0';
+    out[index] = '\0';
+    return out;
 }
 
-const char *url_env_get(const char *key) {
+void url_env_set(const char *url) {
+    free(cache_param);
+    free(cache_opt);
+    cache_param = NULL;
+    cache_opt   = NULL;
+    if (url == NULL) {
+        return;
+    }
+    cache_param = url_collect(url, GECND_URL_KIND_PARAM);
+    cache_opt   = url_collect(url, GECND_URL_KIND_FRAGMENT);
+}
+
+static const char *url_lookup(const char *cache, const char *key) {
     if (cache == NULL || key == NULL) {
         return NULL;
     }
@@ -62,4 +72,12 @@ const char *url_env_get(const char *key) {
         return ctx.result.ptr;
     }
     return NULL;
+}
+
+const char *url_env_get(const char *key) {
+    return url_lookup(cache_param, key);
+}
+
+const char *url_opt_get(const char *key) {
+    return url_lookup(cache_opt, key);
 }

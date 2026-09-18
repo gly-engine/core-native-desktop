@@ -100,6 +100,19 @@ static libretro_url_t libretro_url_split(const char *url) {
     return r;
 }
 
+gecnd_fsm_t state_wanted(void) {
+    const char *want = url_opt_get("state");
+    if (!want || !want[0]) return GECND_FSM_RUNNING_PERFORMANCE;
+
+    if (!strcmp(want, "background"))  return GECND_FSM_RUNNING_BACKGROUND;
+    if (!strcmp(want, "performance")) return GECND_FSM_RUNNING_PERFORMANCE;
+    if (!strcmp(want, "standby"))     return GECND_FSM_RUNNING_STANDBY;
+    if (!strcmp(want, "running"))     return GECND_FSM_RUNNING;
+
+    fprintf(stderr, "[libretro] unknown #state=%s\n", want);
+    return GECND_FSM_RUNNING_PERFORMANCE;
+}
+
 /* ── estado interno do driver ────────────────────────────────────── */
 
 static gdmsp_fsm_t libretro_get_state(void) {
