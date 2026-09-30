@@ -54,7 +54,6 @@ typedef enum __attribute__((packed)) {
     GECND_FSM_RUNNING_PERFORMANCE,
     GECND_FSM_RUNNING_BACKGROUND,
     GECND_FSM_RUNNING_STANDBY,
-    GECND_FSM_RUNNING_NOGAME,
     GECND_FSM_EXITING,
     GECND_FSM_EXITING_FORCE,
 } gecnd_fsm_t;
@@ -117,6 +116,7 @@ typedef struct {
     uint8_t     frameskip_count;
     uint8_t     flags;
     uint8_t     internal;       /* GECND_INTERNAL_HW_GL_READY */
+    bool        nogame;         /* sem engine/game lua (--play sem --game) */
     gecnd_fsm_t state;
     int16_t     width;
     int16_t     height;
@@ -225,6 +225,11 @@ bool gecnd_lang(gecnd_lang_t *const ctx);
 typedef void (*gecnd_registry_handler)(const char *key, void *value, void *usr);
 
 int gecnd_registry(const char* cmd, const char *key, void *const value, void *const usr);
+
+/* Runs the backend selection in Frontend_Core/backend.c: walks "backend:*" and
+ * calls each candidate until one starts without signalling "error:backend".
+ * Returns false (with the collected reasons in gly's errors) if none did. */
+bool gecnd_boot_backend(gecnd_t *gly);
 
 // plugins
 bool gecnd_plugin_load(gecnd_t *gly, const char *path);

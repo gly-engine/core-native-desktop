@@ -8,9 +8,12 @@
 #include "gehook.h"
 #include "geopengl.h"
 
+static bool enabled_gl = false;
+
 static void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r);
 
 static void core_pre_draw(const char *key, void *value, void *usr) {
+    if (!enabled_gl) return;
     (void)key; (void)usr;
     gecnd_t *gly = (gecnd_t *)value;
     if (gly->state != GECND_FSM_RUNNING_PERFORMANCE &&
@@ -22,6 +25,7 @@ static void core_pre_draw(const char *key, void *value, void *usr) {
 }
 
 static void core_pre_tint(const char *key, void *value, void *usr) {
+    if (!enabled_gl) return;
     (void)key; (void)value; (void)usr;
     ge_pipeline_flush();
     platform_swap_buffers();
@@ -195,6 +199,7 @@ static void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
 
 __attribute__((constructor))
 static void init(void) {
+    gecnd_registry("bind", "internal:gl", &enabled_gl, (void*) GECND_TYPE_BOOLEAN);
     gecnd_registry("hook", "core:pre_draw", (void *)core_pre_draw, NULL);
     gecnd_registry("hook", "core:pre_tint", (void *)core_pre_tint, NULL);
     gecnd_registry("set", "backend_func:native_draw_color", (void *)native_draw_color, NULL);
