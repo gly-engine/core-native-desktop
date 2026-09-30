@@ -23,10 +23,6 @@
 
 #include "gecnd.h"
 
-#ifndef GLFW_DEFAULT_INPUT_CLASS
-#define GLFW_DEFAULT_INPUT_CLASS "void://0"
-#endif
-
 /* -- keymap (bidirectional map code ↔ name) -- */
 
 typedef struct { uint32_t code; char name[8]; } km_by_code_t; /* sorted by code */
@@ -70,21 +66,28 @@ typedef struct {
 
 static gamely_keymap_registry_t g_reg;
 static int                      g_initialized = 0;
+static bool                     g_init_failed = false;
 
 bool gamely_daemon_input_do_init(void);
 
 /* -- driver table -- */
 
 extern const gamely_input_driver_t gamely_driver_void;
-extern const gamely_input_driver_t gamely_driver_lirc;
 extern const gamely_input_driver_t gamely_driver_serial;
 extern const gamely_input_driver_t gamely_driver_read;
+#if defined(__linux__)
+extern const gamely_input_driver_t gamely_driver_lirc;
+extern const gamely_input_driver_t gamely_driver_joy;
+#endif
 
 static const struct { const char *proto; const gamely_input_driver_t *drv; } k_drivers[] = {
     {"void",   &gamely_driver_void},
-    {"lirc",   &gamely_driver_lirc},
     {"serial", &gamely_driver_serial},
-    {"read",   &gamely_driver_read}
+    {"read",   &gamely_driver_read},
+#if defined(__linux__)
+    {"lirc",   &gamely_driver_lirc},
+    {"joy",    &gamely_driver_joy}
+#endif
 };
 
 static const int k_driver_count = (int)(sizeof(k_drivers) / sizeof(k_drivers[0]));
@@ -316,9 +319,16 @@ void gamely_daemon_input_add_source(const char *uri)
 bool gamely_daemon_input_do_init(void)
 {
     if (g_initialized) return true;
+    if (g_init_failed) return false;
 
-    if (g_reg.source_count == 0)
-        gamely_daemon_input_add_source(GLFW_DEFAULT_INPUT_CLASS);
+    if (g_reg.source_count == 0) {
+        char default_uri[40];
+        if (g_reg.count > 0)
+            snprintf(default_uri, sizeof(default_uri), "void://%s", g_reg.classes[0]->name);
+        else
+            snprintf(default_uri, sizeof(default_uri), "void://0");
+        gamely_daemon_input_add_source(default_uri);
+    }
 
     for (int i = 0; i < g_reg.source_count; i++) {
         gamely_input_source_t *src = &g_reg.sources[i];
@@ -334,6 +344,7 @@ bool gamely_daemon_input_do_init(void)
             }
             if (!src->active) {
                 fprintf(stderr, "[core:input] class not found: %s\n", src->classname);
+                g_init_failed = true;
                 return false;
             }
         }
@@ -342,6 +353,7 @@ bool gamely_daemon_input_do_init(void)
             fprintf(stderr, "[core:input] driver open failed: %s\n", src->proto);
             free(src->searchparams);
             src->searchparams = NULL;
+            g_init_failed = true;
             return false;
         }
         free(src->searchparams);
@@ -391,6 +403,7 @@ void gamely_daemon_input_close(void)
     }
     memset(&g_reg, 0, sizeof(g_reg));
     g_initialized = 0;
+    g_init_failed = false;
 }
 
 __attribute__((constructor))

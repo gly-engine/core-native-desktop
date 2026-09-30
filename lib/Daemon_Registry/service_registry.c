@@ -17,6 +17,7 @@ typedef struct {
         uint8_t saved      : 1;  /* já recebeu um set (0 = criada por hook/bind) */
         uint8_t strdup_key : 1;  /* key é cópia nossa */
         uint8_t strdup_val : 1;  /* value é cópia nossa (char*) */
+        uint8_t readonly   : 1;  /* após o 1º set, novos sets são rejeitados */
     } flags;
 } gecnd_registry_entry_t;
 
@@ -78,8 +79,8 @@ static size_t entry_intern(const char *key, bool dup_key) {
 
 int gecnd_registry(const char *cmd, const char *key, void *const value, void *const usr) {
     if (strcmp(cmd, "set") == 0) {
-        /* usr = opções de armazenamento: "strdup=key" | "strdup=val" | "strdup=keyval" */
-        bool dup_key = false, dup_val = false;
+        /* usr = opções separadas por vírgula: "strdup=key|val|keyval" | "readonly=1" */
+        bool dup_key = false, dup_val = false, readonly = false;
         const char *opt = usr ? strstr((const char *)usr, "strdup=") : NULL;
         if (opt) {
             opt += sizeof("strdup=") - 1;
@@ -87,12 +88,18 @@ int gecnd_registry(const char *cmd, const char *key, void *const value, void *co
             else if (strncmp(opt, "key",    3) == 0) dup_key = true;
             else if (strncmp(opt, "val",    3) == 0) dup_val = true;
         }
+        const char *ro = usr ? strstr((const char *)usr, "readonly=") : NULL;
+        if (ro) readonly = ro[sizeof("readonly=") - 1] == '1';
+
         size_t pos = entry_intern(key, dup_key);
+        if (entries[pos].flags.saved && entries[pos].flags.readonly)
+            return -1;
         if (entries[pos].flags.strdup_val && entries[pos].value)
             free(entries[pos].value);
         entries[pos].value = (dup_val && value) ? strdup((const char *)value) : value;
         entries[pos].flags.strdup_val = (dup_val && value) ? 1 : 0;
         entries[pos].flags.saved      = 1;
+        if (readonly) entries[pos].flags.readonly = 1;
         for (hook_node_t *h = entries[pos].hooks; h; h = h->next) {
             h->handler(entries[pos].key, entries[pos].value, h->usr);
         }

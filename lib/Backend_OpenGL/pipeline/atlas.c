@@ -12,6 +12,8 @@
  */
 #include "geopengl.h"
 
+#include <stdlib.h>
+
 /* ── format table ─────────────────────────────────────────────────── */
 
 typedef struct {
@@ -75,10 +77,14 @@ int ge_atlas_create_page(GECNDColorFormat fmt, bool opaque) {
                      0, GL_ALPHA, GL_UNSIGNED_BYTE, NULL);
         tex_linear_clamp();
     } else {
+        void *data = fmt == GECND_PIX_FMT_ALPHA8
+            ? calloc((size_t)GE_ATLAS_SIZE * GE_ATLAS_SIZE, 1)
+            : NULL;
         glGenTextures(1, &page.tex_id);
         glBindTexture(GL_TEXTURE_2D, page.tex_id);
         glTexImage2D(GL_TEXTURE_2D, 0, fi.internalformat, GE_ATLAS_SIZE, GE_ATLAS_SIZE,
-                     0, fi.format, fi.type, NULL);
+                     0, fi.format, fi.type, data);
+        free(data);
         tex_linear_clamp();
     }
 

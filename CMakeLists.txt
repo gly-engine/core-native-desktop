@@ -9,6 +9,7 @@ endif()
 project("${GECND_PROJECT_NAME}" LANGUAGES C)
 include(FetchContent)
 include(ExternalProject)
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
@@ -22,11 +23,31 @@ set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
 set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
 
-option(GECND_EXPORTS "allow rdynamic" OFF)
 option(GECND_AS_LIBRARY "build static lib gecnd intead binary" OFF)
-option(GECND_NO_SANITIZE "disable UB flags on clang/llvm" OFF)
+option(GECND_USE_COMPAT "build to old libc devices" OFF)
 option(GECND_USE_PROFILER "use google gperftools" OFF)
-option(GECND_MOCK_HTTP "add package http but raise error on request" OFF)
+option(GECND_USE_GL_EGL "add opengl backend with egl context" ON)
+option(GECND_USE_GL_SDL2 "add opengl backend with sdl2 context" ON)
+option(GECND_USE_GL_GLFW "add opengl backend with glfw context" ON)
+option(GECND_USE_GL_WAYLAND "add opengl backend with wayland context" OFF)
+option(GECND_USE_LUA51_32BITS "prefer lua 5.1 (integer only) intead lua 5.4" OFF)
+option(GECND_USE_LUA51 "prefer lua 5.1 instead lua 5.4" OFF)
+option(GECND_USE_LUAJIT "prefer lua jit instead lua 5.4" OFF)
+option(GECND_USE_LUAROBLOX "prefer luau instead lua 5.4" OFF)
+option(GECND_USE_LUA_CJSON "add cjson library to lua" ON)
+option(GECND_USE_FFI "fetch and build ffi (needs: autoconf, automake, libtool)" OFF)
+option(GECND_USE_FFMPEG "fetch ffmpeg for dyn linking" ON)
+option(GECND_USE_FFMPEG4 "fetch ffmpeg 4 instead 7" OFF)
+option(GECND_BUILD_FFMPEG "build static ffmpeg" OFF)
+option(GECND_USE_JPEGTURBO "use libjpeg-turbo to decode jpeg straight to planar YUV" ON)
+option(GECND_USE_WUFFS "use wuffs for fast PNG decode" ON)
+option(GECND_USE_QRCODE "fetch qrcodegen" ON)
+option(GECND_USE_WARMCAT "use warmcat to http/webosocket client/server" ON)
+option(GECND_USE_MBEDTLS "use mbedtls backend for ssl" ON)
+option(GECND_USE_SQLITE3 "fetch and build sqlite3" ON)
+option(GECND_USE_LIBUV "fetch and build libuv" ON)
+option(GECND_USE_ZLIB "fetch and build zlib" ON)
+option(GECND_USE_PLUGIN_LIBRETRO "build plugin libretro for core native" OFF)
 
 # EXE
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
@@ -52,10 +73,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE gecnd_header gecnd_cc_flags)
 if(LINUX)
     file(GLOB_RECURSE SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_*/driver_linux_*.c")
     target_sources(${PROJECT_NAME} PRIVATE "${SOURCES}")
-endif()
-
-if(GECND_NO_SANITIZE)
-    target_compile_options(gecnd_cc_flags INTERFACE -fno-sanitize=all -fno-sanitize-recover=all)
 endif()
 
 if(GECND_USE_PROFILER)
@@ -88,125 +105,9 @@ set(TOMLC17_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/toml")
 set(TOMLC17_DOWNLOAD "https://github.com/cktan/tomlc17/archive/refs/tags/R260323.tar.gz")
 target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE "${TOMLC17_DIR}/src")
 
-# Raylib
-set(RAYLIB_VERSION "5.5")
-set(RAYLIB_DIR "${CMAKE_SOURCE_DIR}/vendor/raylib")
-set(RAYLIB_DOWNLOAD "https://github.com/raysan5/raylib/releases/download/${RAYLIB_VERSION}/raylib-${RAYLIB_VERSION}_linux_amd64.tar.gz")
-option(GECND_USE_RAYLIB "Use Raylib backend" OFF)
-
-# SDL2
-set(SDL_VERSION "2.30.6")
-set(SDLTTF_VERSION "2.22.0")
-set(SDL_DIR "${CMAKE_SOURCE_DIR}/vendor/SDL2")
-set(SDLTTF_DIR "${CMAKE_SOURCE_DIR}/vendor/SDL_ttf")
-set(SDL2_TEST OFF CACHE BOOL "" FORCE)
-set(SDL2_SHARED OFF CACHE BOOL "" FORCE)
-set(SDL2_STATIC ON CACHE BOOL "" FORCE)
-set(SDL2TTF_VENDORED ON CACHE BOOL "" FORCE)
-set(SDL2TTF_HARFBUZZ OFF CACHE BOOL "" FORCE)
-set(SDL2TTF_INSTALL OFF CACHE BOOL "" FORCE)
-set(SDL2TTF_SAMPLES OFF CACHE BOOL "" FORCE)
-option(GECND_USE_SDL2 "Use SDL backend" OFF)
-
-# OpenGLES2
-set(GLAD_DOWNLOAD "https://github.com/gly-engine/archive/archive/refs/heads/glad.tar.gz")
-set(GLAD_DIR "${CMAKE_SOURCE_DIR}/vendor/opengl/glad")
-set(GLFW_VERSION "3.4")
-set(GLFW_DIR "${CMAKE_SOURCE_DIR}/vendor/opengl/glfw")
-set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
-option(GECND_USE_OPENGL "Use OpenGL + GLFW backend" ON)
-option(GECND_USE_EGL"Use OpenGL ES + EGL for backend" OFF)
-
-# Xorg
-set(X11_VERSION "1.8.4")
-set(X11_DOWNLOAD "https://github.com/mirror/libX11/archive/refs/tags/libX11-${X11_VERSION}.tar.gz")
-set(X11_DIR "${CMAKE_SOURCE_DIR}/vendor/opengl/x11")
-set(X11_X11_INCLUDE_PATH "${X11_DIR}/include")
-set(X11_X11_LIB "${X11_DIR}/lib/libX11.so")
-set(XPROTO_VERSION "2025.1")
-set(XPROTO_DOWNLOAD "https://gitlab.freedesktop.org/xorg/proto/xorgproto/-/archive/xorgproto-${XPROTO_VERSION}/xorgproto-xorgproto-${XPROTO_VERSION}.tar.gz")
-set(XPROTO_DIR "${CMAKE_SOURCE_DIR}/vendor/opengl/xorgproto")
-set(XRANDR_VERSION "1.5.5")
-set(XRANDR_DOWNLOAD "https://gitlab.freedesktop.org/xorg/lib/libxrandr/-/archive/libXrandr-${XRANDR_VERSION}/libxrandr-libXrandr-${XRANDR_VERSION}.tar.gz")
-set(XRANDR_DIR "${CMAKE_SOURCE_DIR}/vendor/opengl/xrandr")
-set(XINERAMA_VERSION "1.1.4")
-set(XINERAMA_DOWNLOAD "https://gitlab.freedesktop.org/xorg/lib/libxinerama/-/archive/libXinerama-${XINERAMA_VERSION}/libxinerama-libXinerama-${XINERAMA_VERSION}.tar.gz")
-set(XINERAMA_DIR "${CMAKE_SOURCE_DIR}/vendor/opengl/xinerama")
-set(XKB_VERSION "1.0.9")
-set(XKB_DOWNLOAD "https://gitlab.freedesktop.org/xorg/lib/libxkbfile/-/archive/libxkbfile-${XKB_VERSION}/libxkbfile-libxkbfile-${XKB_VERSION}.tar.gz")
-set(XKB_DIR "${CMAKE_SOURCE_DIR}/vendor/opengl/xkbfile")
-set(XCURSOR_VERSION "1.1.12")
-set(XCURSOR_DOWNLOAD "https://gitlab.freedesktop.org/xorg/lib/libxcursor/-/archive/libXcursor-${XCURSOR_VERSION}/libxcursor-libXcursor-${XCURSOR_VERSION}.tar.gz")
-set(XCURSOR_DIR "${CMAKE_SOURCE_DIR}/vendor/opengl/xcursor")
-set(XI_VERSION "1.8.2")
-set(XI_DOWNLOAD "https://gitlab.freedesktop.org/xorg/lib/libxi/-/archive/libXi-${XI_VERSION}/libxi-libXi-${XI_VERSION}.tar.gz")
-set(XI_DIR "${CMAKE_SOURCE_DIR}/vendor/opengl/xi")
-set(XEXT_VERSION "1.2.0")  # XShape vem no Xext
-set(XEXT_DOWNLOAD "https://gitlab.freedesktop.org/xorg/lib/libXext/-/archive/libXext-${XEXT_VERSION}/libxext-libXext-${XEXT_VERSION}.tar.gz")
-set(XEXT_DIR "${CMAKE_SOURCE_DIR}/vendor/opengl/xext")
-set(XRENDER_VERSION "0.9.10")
-set(XRENDER_DOWNLOAD "https://gitlab.freedesktop.org/xorg/lib/libXrender/-/archive/libXrender-${XRENDER_VERSION}/libxrender-libXrender-${XRENDER_VERSION}.tar.gz")
-set(XRENDER_DIR "${CMAKE_SOURCE_DIR}/vendor/opengl/xrender")
-set(XFIXES_VERSION "6.0.0")
-set(XFIXES_DOWNLOAD "https://gitlab.freedesktop.org/xorg/lib/libxfixes/-/archive/libXfixes-${XFIXES_VERSION}/libxfixes-libXfixes-${XFIXES_VERSION}.tar.gz")
-set(XFIXES_DIR "${CMAKE_SOURCE_DIR}/vendor/opengl/xfixes")
-set(X11_Xrandr_INCLUDE_PATH "${XRANDR_DIR}/include")
-set(X11_Xinerama_INCLUDE_PATH "${XINERAMA_DIR}/include")
-set(X11_Xkb_INCLUDE_PATH "${XKB_DIR}/include")
-set(X11_Xcursor_INCLUDE_PATH "${XCURSOR_DIR}/include")
-set(X11_Xi_INCLUDE_PATH "${XI_DIR}/include")
-set(X11_Xshape_INCLUDE_PATH "${XEXT_DIR}/include")
-set(X11_Xrender_INCLUDE_PATH "${XRENDER_DIR}/include")
-set(X11_Xfixes_INCLUDE_PATH "${XFIXES_DIR}/include")
-set(X11_HEADERS "${X11_DIR}/include;${XPROTO_DIR}/include")
-set(X11_HEADERS_EXTRA "${X11_Xinerama_INCLUDE_PATH};${X11_Xinerama_INCLUDE_PATH};${X11_Xkb_INCLUDE_PATH};${X11_Xcursor_INCLUDE_PATH};${X11_Xi_INCLUDE_PATH};${X11_Xshape_INCLUDE_PATH};${X11_Xrender_INCLUDE_PATH};${X11_Xfixes_INCLUDE_PATH}")
-
-# FFMPEG
-set(FFMPEG_VERSION "7.0.2")
-set(FFMPEG4_VERSION "4.4.6")
-option(GECND_USE_FFMPEG "fetch ffmpeg" ON)
-option(GECND_USE_FFMPEG4 "use ffmpeg 4 instead 7" OFF)
-option(GECND_BUILD_FFMPEG "build static ffmpeg" OFF)
-
-# LibUV
-set(LIBUV_VERSION "v1.48.0")
-set(LIBUV_REPO "https://github.com/libuv/libuv.git")
-set(LIBUV_DIR "${CMAKE_SOURCE_DIR}/vendor/libuv")
-set(LIBUV_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-option(GECND_USE_LIBUV "fetch libuv" ON)
-
-# Zlib
-set(ZLIB_VERSION "v1.3.1")
-set(ZLIB_REPO "https://github.com/madler/zlib.git")
-set(ZLIB_DIR "${CMAKE_SOURCE_DIR}/vendor/zlib")
-set(ZLIB_ROOT "${ZLIB_DIR}" CACHE STRING "" FORCE)
-set(ZLIB_LIBRARY "${CMAKE_SOURCE_DIR}/build/_deps/zlib-build/libz.a" CACHE FILEPATH "")
-set(ZLIB_INCLUDE_DIR "${ZLIB_DIR}" CACHE PATH "")
-set(ZLIB_FOUND TRUE CACHE BOOL "")
-set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-option(GECND_USE_ZLIB "fetch zlib" ON)
-
 # Libretro 
 set(LIBRETRO_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/retroarch")
 set(LIBRETRO_DOWNLOAD "https://raw.githubusercontent.com/libretro/RetroArch/ee3eae34c425a1645b923395854dda7f2543df31/libretro-common/include/libretro.h")
-
-# FontStash
-set(FONTSTASH_DIR "${CMAKE_SOURCE_DIR}/vendor/mono/fontstash")
-set(FONTSTASH_DOWNLOAD "https://github.com/memononen/fontstash/archive/b5ddc9741061343740d85d636d782ed3e07cf7be.tar.gz")
-target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE "${FONTSTASH_DIR}/src")
-
-# Fonts
-set(FONTS_DIR "${CMAKE_SOURCE_DIR}/vendor/fonts")
-set(FONTS_INCLUDE_DIR "${CMAKE_BINARY_DIR}/include/gecnd")
-set(FONTS_HEADER "${FONTS_INCLUDE_DIR}/notosans.h")
-set(FONTS_ROBOTO_REGULAR_HEADER "${FONTS_INCLUDE_DIR}/roboto_regular.h")
-set(FONTS_DOWNLOAD "https://github.com/gly-engine/archive/archive/refs/heads/fonts.zip")
-set(FONTS_ROBOTO_REGULAR_DOWNLOAD "https://cdn.jsdelivr.net/npm/roboto-font@0.1.0/fonts/Roboto/roboto-regular-webfont.ttf")
 
 # Google GPERF/PPERF
 set(GPERFTOOLS_VERSION "gperftools-2.18")
@@ -221,358 +122,40 @@ set(gperftools_enable_libunwind ON CACHE BOOL "" FORCE)
 set(gperftools_enable_stacktrace_via_backtrace ON CACHE BOOL "" FORCE)
 set(gperftools_enable_frame_pointers ON CACHE BOOL "" FORCE)
 
-# Warmcat 
-set(WARMCAT_VERSION "4.5.8")
-set(WARMCAT_DOWNLOAD "https://github.com/warmcat/libwebsockets/archive/refs/tags/v${WARMCAT_VERSION}.tar.gz")
-set(WARMCAT_DIR "${CMAKE_SOURCE_DIR}/vendor/warmcat")
-set(WARMCAT_BIN "${CMAKE_BINARY_DIR}/warmcat")
-option(GECND_USE_WARMCAT "use warmcat to http/webosocket client/server" ON)
-
-# MbedTLS
-set(MBEDTLS_VERSION "mbedtls-3.6.4")
-set(MBEDTLS_REPO "https://github.com/Mbed-TLS/mbedtls.git")
-set(MBEDTLS_DIR "${CMAKE_SOURCE_DIR}/vendor/web/mbedtls")
-set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
-option(GECND_USE_MBEDTLS "use mbedtls backend for ssl" OFF)
-
-# Plugins
-option(GECND_USE_PLUGIN_CHROMIUM "build plugin chromium for core native" OFF)
-option(GECND_USE_PLUGIN_WPA "build plugin wpa for core native" OFF)
-option(GECND_USE_PLUGIN_LIBRETRO "build plugin libretro for core native" OFF)
-
 if(NOT EXISTS "${KLIB_DIR}")
     FetchContent_Populate(klib URL "${KLIB_DOWNLOAD}" SOURCE_DIR ${KLIB_DIR})
 endif()
-
 if(NOT EXISTS "${STB_DIR}")
     FetchContent_Populate(stb URL "${STB_DOWNLOAD}" SOURCE_DIR ${STB_DIR})
 endif()
-
 if(NOT EXISTS "${TOMLC17_DIR}")
     FetchContent_Populate(tomlc17 URL "${TOMLC17_DOWNLOAD}" SOURCE_DIR ${TOMLC17_DIR})
 endif()
 add_library(tomlc17 STATIC "${TOMLC17_DIR}/src/tomlc17.c")
 target_link_libraries(${PROJECT_NAME} PRIVATE tomlc17)
 
-if(NOT EXISTS "${FONTS_DIR}/Noto_Sans/NotoSans-Regular.ttf")
-    FetchContent_Populate(fonts URL "${FONTS_DOWNLOAD}" SOURCE_DIR ${FONTS_DIR})
-endif()
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/libgl.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/libffmpeg.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/libuv.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/libz.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/libwarmcat.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/libffi.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/libfreetype.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/libjpeg.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/liblua.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/libqr.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/libsqlite3.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/libwuffs.cmake)
 
-file(MAKE_DIRECTORY "${FONTS_DIR}/Roboto")
-
-if(NOT EXISTS "${FONTS_DIR}/Roboto/roboto-regular-webfont.ttf")
-    file(DOWNLOAD
-        "${FONTS_ROBOTO_REGULAR_DOWNLOAD}"
-        "${FONTS_DIR}/Roboto/roboto-regular-webfont.ttf"
-        TLS_VERIFY ON
-    )
-endif()
-
-
-add_custom_command(
-    OUTPUT ${FONTS_HEADER}
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${FONTS_INCLUDE_DIR}"
-    COMMAND xxd -i "Noto_Sans/NotoSans-Regular.ttf" > ${FONTS_HEADER}
-    COMMENT "Generating Noto Sans font header"
-    WORKING_DIRECTORY ${FONTS_DIR}
-)
-
-add_custom_command(
-    OUTPUT ${FONTS_ROBOTO_REGULAR_HEADER}
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${FONTS_INCLUDE_DIR}"
-    COMMAND xxd -i "Roboto/roboto-regular-webfont.ttf" > ${FONTS_ROBOTO_REGULAR_HEADER}
-    COMMENT "Generating Roboto regular font header"
-    WORKING_DIRECTORY ${FONTS_DIR}
-)
-
-
-add_custom_target(gecnd_fonts_headers DEPENDS
-    ${FONTS_HEADER}
-    ${FONTS_ROBOTO_REGULAR_HEADER}
-)
-add_dependencies(${PROJECT_NAME} gecnd_fonts_headers)
-
-if(GECND_USE_RAYLIB)
-    if(NOT EXISTS "${RAYLIB_DIR}")
-        FetchContent_Populate(dep_raylib URL "${RAYLIB_DOWNLOAD}" SOURCE_DIR ${RAYLIB_DIR})
-    endif()
-    add_library(raylib-static STATIC IMPORTED)
-    set_target_properties(raylib-static PROPERTIES IMPORTED_LOCATION "${RAYLIB_DIR}/lib/libraylib.a")
-    file(GLOB_RECURSE SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_Raylib/*.c")
-    target_sources(${PROJECT_NAME} PRIVATE "${SOURCES}")
-    target_link_libraries(${PROJECT_NAME} PRIVATE raylib-static)
-    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${RAYLIB_DIR}/include)
-    #todo cross linking
-endif()
-
-if(GECND_USE_SDL2)
-    FetchContent_Declare(
-        dep_sdl2
-        GIT_REPOSITORY https://github.com/libsdl-org/SDL
-        GIT_TAG "release-${SDL_VERSION}"
-        SOURCE_DIR ${SDL_DIR}
-    )
-    FetchContent_Declare(
-        dep_sdl2_ttf
-        GIT_REPOSITORY https://github.com/libsdl-org/SDL_ttf
-        GIT_TAG "release-${SDLTTF_VERSION}"
-        SOURCE_DIR ${SDLTTF_DIR}
-    )
-    FetchContent_MakeAvailable(dep_sdl2 dep_sdl2_ttf)
-    file(GLOB_RECURSE SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_SDL2/*.c")
-    target_sources(${PROJECT_NAME} PRIVATE "${SOURCES}")
-    target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2-static SDL2_ttf::SDL2_ttf-static)
-    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${SDLTTF_DIR};${SDL_DIR}/include)
-endif()
-
-if(GECND_USE_OPENGL)
-    file(GLOB_RECURSE gecnd_bakend_files "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_OpenGL/*/*.c")
-    if (NOT EXISTS "${GLAD_DIR}/include")
-        FetchContent_Populate(glad URL ${GLAD_DOWNLOAD} SOURCE_DIR ${GLAD_DIR})
-    endif()
-    if(GECND_USE_EGL)
-        add_library(glad_egl STATIC "${GLAD_DIR}/src/gles2.c;${GLAD_DIR}/src/egl.c")
-        target_include_directories(glad_egl SYSTEM PRIVATE "${GLAD_DIR}/include")
-        target_link_libraries(${PROJECT_NAME} PRIVATE glad_egl)
-        list(REMOVE_ITEM gecnd_bakend_files "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_OpenGL/window/glfw.c")
-        set_source_files_properties(${gecnd_bakend_files} PROPERTIES COMPILE_DEFINITIONS "GECND_OPENGLES=1")
-    else()
-        if (NOT EXISTS "${X11_DIR}/include")
-            FetchContent_Populate(x11 URL ${X11_DOWNLOAD} SOURCE_DIR ${X11_DIR})
-        endif()
-        if (NOT EXISTS "${XPROTO_DIR}/include")
-            FetchContent_Populate(xproto URL ${XPROTO_DOWNLOAD} SOURCE_DIR ${XPROTO_DIR})
-        endif()
-        if (NOT EXISTS "${XRANDR_DIR}/include")
-            FetchContent_Populate(xrandr URL ${XRANDR_DOWNLOAD} SOURCE_DIR ${XRANDR_DIR})
-        endif()
-        if (NOT EXISTS "${XINERAMA_DIR}/include")
-            FetchContent_Populate(xinerama URL ${XINERAMA_DOWNLOAD} SOURCE_DIR ${XINERAMA_DIR})
-        endif()
-        if (NOT EXISTS "${XKB_DIR}/include")
-            FetchContent_Populate(xkbfile URL ${XKB_DOWNLOAD} SOURCE_DIR ${XKB_DIR})
-        endif()
-        if (NOT EXISTS "${XCURSOR_DIR}/include")
-            FetchContent_Populate(xcursor URL ${XCURSOR_DOWNLOAD} SOURCE_DIR ${XCURSOR_DIR})
-        endif()
-        if (NOT EXISTS "${XI_DIR}/include")
-            FetchContent_Populate(xi URL ${XI_DOWNLOAD} SOURCE_DIR ${XI_DIR})
-        endif()
-        if (NOT EXISTS "${XEXT_DIR}/include")
-            FetchContent_Populate(xext URL ${XEXT_DOWNLOAD} SOURCE_DIR ${XEXT_DIR})
-        endif()
-        if (NOT EXISTS "${XRENDER_DIR}/include")
-            FetchContent_Populate(xext URL ${XRENDER_DOWNLOAD} SOURCE_DIR ${XRENDER_DIR})
-        endif()
-        if (NOT EXISTS "${XFIXES_DIR}/include")
-            FetchContent_Populate(xext URL ${XFIXES_DOWNLOAD} SOURCE_DIR ${XFIXES_DIR})
-        endif()
-        FetchContent_Declare(
-            glfw
-            GIT_REPOSITORY https://github.com/glfw/glfw
-            GIT_TAG ${GLFW_VERSION}
-            SOURCE_DIR ${GLFW_DIR}
-        )
-        FetchContent_MakeAvailable(glfw)
-        add_library(glad_gl STATIC "${GLAD_DIR}/src/gl.c")
-        target_link_libraries(${PROJECT_NAME} PRIVATE glfw glad_gl)
-        target_include_directories(glfw SYSTEM PRIVATE "${X11_HEADERS};${X11_HEADERS_EXTRA}")
-        target_include_directories(glad_gl SYSTEM PRIVATE "${GLAD_DIR}/include")
-        list(REMOVE_ITEM gecnd_bakend_files "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_OpenGL/window/egl.c")
-        set_source_files_properties(${gecnd_bakend_files} PROPERTIES COMPILE_DEFINITIONS "GECND_OPENGLES=0")
-        set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/service_keymap.c"
-            PROPERTIES COMPILE_DEFINITIONS "GLFW_DEFAULT_INPUT_CLASS=\"void://glfw\""
-        )
-    endif()
-
-    file(GLOB_RECURSE BACKEND_SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_OpenGL/*/*.c")
-    file(GLOB_RECURSE GLSL_SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_OpenGL/shadder/*")
-    foreach(GLSL ${GLSL_SOURCES})
-        string(REGEX REPLACE "^.*Backend_OpenGL/?" "" GLSL_SHORT "${GLSL}")
-        string(REGEX REPLACE "[./]" "_" GLSL_NAME "${GLSL_SHORT}")
-        set(GLSL_OUT ${CMAKE_BINARY_DIR}/include/gecnd/${GLSL_NAME}.h)
-        add_custom_command(
-            OUTPUT ${GLSL_OUT}
-            COMMAND xxd -i ${GLSL_SHORT} > ${GLSL_OUT}
-            DEPENDS ${GLSL}
-            COMMENT "Generating header ${GLSL_OUT}"
-            WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/lib/Backend_OpenGL"
-        )
-        list(APPEND GENERATED_HEADERS ${GLSL_OUT})
-    endforeach()
-    
-    add_custom_target(gecnd_glsl_headers DEPENDS ${GENERATED_HEADERS})
-    add_dependencies(${PROJECT_NAME} gecnd_glsl_headers)
-    set_source_files_properties(${gecnd_bakend_files} PROPERTIES INCLUDE_DIRECTORIES "${GLAD_DIR}/include;${GLFW_DIR}/include")
-    target_sources(${PROJECT_NAME} PRIVATE "${gecnd_bakend_files}")
-endif()
-
-if(GECND_USE_FFMPEG4)
-    set(FFMPEG_DOWNLOAD "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG4_VERSION}.tar.gz")
-    set(FFMPEG_DIR "${CMAKE_SOURCE_DIR}/vendor/avlib/ffmpeg4")
-else()
-    set(FFMPEG_DOWNLOAD "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz")
-    set(FFMPEG_DIR "${CMAKE_SOURCE_DIR}/vendor/avlib/ffmpeg7")
-endif()
-
-if(GECND_USE_FFMPEG)
-    FILE(GLOB gecnd_ffmpeg_files "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Media/driver_av_*.c")
-    list(REMOVE_ITEM gecnd_ffmpeg_files "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Media/driver_av_stub.c")
-    if (NOT EXISTS "${FFMPEG_DIR}/libavutil/avconfig.h")
-        FetchContent_Populate(dep_ffmpeg URL ${FFMPEG_DOWNLOAD} SOURCE_DIR ${FFMPEG_DIR})
-        execute_process(
-            COMMAND ./configure --prefix=${FFMPEG_DIR}/build --enable-static --disable-shared
-            --disable-bzlib --disable-lzma --disable-x86asm --disable-libdrm
-            WORKING_DIRECTORY ${FFMPEG_DIR}
-            COMMAND_ERROR_IS_FATAL ANY
-        )
-    endif()
-    if(GECND_BUILD_FFMPEG)
-        if (NOT EXISTS "${FFMPEG_DIR}/libavcodec/libavcodec.a")
-            execute_process(
-                COMMAND ${CMAKE_MAKE_PROGRAM} -j ${J}
-                WORKING_DIRECTORY ${FFMPEG_DIR}
-                COMMAND_ERROR_IS_FATAL ANY
-            )
-        endif()
-        FILE(GLOB ffmpeg_files "${FFMPEG_DIR}/*/*.a")
-        target_link_libraries(${PROJECT_NAME} PRIVATE "${ffmpeg_files}")
-        list(REMOVE_ITEM gecnd_ffmpeg_files "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Media/driver_av_dym.c")
-    else()
-        list(REMOVE_ITEM gecnd_ffmpeg_files "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Media/driver_av_static.c")
-    endif()
-    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${FFMPEG_DIR})
-    target_sources(${PROJECT_NAME} PRIVATE "${gecnd_ffmpeg_files}")
-else()
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Media/driver_av_stub.c")
-endif()
-
-if (GECND_USE_LIBUV)
-    FetchContent_Declare(uv_a GIT_REPOSITORY ${LIBUV_REPO} GIT_TAG ${LIBUV_VERSION} SOURCE_DIR ${LIBUV_DIR})
-    FetchContent_MakeAvailable(uv_a)
-    target_link_libraries(${PROJECT_NAME} PRIVATE uv_a)
-    target_compile_options(uv_a PRIVATE ${gecnd_cc_options})
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_IO/driver_fs_uv.c")
-endif()
-
-if((GECND_USE_OPENGL OR GECND_USE_WARMCAT) AND GECND_USE_ZLIB)
-    FetchContent_Declare(zlib GIT_REPOSITORY ${ZLIB_REPO} GIT_TAG ${ZLIB_VERSION} SOURCE_DIR ${ZLIB_DIR})
-    FetchContent_MakeAvailable(zlib)
-    target_link_libraries(${PROJECT_NAME} PRIVATE zlibstatic)
-    target_compile_options(zlibstatic PRIVATE ${gecnd_cc_options})
-    set_target_properties(zlib PROPERTIES EXCLUDE_FROM_ALL TRUE)
-    add_library(ZLIB::ZLIB ALIAS zlibstatic)
-endif()
-
-if(GECND_USE_OPENGL AND NOT EXISTS "${FONTSTASH_DIR}")
-    FetchContent_Populate(fontstash URL "${FONTSTASH_DOWNLOAD}" SOURCE_DIR ${FONTSTASH_DIR})
-endif()
-
-if((GECND_USE_WARMCAT) AND GECND_USE_MBEDTLS)
-    FetchContent_Declare(mbedtls GIT_REPOSITORY ${MBEDTLS_REPO} GIT_TAG ${MBEDTLS_VERSION} SOURCE_DIR "${MBEDTLS_DIR}")
-    FetchContent_MakeAvailable(mbedtls)
-endif()
-
-if(GECND_USE_WARMCAT)
-    if(NOT EXISTS ${WARMCAT_DIR})
-        FetchContent_Populate(libwebsockets_dep URL "${WARMCAT_DOWNLOAD}" SOURCE_DIR "${WARMCAT_DIR}")            
-    endif()
-    file(MAKE_DIRECTORY ${WARMCAT_BIN}/include)
-    ExternalProject_Add(libwebsockets_proj
-        SOURCE_DIR ${WARMCAT_DIR}
-        CMAKE_ARGS
-            ${ZIG_TARGET_FLAG}
-            -DCMAKE_INSTALL_PREFIX=${WARMCAT_BIN}
-            -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-            -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
-            -DLWS_WITH_STATIC=ON
-            -DLWS_WITH_SHARED=OFF
-            -DLWS_ROLE_H1=ON
-            -DLWS_ROLE_WS=ON
-            -DLWS_ROLE_H2=ON
-            -DLWS_ROLE_MQTT=OFF
-            -DLWS_ROLE_RAW_FILE=OFF
-            -DLWS_ROLE_RAW_PROXY=OFF
-            -DLWS_WITH_SSL=${GECND_USE_MBEDTLS}
-            -DLWS_WITH_MBEDTLS=${GECND_USE_MBEDTLS}
-            -DLWS_HAVE_MBEDTLS_NET_SOCKETS=ON
-            -DLWS_HAVE_MBEDTLS_SSL_NEW_SESSION_TICKET=ON
-            -DLWS_HAVE_mbedtls_md_setup=ON
-            -DLWS_HAVE_mbedtls_ssl_conf_alpn_protocols=ON
-            -DLWS_HAVE_mbedtls_ssl_get_alpn_protocol=ON
-            -DLWS_WITH_OPENSSL=OFF
-            -DLWS_WITH_WOLFSSL=OFF
-            -DLWS_WITH_MINIMAL_EXAMPLES=OFF
-            -DLWS_WITHOUT_TESTAPPS=ON
-            -DLWS_WITHOUT_TEST_SERVER=ON
-            -DLWS_WITHOUT_TEST_SERVER_EXTPOLL=ON
-            -DLWS_WITHOUT_TEST_PING=ON
-            -DLWS_WITHOUT_TEST_CLIENT=ON
-            -DLWS_WITH_PLUGINS=OFF
-            -DLWS_WITH_PLUGINS_BUILTIN=OFF
-            -DLWS_WITH_CGI=OFF
-            -DLWS_WITH_HTTP_PROXY=OFF
-            -DLWS_WITH_HTTP_BASIC_AUTH=OFF
-            -DLWS_WITH_HTTP_UNCOMMON_HEADERS=ON
-            -DLWS_WITH_ZIP_FOPS=OFF
-            -DLWS_WITH_JPEG=OFF
-            -DLWS_WITH_PNG=OFF
-            -DLWS_WITH_DLO=OFF
-            -DLWS_WITH_LHP=OFF
-            -DLWS_WITH_SECURE_STREAMS=OFF
-            -DLWS_WITH_SECURE_STREAMS_PROXY_API=OFF
-            -DLWS_WITH_SECURE_STREAMS_STATIC_POLICY_ONLY=OFF
-            -DLWS_WITH_STRUCT_JSON=OFF
-            -DLWS_WITH_STRUCT_SQLITE3=OFF
-            -DLWS_WITH_CBOR=OFF
-            -DLWS_WITH_CBOR_FLOAT=OFF
-            -DLWS_WITH_DISKCACHE=OFF
-            -DLWS_WITH_THREADPOOL=OFF
-            -DLWS_WITH_LIBUV=ON
-            -DLWS_WITH_LIBEVENT=OFF
-            -DLWS_WITH_LIBEV=OFF
-            -DLWS_WITH_GLIB=OFF
-            -DLWS_WITH_ZLIB=ON
-            -DLWS_WITH_BUNDLED_ZLIB=OFF
-            -DLWS_WITHOUT_EXTENSIONS=ON
-            -DZLIB_ROOT=${ZLIB_DIR}
-            -DZLIB_LIBRARY=${ZLIB_LIBRARY}
-            -DZLIB_INCLUDE_DIR=${ZLIB_INCLUDE_DIR}
-            -DZLIB_FOUND=TRUE
-            -DLIBUV_INCLUDE_DIRS=${LIBUV_DIR}/include
-            -DLWS_MBEDTLS_INCLUDE_DIRS=${MBEDTLS_DIR}/include
-        UPDATE_COMMAND ""
-        INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install
-    )
-    add_library(libwebsockets STATIC IMPORTED)
-    set_target_properties(libwebsockets PROPERTIES
-        IMPORTED_LOCATION ${WARMCAT_BIN}/lib/libwebsockets.a
-        INTERFACE_INCLUDE_DIRECTORIES ${WARMCAT_BIN}/include
-    )
-    add_dependencies(libwebsockets libwebsockets_proj)
-    add_dependencies(${PROJECT_NAME} libwebsockets)
-    target_link_libraries(${PROJECT_NAME} PRIVATE libwebsockets)
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Web/driver_server_uv_warmcat.c")
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Web/driver_client_uv_warmcat.c")
-endif()
-
-if((GECND_USE_WARMCAT) AND GECND_USE_MBEDTLS)
-    target_link_libraries(${PROJECT_NAME} PRIVATE mbedtls mbedx509 mbedcrypto)
-    set_source_files_properties(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Web/driver_server_uv_warmcat.c" PROPERTIES COMPILE_DEFINITIONS "GECND_HAS_SSL=1")
-    set_source_files_properties(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Web/driver_client_uv_warmcat.c" PROPERTIES COMPILE_DEFINITIONS "GECND_HAS_SSL=1")
-endif()
-
-# todo: lirc only linux
 # todo: move aui to private repo
 target_sources(${PROJECT_NAME} PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_void.c"
-    "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_lirc.c"
     "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_serial.c"
     "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_Inputs/driver_read.c"
 )
 
-if(GECND_MOCK_HTTP)
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Api/http_mock.c")
+if (GECND_USE_COMPAT AND NOT GECND_USE_LUAJIT)
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/lib/ThirdParty_Compat/gcc_scanf.c")
 endif()
 
 if(GECND_USE_PROFILER)
@@ -582,34 +165,6 @@ if(GECND_USE_PROFILER)
     target_link_libraries(${PROJECT_NAME} PRIVATE profiler)
 endif()
 
-if(GECND_USE_PLUGIN_CHROMIUM)
-    add_library(chromium_gecnd SHARED "${CMAKE_CURRENT_LIST_DIR}/plugins/chromium/main.c")
-    target_include_directories(chromium_gecnd PRIVATE ${LIBUV_DIR}/include)
-    target_link_libraries(chromium_gecnd PRIVATE gecnd_header gecnd_lua)
-    set_target_properties(chromium_gecnd PROPERTIES
-        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-    )
-endif()
-
-if(GECND_USE_PLUGIN_WPA)
-    add_library(wpa_gecnd SHARED "${CMAKE_CURRENT_LIST_DIR}/plugins/wpa/main.c")
-    target_link_libraries(wpa_gecnd PRIVATE gecnd_header)
-    set_target_properties(wpa_gecnd PROPERTIES
-        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-    )
-endif()
-
-include(${CMAKE_CURRENT_LIST_DIR}/cmake/libffi.cmake)
-include(${CMAKE_CURRENT_LIST_DIR}/cmake/libjpeg.cmake)
-include(${CMAKE_CURRENT_LIST_DIR}/cmake/liblua.cmake)
-include(${CMAKE_CURRENT_LIST_DIR}/cmake/libqr.cmake)
-include(${CMAKE_CURRENT_LIST_DIR}/cmake/libsqlite3.cmake)
-include(${CMAKE_CURRENT_LIST_DIR}/cmake/libwuffs.cmake)
-
 if(GECND_USE_PLUGIN_LIBRETRO)
     if(NOT EXISTS "${LIBRETRO_DIR}/libretro.h")
         file(DOWNLOAD "${LIBRETRO_DOWNLOAD}" "${LIBRETRO_DIR}/libretro.h")
@@ -617,7 +172,7 @@ if(GECND_USE_PLUGIN_LIBRETRO)
     file(GLOB_RECURSE libretro_files "${CMAKE_CURRENT_LIST_DIR}/plugins/libretro/*.c")
     add_library(libretro_gecnd SHARED "${libretro_files}")
     target_include_directories(libretro_gecnd PRIVATE "${LIBRETRO_DIR}")
-    target_link_libraries(libretro_gecnd PRIVATE gecnd_header gecnd_lua)
+    target_link_libraries(libretro_gecnd PRIVATE gecnd_header)
     set_target_properties(libretro_gecnd PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
@@ -643,16 +198,12 @@ set_target_properties(${PROJECT_NAME} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAK
 target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
 target_link_libraries(${PROJECT_NAME} PRIVATE m)
 
-if(GECND_EXPORTS)                                                                                                                                                                                 
-  set_target_properties(${PROJECT_NAME} PROPERTIES ENABLE_EXPORTS ON)
-endif()  
-
 if (GECND_AS_LIBRARY)
 elseif(DEFINED GECND_ENTRYPOINT AND GECND_ENTRYPOINT)
     target_sources(${PROJECT_NAME} PRIVATE "${GECND_ENTRYPOINT}")
-elseif (GECND_USE_LIBUV AND GECND_USE_OPENGL)
+elseif (GECND_USE_LIBUV AND (GECND_USE_GL_EGL OR GECND_USE_GL_GLFW))
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/src/main_uvsync.c")
-elseif (NOT GECND_USE_LIBUV AND GECND_USE_OPENGL)
+elseif (NOT GECND_USE_LIBUV AND (GECND_USE_GL_EGL OR GECND_USE_GL_GLFW))
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/src/main_basic.c")
 elseif (GECND_USE_LIBUV)
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/src/main_uv.c")

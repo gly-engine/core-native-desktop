@@ -87,6 +87,42 @@ static void traverse_registry(toml_datum_t node, const char *prefix)
     }
 }
 
+static char *expand_env_placeholders(const char *value)
+{
+    const char *cwd = NULL, *pwd = NULL;
+    gecnd_registry("get", "cwd", &cwd, NULL);
+    gecnd_registry("get", "pwd", &pwd, NULL);
+    if (!cwd) cwd = "";
+    if (!pwd) pwd = "";
+    size_t cwd_len = strlen(cwd);
+    size_t pwd_len = strlen(pwd);
+
+    size_t out_len = 0;
+    for (const char *p = value; *p; ) {
+        if      (strncmp(p, "{cwd}", 5) == 0) { out_len += cwd_len; p += 5; }
+        else if (strncmp(p, "{pwd}", 5) == 0) { out_len += pwd_len; p += 5; }
+        else                                  { out_len++; p++; }
+    }
+
+    char *out = malloc(out_len + 1);
+    size_t pos = 0;
+    for (const char *p = value; *p; ) {
+        if (strncmp(p, "{cwd}", 5) == 0) {
+            memcpy(out + pos, cwd, cwd_len);
+            pos += cwd_len;
+            p   += 5;
+        } else if (strncmp(p, "{pwd}", 5) == 0) {
+            memcpy(out + pos, pwd, pwd_len);
+            pos += pwd_len;
+            p   += 5;
+        } else {
+            out[pos++] = *p++;
+        }
+    }
+    out[pos] = '\0';
+    return out;
+}
+
 void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts)
 {
     if (!gly || !path) return;
@@ -107,11 +143,13 @@ void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts)
                                 envs.u.tab.key[i]);
                 continue;
             }
+            char *expanded = expand_env_placeholders(val.u.str.ptr);
 #if defined(_WIN32)
-            SetEnvironmentVariable(envs.u.tab.key[i], val.u.str.ptr);
+            SetEnvironmentVariable(envs.u.tab.key[i], expanded);
 #else
-            setenv(envs.u.tab.key[i], val.u.str.ptr, 1);
+            setenv(envs.u.tab.key[i], expanded, 1);
 #endif
+            free(expanded);
         }
     }
 

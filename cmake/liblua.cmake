@@ -1,10 +1,3 @@
-option(GECND_USE_LUA51 "prefer lua 5.1 instead lua 5.4" OFF)
-option(GECND_USE_LUAJIT "prefer lua jit instead lua 5.4" OFF)
-option(GECND_USE_LUAROBLOX "prefer luau instead lua 5.4" OFF)
-option(GECND_USE_LUA32BITS "lua puc uses float instead double" OFF)
-option(GECND_USE_LUA_CJSON "add cjson library to lua" ON)
-option(GECND_USE_LUA_BASE64 "add base64 library to lua" ON)
-
 set(LUA_COUNT 0)
 add_library(gecnd_lua INTERFACE)
 target_link_libraries(${PROJECT_NAME} PRIVATE gecnd_lua)
@@ -22,7 +15,7 @@ set(LUAJIT_VERSION "v2.0.5")
 set(LUAJIT_DIR "${CMAKE_SOURCE_DIR}/vendor/lua/luajit")
 set(LUAJIT_LIB1 "${CMAKE_SOURCE_DIR}/vendor/lua/luajit/src/libluajit.a")
 set(LUAJIT_LIB2 "${CMAKE_BINARY_DIR}/libluajit.a")
-set(LUAJIT_DOWNLOAD "https://github.com/luajit/luajit/archive/refs/tags/${LUAJIT_VERSION}.tar.gz")
+set(LUAJIT_DOWNLOAD "https://github.com/LuaJIT/LuaJIT/archive/a471ab78c7b670b4f92dae111fc3c96fb824c768.tar.gz")
 
 set(LUAROBLOX_VERSION "0.727")
 set(LUAROBLOX_DOWNLOAD "https://github.com/luau-lang/luau/archive/refs/tags/${LUAROBLOX_VERSION}.tar.gz")
@@ -31,10 +24,6 @@ set(LUAROBLOX_DIR "${CMAKE_SOURCE_DIR}/vendor/lua/luau")
 set(LUACJSON_VERSION "2.1.0.9")
 set(LUACJSON_DIR "${CMAKE_SOURCE_DIR}/vendor/lua/cjson")
 set(LUACJSON_DOWNLOAD "https://github.com/openresty/lua-cjson/archive/refs/tags/${LUACJSON_VERSION}.tar.gz")
-
-set(BASE64_VERSION "0.5.2")
-set(BASE64_DIR "${CMAKE_SOURCE_DIR}/vendor/base64")
-set(BASE64_REPO "https://github.com/aklomp/base64")
 
 if(NOT (EXISTS "${CMAKE_BINARY_DIR}/lua" OR EXISTS "${CMAKE_BINARY_DIR}/lua.exe"))
     FetchContent_Populate(lua54-host URL "${LUA54_DOWNLOAD}" SOURCE_DIR ${LUA54_HOST_DIR})
@@ -71,14 +60,17 @@ if(GECND_USE_LUAJIT)
     FetchContent_Populate(dep_luajit URL "${LUAJIT_DOWNLOAD}" SOURCE_DIR ${LUAJIT_DIR})
     if(TARGET)
         add_library(gcc_float STATIC ${CMAKE_CURRENT_LIST_DIR}/../lib/ThirdParty_Compat/gcc_float.c)
+        if (GECND_USE_COMPAT)
+            target_sources(gcc_float PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../lib/ThirdParty_Compat/gcc_scanf.c")
+        endif()
         target_link_libraries(gcc_float PRIVATE gecnd_cc_flags)
         target_link_libraries(${PROJECT_NAME} PRIVATE gcc_float)
         add_custom_command(
             OUTPUT ${LUAJIT_LIB2}
             COMMAND make
                 HOST_CC=${ZIG_BIN}/zig-cc-host
-                HOST_CFLAGS="--target=x86-linux-musl"
-                HOST_LDFLAGS="--target=x86-linux-musl"
+                HOST_CFLAGS="--target=${ZIG_HOST_TARGET}"
+                HOST_LDFLAGS="--target=${ZIG_HOST_TARGET}"
                 CC=${ZIG_BIN}/zig-cc
                 XCFLAGS="-DLUAJIT_NO_UNWIND"
                 TARGET_SYS=Linux
@@ -181,12 +173,4 @@ if(GECND_USE_LUA_CJSON)
     target_link_libraries(${PROJECT_NAME} PRIVATE lua_cjson-static)
     target_link_libraries("lua_cjson-static" PRIVATE gecnd_cc_flags)
     target_link_libraries("lua_cjson-static" PRIVATE gecnd_lua)
-endif()
-
-if(GECND_USE_LUA_BASE64)
-    FetchContent_Declare(base64 GIT_REPOSITORY ${BASE64_REPO} GIT_TAG v${BASE64_VERSION} SOURCE_DIR ${BASE64_DIR_DIR})
-    FetchContent_MakeAvailable(base64)    
-    target_link_libraries(${PROJECT_NAME} PRIVATE base64)
-    target_link_libraries(base64 PRIVATE gecnd_cc_flags)
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../lib/ThirdParty_Api/base64.c")
 endif()

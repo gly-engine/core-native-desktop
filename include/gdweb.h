@@ -80,6 +80,14 @@ typedef struct {
 const gdweb_server_t *gdweb_control_server(void);
 const gdweb_client_t *gdweb_control_client(void);
 
+/* Streams a GET over gdweb_control_client()->http(), accumulating the body
+ * and delivering it in one shot. `hint` is optional (e.g. a file extension
+ * already known by the caller); NULL derives it from the URL's last path
+ * segment. On failure calls on_done(NULL, 0, NULL, usr). Shared by
+ * Daemon_Img's and Daemon_Font's http resolvers. */
+typedef void (*gamely_fetch_done_cb)(const uint8_t *data, size_t len, const char *hint, void *usr);
+void gamely_web_fetch(const char *url, const char *hint, gamely_fetch_done_cb on_done, void *usr);
+
 void gdweb_loop_start(void *loop);
 void gdweb_loop_stop (void);
 
