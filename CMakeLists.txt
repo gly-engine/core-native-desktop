@@ -25,6 +25,7 @@ set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
 
 option(GECND_AS_LIBRARY "build static lib gecnd intead binary" OFF)
 option(GECND_USE_COMPAT "build to old libc devices" OFF)
+option(GECND_USE_MINIFY "obfuscate with eu-strip" OFF)
 option(GECND_USE_PROFILER "use google gperftools" OFF)
 option(GECND_USE_GL_EGL "add opengl backend with egl context" ON)
 option(GECND_USE_GL_SDL2 "add opengl backend with sdl2 context" ON)
@@ -73,6 +74,13 @@ target_link_libraries(${PROJECT_NAME} PRIVATE gecnd_header gecnd_cc_flags)
 if(LINUX)
     file(GLOB_RECURSE SOURCES "${CMAKE_CURRENT_LIST_DIR}/lib/Daemon_*/driver_linux_*.c")
     target_sources(${PROJECT_NAME} PRIVATE "${SOURCES}")
+endif()
+
+if(GECND_USE_MINIFY)
+    find_program(EU_STRIP eu-strip REQUIRED)
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${EU_STRIP} $<TARGET_FILE:${PROJECT_NAME}>
+    )
 endif()
 
 if(GECND_USE_PROFILER)
