@@ -151,8 +151,33 @@ void ge_atlas_release(int page_index, int ox, int oy, int w, int h) {
     kv_push(GEAtlasRect, p->free_rects, r);
 }
 
+static void destroy_page(GEAtlasPage *p) {
+    switch (p->color_format) {
+    case GECND_PIX_FMT_YUV420P:
+        glDeleteTextures(1, &p->tex_y);
+        glDeleteTextures(1, &p->tex_u);
+        glDeleteTextures(1, &p->tex_v);
+        break;
+    case GECND_PIX_FMT_ETC1:
+        for (int j = 0; j < (int)kv_size(p->etc1_texs); j++)
+            glDeleteTextures(1, &p->etc1_texs.a[j]);
+        kv_destroy(p->etc1_texs);
+        break;
+    default:
+        glDeleteTextures(1, &p->tex_id);
+        break;
+    }
+    kv_destroy(p->free_rects);
+}
+
 void ge_atlas_reset_images(void) {
     GLBackendState *s = geogl_get_state();
+    while (kv_size(s->atlas_pages)) {
+        GEAtlasPage *p = &s->atlas_pages.a[kv_size(s->atlas_pages) - 1];
+        if (p->reset_cursor_x || p->reset_cursor_y || p->reset_row_height) break;
+        destroy_page(p);
+        --s->atlas_pages.n;
+    }
     for (int i = 0; i < (int)kv_size(s->atlas_pages); i++) {
         GEAtlasPage *p = &s->atlas_pages.a[i];
         if (p->color_format == GECND_PIX_FMT_ETC1) continue;
@@ -220,22 +245,7 @@ void ge_atlas_terminate(void) {
     GLBackendState *s = geogl_get_state();
     for (int i = 0; i < (int)kv_size(s->atlas_pages); i++) {
         GEAtlasPage *p = &s->atlas_pages.a[i];
-        switch (p->color_format) {
-        case GECND_PIX_FMT_YUV420P:
-            glDeleteTextures(1, &p->tex_y);
-            glDeleteTextures(1, &p->tex_u);
-            glDeleteTextures(1, &p->tex_v);
-            break;
-        case GECND_PIX_FMT_ETC1:
-            for (int j = 0; j < (int)kv_size(p->etc1_texs); j++)
-                glDeleteTextures(1, &p->etc1_texs.a[j]);
-            kv_destroy(p->etc1_texs);
-            break;
-        default:
-            glDeleteTextures(1, &p->tex_id);
-            break;
-        }
-        kv_destroy(p->free_rects);
+        destroy_page(p);
     }
     kv_destroy(s->atlas_pages);
 }

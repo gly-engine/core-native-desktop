@@ -59,5 +59,6 @@ typedef struct {
 } gdmsp_control_t;
 
 const gdmsp_control_t *gdmsp_control(void);
+void gdmsp_stop_all(void);
 
 #endif

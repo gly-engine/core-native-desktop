@@ -1,12 +1,13 @@
 set(LIBFFI_VERSION "v3.6.0")
 set(LIBFFI_DIR "${CMAKE_SOURCE_DIR}/vendor/libffi")
 set(LIBFFI_BIN "${CMAKE_BINARY_DIR}/libffi")
-set(LIBFFI_DOWNLOAD "https://github.com/libffi/libffi/archive/refs/tags/${LIBFFI_VERSION}.tar.gz")
+set(LIBFFI_DOWNLOAD "https://github.com/libffi/libffi/archive/refs/tags/${LIBFFI_VERSION}.tar.gz" CACHE STRING "libffi source archive URL")
 set(LIBFFI_SOURCE "${CMAKE_CURRENT_LIST_DIR}/../lib/Daemon_Registry/driver_lua_ffi.c")
 
 set(LIBFFI_HOST_ARG "")
 if(ZIG_TARGET_TRIPLE)
-    set(LIBFFI_HOST_ARG "--host=${ZIG_TARGET_TRIPLE}")
+    string(REGEX REPLACE "\\.[0-9].*$" "" LIBFFI_HOST "${ZIG_TARGET_TRIPLE}")
+    set(LIBFFI_HOST_ARG "--host=${LIBFFI_HOST}")
 endif()
 
 if (GECND_USE_FFI)

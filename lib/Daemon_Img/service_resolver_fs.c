@@ -106,8 +106,9 @@ void gamely_resolver_image_file(const char *url, void *schema_usr,
         }
     }
 
-    /* try direct async read first */
-    if (gamely_daemon_fs_read(path, NULL, NULL, on_fs_read, ctx) == 0) return;
+    const char *direct[] = { path, NULL };
+    if (gamely_daemon_fs_search(direct, NULL, NULL,
+                                 GLY_FS_ONE_CB_ASYNC, on_found, ctx) == 0) return;
 
     /* fall back: search under cwd and exe_cwd */
     const char *paths[] = { cwd, exe, NULL };

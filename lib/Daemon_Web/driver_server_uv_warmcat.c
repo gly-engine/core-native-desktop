@@ -10,6 +10,7 @@
 
 #include "gecnd.h"
 #include "gdweb.h"
+#include "server_request.h"
 
 
 KHASH_MAP_INIT_INT(conn_map, struct lws *)
@@ -49,6 +50,7 @@ typedef struct {
     char           content_type[64]; /* vazio = default por tipo de resposta */
     unsigned char *body;
     size_t         body_len;
+    server_request_t request;
     /* stream-only */
     int             is_stream;
     int             headers_sent;
@@ -58,6 +60,14 @@ typedef struct {
     unsigned int    ring_rd;
     int             waiting_for_idr; /* 1: overflow ocorreu — descartar até próximo IDR */
 } http_session_t;
+
+static int http_reject(struct lws *wsi, http_session_t *session, int status) {
+    server_request_clear(&session->request);
+    session->status = status;
+    session->has_response = 1;
+    lws_callback_on_writable(wsi);
+    return 0;
+}
 
 typedef struct {
     unsigned char  pending[LWS_PRE + MSG_BUF];
@@ -361,6 +371,18 @@ static int callback_http(struct lws *wsi,
                 case LWSHUMETH_HEAD:    method = "HEAD";    break;
                 case LWSHUMETH_CONNECT: method = "CONNECT"; break;
             }
+            if (lws_hdr_total_length(wsi, WSI_TOKEN_HTTP_TRANSFER_ENCODING))
+                return http_reject(wsi, s, 501);
+            char length_header[32];
+            int length_size = lws_hdr_copy(wsi, length_header, sizeof(length_header), WSI_TOKEN_HTTP_CONTENT_LENGTH);
+            if (length_size < 0)
+                return http_reject(wsi, s, 400);
+            unsigned long long length = length_size ? strtoull(length_header, NULL, 10) : 0;
+            if (length) {
+                int status = server_request_begin(&s->request, http_cb, method, full_path, length);
+                if (status) return http_reject(wsi, s, status);
+                return 0;
+            }
             gdweb_http_req_t req = { .id = s->req_id, .path = full_path, .method = method };
             http_cb(&req);
         } else {
@@ -387,6 +409,18 @@ static int callback_http(struct lws *wsi,
         lws_callback_on_writable(wsi);
         return 0;
     }
+
+    case LWS_CALLBACK_HTTP_BODY: {
+        if (!s->request.callback) return 0;
+        int status = server_request_append(&s->request, in, len);
+        if (status) return http_reject(wsi, s, status);
+        return 0;
+    }
+
+    case LWS_CALLBACK_HTTP_BODY_COMPLETION:
+        if (s->request.callback)
+            server_request_dispatch(&s->request, s->req_id);
+        return 0;
 
     case LWS_CALLBACK_HTTP_WRITEABLE: {
         if (!s) break;
@@ -481,6 +515,7 @@ static int callback_http(struct lws *wsi,
 
     case LWS_CALLBACK_CLOSED_HTTP:
         if (!s || !s->conn_id) break;
+        server_request_clear(&s->request);
         free(s->body);
         s->body = NULL;
         if (s->is_stream) {

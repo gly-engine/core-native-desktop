@@ -13,7 +13,8 @@ set(LUA51_DOWNLOAD "https://github.com/lua/lua/archive/refs/tags/${LUA51_VERSION
 
 set(LUAJIT_VERSION "v2.0.5")
 set(LUAJIT_DIR "${CMAKE_SOURCE_DIR}/vendor/lua/luajit")
-set(LUAJIT_LIB1 "${CMAKE_SOURCE_DIR}/vendor/lua/luajit/src/libluajit.a")
+set(LUAJIT_BUILD_DIR "${CMAKE_BINARY_DIR}/luajit")
+set(LUAJIT_LIB1 "${LUAJIT_BUILD_DIR}/src/libluajit.a")
 set(LUAJIT_LIB2 "${CMAKE_BINARY_DIR}/libluajit.a")
 set(LUAJIT_DOWNLOAD "https://github.com/LuaJIT/LuaJIT/archive/a471ab78c7b670b4f92dae111fc3c96fb824c768.tar.gz")
 
@@ -26,7 +27,9 @@ set(LUACJSON_DIR "${CMAKE_SOURCE_DIR}/vendor/lua/cjson")
 set(LUACJSON_DOWNLOAD "https://github.com/openresty/lua-cjson/archive/refs/tags/${LUACJSON_VERSION}.tar.gz")
 
 if(NOT (EXISTS "${CMAKE_BINARY_DIR}/lua" OR EXISTS "${CMAKE_BINARY_DIR}/lua.exe"))
-    FetchContent_Populate(lua54-host URL "${LUA54_DOWNLOAD}" SOURCE_DIR ${LUA54_HOST_DIR})
+    if(NOT EXISTS "${LUA54_HOST_DIR}/onelua.c")
+        FetchContent_Populate(lua54-host URL "${LUA54_DOWNLOAD}" SOURCE_DIR ${LUA54_HOST_DIR})
+    endif()
     if(TARGET)
         execute_process(
             COMMAND ${ZIG_BIN}/zig-cc-host -DMAKE_LUA onelua.c -o ${CMAKE_BINARY_DIR}/lua -lm
@@ -57,7 +60,10 @@ endif()
 
 if(GECND_USE_LUAJIT)
     math(EXPR LUA_COUNT "${LUA_COUNT} + 1")
-    FetchContent_Populate(dep_luajit URL "${LUAJIT_DOWNLOAD}" SOURCE_DIR ${LUAJIT_DIR})
+    if(NOT EXISTS "${LUAJIT_DIR}/src/lua.h")
+        FetchContent_Populate(dep_luajit URL "${LUAJIT_DOWNLOAD}" SOURCE_DIR ${LUAJIT_DIR})
+    endif()
+    file(MAKE_DIRECTORY "${LUAJIT_BUILD_DIR}")
     if(TARGET)
         add_library(gcc_float STATIC ${CMAKE_CURRENT_LIST_DIR}/../lib/ThirdParty_Compat/gcc_float.c)
         if (GECND_USE_COMPAT)
@@ -67,6 +73,8 @@ if(GECND_USE_LUAJIT)
         target_link_libraries(${PROJECT_NAME} PRIVATE gcc_float)
         add_custom_command(
             OUTPUT ${LUAJIT_LIB2}
+            COMMAND ${CMAKE_COMMAND} -E copy_directory "${LUAJIT_DIR}" "${LUAJIT_BUILD_DIR}"
+            COMMAND make clean
             COMMAND make
                 HOST_CC=${ZIG_BIN}/zig-cc-host
                 HOST_CFLAGS="--target=${ZIG_HOST_TARGET}"
@@ -77,19 +85,21 @@ if(GECND_USE_LUAJIT)
                 TARGET_STRIP=eu-strip
                 TARGET_LDFLAGS="$<TARGET_FILE:gcc_float>"
                 BUILDMODE=static
-            COMMAND ${CMAKE_COMMAND} -E rename ${LUAJIT_LIB1} "${LUAJIT_LIB2}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${LUAJIT_LIB1} "${LUAJIT_LIB2}"
             COMMAND make clean
-            WORKING_DIRECTORY ${LUAJIT_DIR}
+            WORKING_DIRECTORY ${LUAJIT_BUILD_DIR}
             COMMENT "Building LuaJIT (static)"
             DEPENDS gcc_float
         )
     else()
         add_custom_command(
             OUTPUT ${LUAJIT_LIB2}
-            COMMAND make
-            COMMAND ${CMAKE_COMMAND} -E rename ${LUAJIT_LIB1} "${LUAJIT_LIB2}"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory "${LUAJIT_DIR}" "${LUAJIT_BUILD_DIR}"
             COMMAND make clean
-            WORKING_DIRECTORY ${LUAJIT_DIR}
+            COMMAND make
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${LUAJIT_LIB1} "${LUAJIT_LIB2}"
+            COMMAND make clean
+            WORKING_DIRECTORY ${LUAJIT_BUILD_DIR}
             COMMENT "Building LuaJIT (static)"
         )
     endif()

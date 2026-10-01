@@ -103,3 +103,8 @@ gecnd_t *gecnd_get_root() {
 gecnd_fsm_t gecnd_get_state(gecnd_t *gly) {
     return gly ? gly->state : GECND_FSM_EXITING_FORCE;
 }
+
+__attribute__((constructor))
+static void register_state_function(void) {
+    gecnd_registry("set", "function:gecnd_get_state", (void *)gecnd_get_state, NULL);
+}

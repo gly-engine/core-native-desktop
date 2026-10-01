@@ -139,6 +139,15 @@ static void pb_position(uint8_t channel,
     ch->player->set(channel, GDMSP_CMD_POSITION, value, NULL);
 }
 
+void gdmsp_stop_all(void) {
+    for (int i = 0; i < CHANNEL_CAP; i++) {
+        channel_t *ch = &s_channels[i];
+        free(ch->pending_src);
+        ch->pending_src = NULL;
+        ch->pending_cmd = GDMSP_CMD_STOP;
+    }
+}
+
 static void pb_tick(void) {
     gecnd_t *root = gecnd_get_root();
     gecnd_fsm_t gs = root ? gecnd_get_state(root) : GECND_FSM_BOOT;
@@ -149,11 +158,7 @@ static void pb_tick(void) {
     if (!in_running && !in_exiting) return;
 
     if (in_exiting && !s_exiting_stops_issued) {
-        for (int i = 0; i < CHANNEL_CAP; i++) {
-            channel_t *ch = &s_channels[i];
-            free(ch->pending_src); ch->pending_src = NULL;
-            ch->pending_cmd = GDMSP_CMD_STOP;
-        }
+        gdmsp_stop_all();
         s_exiting_stops_issued = true;
     }
 
@@ -310,4 +315,5 @@ const gdmsp_control_t *gdmsp_control(void) {
 __attribute__((constructor))
 static void register_playback_functions(void) {
     gecnd_registry("set", "function:gdmsp_control", (void *)gdmsp_control, NULL);
+    gecnd_registry("set", "function:gdmsp_stop_all", (void *)gdmsp_stop_all, NULL);
 }

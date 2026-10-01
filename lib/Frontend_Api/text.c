@@ -123,6 +123,16 @@ static int lua_native_text_font_face(lua_State *L) {
     return 1;
 }
 
+static int lua_native_text_font_ready(lua_State *L) {
+    int32_t id = (int32_t)luaL_checkinteger(L, 1);
+    gamely_font_state_t state = gamely_daemon_font_get_state(id);
+    if (state == GLY_FONT_ERROR)
+        return luaL_error(L, "font %d failed to load", (int)id);
+    lua_settop(L, 0);
+    lua_pushboolean(L, state == GLY_FONT_READY);
+    return 1;
+}
+
 __attribute__((constructor))
 static void init() {
     gecnd_registry("set", "lua_global_func:native_text_print", lua_native_text_print, NULL);
@@ -132,6 +142,7 @@ static void init() {
     gecnd_registry("set", "lua_global_func:native_text_font_default", lua_native_text_font_default, NULL);
     gecnd_registry("set", "lua_global_func:native_text_font_previous", lua_native_text_font_previous, NULL);
     gecnd_registry("set", "lua_global_func:native_text_font_face", lua_native_text_font_face, NULL);
+    gecnd_registry("set", "lua_global_func:native_text_font_ready", lua_native_text_font_ready, NULL);
     gecnd_registry("bind", "backend_func:native_text_print", &native_text_print, (void*) GECND_TYPE_VOID);
     gecnd_registry("bind", "backend_func:native_text_mensure", &native_text_mensure, (void*) GECND_TYPE_VOID);
     gecnd_registry("bind", "backend_func:native_text_font_size", &native_text_font_size, (void*) GECND_TYPE_VOID);

@@ -37,7 +37,9 @@ void gamely_resolver_font_file(const char *url, void *schema_usr,
     ctx->on_done     = on_done;
     ctx->on_done_usr = on_done_usr;
 
-    if (gamely_daemon_fs_read(path, NULL, NULL, on_fs_read, ctx) == 0) return;
+    const char *direct[] = { path, NULL };
+    if (gamely_daemon_fs_search(direct, NULL, NULL,
+                                 GLY_FS_ONE_CB_ASYNC, on_found, ctx) == 0) return;
 
     const char *cwd = NULL, *exe = NULL;
     gecnd_registry("get", "cwd", &cwd, NULL);

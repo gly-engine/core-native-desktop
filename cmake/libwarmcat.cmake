@@ -27,6 +27,7 @@ if(GECND_USE_WARMCAT)
             -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
             -DLWS_WITH_STATIC=ON
             -DLWS_WITH_SHARED=OFF
+            -DLWS_WITH_LIBCAP=OFF
             -DLWS_ROLE_H1=ON
             -DLWS_ROLE_WS=ON
             -DLWS_ROLE_H2=ON
