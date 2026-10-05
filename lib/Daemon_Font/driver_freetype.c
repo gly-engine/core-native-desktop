@@ -6,6 +6,10 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
+#ifdef GECND_USE_ZLIB
+#include <zlib.h>
+#endif
+
 #include "gecnd.h"
 
 /* ── face handle: FT_Face + the memory FreeType reads from (must outlive it) */
@@ -72,14 +76,51 @@ static glyph_cache_entry_t *cache_find_slot(const void *face, uint8_t px_size, u
     return NULL; /* cache full */
 }
 
+#ifdef GECND_USE_ZLIB
+static bool is_gzip(const uint8_t *data, size_t len) {
+    return len >= 18 && data[0] == 0x1f && data[1] == 0x8b;
+}
+
+static uint8_t *gunzip(const uint8_t *data, size_t len, size_t *out_len) {
+    const uint8_t *t = data + len - 4;
+    size_t size = (size_t)t[0] | (size_t)t[1] << 8 | (size_t)t[2] << 16 | (size_t)t[3] << 24;
+    if (size == 0) return NULL;
+
+    uint8_t *buf = malloc(size);
+    if (!buf) return NULL;
+
+    z_stream zs = {0};
+    zs.next_in   = (Bytef *)data;
+    zs.avail_in  = (uInt)len;
+    zs.next_out  = buf;
+    zs.avail_out = (uInt)size;
+    if (inflateInit2(&zs, 16 + MAX_WBITS) != Z_OK) { free(buf); return NULL; }
+    int ret = inflate(&zs, Z_FINISH);
+    inflateEnd(&zs);
+
+    if (ret != Z_STREAM_END) { free(buf); return NULL; }
+    *out_len = size;
+    return buf;
+}
+#endif
+
 /* ── decode ───────────────────────────────────────────────────────── */
 
 static void *ft_decode(const uint8_t *data, size_t len) {
     if (!s_ft) return NULL;
 
-    uint8_t *copy = malloc(len);
-    if (!copy) return NULL;
-    memcpy(copy, data, len);
+    uint8_t *copy;
+#ifdef GECND_USE_ZLIB
+    if (is_gzip(data, len)) {
+        copy = gunzip(data, len, &len);
+        if (!copy) { printf("[font-freetype] gzip inflate failed\n"); return NULL; }
+    } else
+#endif
+    {
+        copy = malloc(len);
+        if (!copy) return NULL;
+        memcpy(copy, data, len);
+    }
 
     FT_Face face;
     if (FT_New_Memory_Face(s_ft, copy, (FT_Long)len, 0, &face) != 0) {
