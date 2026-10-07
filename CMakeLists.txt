@@ -181,6 +181,17 @@ if(GECND_USE_PLUGIN_LIBRETRO)
     add_library(libretro_gecnd SHARED "${libretro_files}")
     target_include_directories(libretro_gecnd PRIVATE "${LIBRETRO_DIR}")
     target_link_libraries(libretro_gecnd PRIVATE gecnd_header)
+    # netplay: RetroArch hosts send savestates zlib compressed
+    if(TARGET zlibstatic)
+        set_target_properties(zlibstatic PROPERTIES POSITION_INDEPENDENT_CODE ON)
+        target_link_libraries(libretro_gecnd PRIVATE zlibstatic)
+        target_include_directories(libretro_gecnd PRIVATE "${ZLIB_DIR}" "${zlib_BINARY_DIR}")
+        target_compile_definitions(libretro_gecnd PRIVATE GECND_NETPLAY_ZLIB=1)
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            # keep the static zlib inside the plugin, away from a core's own
+            target_link_options(libretro_gecnd PRIVATE "-Wl,--exclude-libs,ALL")
+        endif()
+    endif()
     set_target_properties(libretro_gecnd PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib

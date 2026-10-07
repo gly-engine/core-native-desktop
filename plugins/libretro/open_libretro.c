@@ -11,6 +11,7 @@
 
 #include "hw_render.h"
 #include "main.h"
+#include "netplay/client/client.h"
 
 const char *scanner_resolve_core(const char *name);
 const char *scanner_resolve_rom(const char *name);
@@ -51,6 +52,14 @@ static void (*p_retro_reset)(void) = NULL;
 static void (*p_retro_run)(void) = NULL;
 static bool (*p_retro_load_game)(const struct retro_game_info*) = NULL;
 static void (*p_retro_unload_game)(void) = NULL;
+static size_t (*p_retro_serialize_size)(void) = NULL;
+static bool (*p_retro_serialize)(void*, size_t) = NULL;
+static bool (*p_retro_unserialize)(const void*, size_t) = NULL;
+static void *(*p_retro_get_memory_data)(unsigned) = NULL;
+static size_t (*p_retro_get_memory_size)(unsigned) = NULL;
+
+/* CRC-32 of the loaded content, netplay's content checksum */
+static uint32_t s_content_crc = 0;
 
 static void reset_pointers(void) {
     p_retro_set_environment = NULL;
@@ -69,6 +78,11 @@ static void reset_pointers(void) {
     p_retro_run = NULL;
     p_retro_load_game = NULL;
     p_retro_unload_game = NULL;
+    p_retro_serialize_size = NULL;
+    p_retro_serialize = NULL;
+    p_retro_unserialize = NULL;
+    p_retro_get_memory_data = NULL;
+    p_retro_get_memory_size = NULL;
 }
 
 static void RETRO_CALLCONV core_log(enum retro_log_level level, const char *fmt, ...) {
@@ -130,6 +144,58 @@ static size_t RETRO_CALLCONV core_audio_sample_batch(const int16_t *data, size_t
 static void RETRO_CALLCONV core_input_poll(void) {}
 
 extern int16_t RETRO_CALLCONV engine_input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id);
+uint32_t native_libretro_buttons(unsigned port);
+
+/* During a netplay session the core sees the inputs of the session's
+ * frame, every player's; otherwise the local controllers. */
+static int16_t RETRO_CALLCONV core_input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
+    if (netplay_client_active())
+        return netplay_client_input(port, device, index, id);
+    return engine_input_state_cb(port, device, index, id);
+}
+
+/* Core option defaults from SET_VARIABLES ("Desc; first|second|..."):
+ * GET_VARIABLE answers the first value when the url does not set it, as
+ * RetroArch does, so both run a netplay session with the same options. */
+#define CORE_OPTION_MAX 256
+static struct { char key[96]; char value[96]; } s_option_defaults[CORE_OPTION_MAX];
+static size_t s_option_count = 0;
+
+static void core_options_set(const struct retro_variable *vars) {
+    s_option_count = 0;
+    for (; vars && vars->key && s_option_count < CORE_OPTION_MAX; vars++) {
+        const char *first = vars->value ? strchr(vars->value, ';') : NULL;
+        size_t len;
+        if (!first) continue;
+        first++;
+        while (*first == ' ') first++;
+        len = strcspn(first, "|");
+        snprintf(s_option_defaults[s_option_count].key, sizeof(s_option_defaults[0].key), "%s", vars->key);
+        snprintf(s_option_defaults[s_option_count].value, sizeof(s_option_defaults[0].value), "%.*s", (int)len, first);
+        s_option_count++;
+    }
+}
+
+static void core_option_add(const char *key, const char *value) {
+    if (!key || !value || s_option_count >= CORE_OPTION_MAX) return;
+    snprintf(s_option_defaults[s_option_count].key, sizeof(s_option_defaults[0].key), "%s", key);
+    snprintf(s_option_defaults[s_option_count].value, sizeof(s_option_defaults[0].value), "%s", value);
+    s_option_count++;
+}
+
+/* Core options v1 (what GET_CORE_OPTIONS_VERSION = 1 gets): the default
+ * value, or the first value when the core gives none. */
+static void core_options_set_v1(const struct retro_core_option_definition *defs) {
+    s_option_count = 0;
+    for (; defs && defs->key; defs++)
+        core_option_add(defs->key, defs->default_value ? defs->default_value : defs->values[0].value);
+}
+
+static const char *core_option_default(const char *key) {
+    for (size_t i = 0; i < s_option_count; i++)
+        if (!strcmp(s_option_defaults[i].key, key)) return s_option_defaults[i].value;
+    return NULL;
+}
 
 static bool core_environment(unsigned cmd, void *data) {
     switch (cmd & ~RETRO_ENVIRONMENT_EXPERIMENTAL) {
@@ -157,6 +223,7 @@ static bool core_environment(unsigned cmd, void *data) {
             if (data) {
                 struct retro_variable *var = (struct retro_variable*)data;
                 var->value = url_env_get(var->key);
+                if (!var->value) var->value = core_option_default(var->key);
                 core_log(RETRO_LOG_INFO, "GET_VARIABLE: %s = %s\n", var->key, var->value ? var->value : "(not set)");
                 return var->value != NULL;
             }
@@ -185,8 +252,16 @@ static bool core_environment(unsigned cmd, void *data) {
             return libretro_hw_handle_env(cmd, data);
         case RETRO_ENVIRONMENT_SET_GEOMETRY:
             return true;
-        case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
         case RETRO_ENVIRONMENT_SET_VARIABLES:
+            core_options_set((const struct retro_variable *)data);
+            return true;
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS:
+            core_options_set_v1((const struct retro_core_option_definition *)data);
+            return true;
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_INTL:
+            if (data) core_options_set_v1(((const struct retro_core_options_intl *)data)->us);
+            return true;
+        case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
         case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
         case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
         case RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS:
@@ -213,6 +288,8 @@ bool native_libretro_game_from_buffer(const uint8_t *data, size_t size, const ch
 void native_libretro_game_finalize(void);
 void native_libretro_clear_error(void);
 static void libretro_deinit_core(void);
+static void libretro_netplay_from_url(void);
+static void libretro_run_core(void);
 
 const char *native_libretro_error(void) {
     return s_error;
@@ -324,6 +401,11 @@ bool native_libretro_load(const char *path) {
 
     LOAD_SYM_OPTIONAL(retro_set_controller_port_device);
     LOAD_SYM_OPTIONAL(retro_reset);
+    LOAD_SYM_OPTIONAL(retro_serialize_size);
+    LOAD_SYM_OPTIONAL(retro_serialize);
+    LOAD_SYM_OPTIONAL(retro_unserialize);
+    LOAD_SYM_OPTIONAL(retro_get_memory_data);
+    LOAD_SYM_OPTIONAL(retro_get_memory_size);
 
     if (p_retro_set_environment) p_retro_set_environment(core_environment);
     return true;
@@ -365,7 +447,10 @@ bool native_libretro_game_load_only(const char *path) {
             if (fread(data, 1, info.size, f) != info.size) {
                 free(data);
                 data = NULL;
-            } else info.data = data;
+            } else {
+                info.data = data;
+                s_content_crc = netplay_crc32(data, info.size);
+            }
         }
         fclose(f);
     } else {
@@ -377,7 +462,7 @@ bool native_libretro_game_load_only(const char *path) {
     if (p_retro_set_audio_sample)       p_retro_set_audio_sample(core_audio_sample);
     if (p_retro_set_audio_sample_batch) p_retro_set_audio_sample_batch(core_audio_sample_batch);
     if (p_retro_set_input_poll)         p_retro_set_input_poll(core_input_poll);
-    if (p_retro_set_input_state)        p_retro_set_input_state(engine_input_state_cb);
+    if (p_retro_set_input_state)        p_retro_set_input_state(core_input_state);
 
     if (!core_init_done) {
         if (p_retro_init) {
@@ -415,7 +500,7 @@ bool native_libretro_game_none(void) {
     if (p_retro_set_audio_sample)       p_retro_set_audio_sample(core_audio_sample);
     if (p_retro_set_audio_sample_batch) p_retro_set_audio_sample_batch(core_audio_sample_batch);
     if (p_retro_set_input_poll)         p_retro_set_input_poll(core_input_poll);
-    if (p_retro_set_input_state)        p_retro_set_input_state(engine_input_state_cb);
+    if (p_retro_set_input_state)        p_retro_set_input_state(core_input_state);
 
     if (!core_init_done) {
         if (p_retro_init) {
@@ -438,6 +523,44 @@ bool native_libretro_game_none(void) {
     return ok;
 }
 
+/* Joins a netplay host when the url asks for it, once the game runs:
+ *   #netplay=HOST:PORT       (PORT defaults to 55435)
+ *   #netplay_nick=NAME       (optional)
+ *   #netplay_mitm=SESSION    (relay session, optional) */
+static void libretro_netplay_from_url(void) {
+    const char *target = url_opt_get("netplay");
+    char host[256];
+    unsigned port = 55435;
+    netplay_core_t core = {0};
+    struct retro_system_info info = {0};
+
+    if (!target || !target[0]) return;
+    snprintf(host, sizeof(host), "%s", target);
+    {
+        char *colon = strrchr(host, ':');
+        if (colon && !strchr(colon + 1, ']')) {
+            *colon = '\0';
+            port = (unsigned)atoi(colon + 1);
+        }
+    }
+    if (p_retro_get_system_info) p_retro_get_system_info(&info);
+
+    core.core_name       = info.library_name;
+    core.core_version    = info.library_version;
+    core.content_crc     = s_content_crc;
+    core.serialize_size  = p_retro_serialize_size;
+    core.serialize       = p_retro_serialize;
+    core.unserialize     = p_retro_unserialize;
+    core.memory_data     = p_retro_get_memory_data;
+    core.memory_size     = p_retro_get_memory_size;
+    core.reset           = p_retro_reset;
+    core.set_port_device = p_retro_set_controller_port_device;
+    core.run             = libretro_run_core;
+    core.local_buttons   = native_libretro_buttons;
+    netplay_client_start(host, (uint16_t)port, url_opt_get("netplay_mitm"),
+                         url_opt_get("netplay_nick"), &core);
+}
+
 /* Roda no main thread após uv_thread_join do worker.
  * hw_context_reset toca GL, audio_configure toca o ring buffer; nenhum
  * dos dois é seguro fora do main. */
@@ -458,6 +581,7 @@ void native_libretro_game_finalize(void) {
     if (media_bind()) media.claim();
     core_initialized = true;
     api->registry("set", "core:state", (void *)(uintptr_t)state_wanted(), NULL);
+    libretro_netplay_from_url();
 }
 
 /* Grava o buffer em /tmp/<name> para cores com need_fullpath.
@@ -504,6 +628,7 @@ bool native_libretro_game_from_buffer(const uint8_t *data, size_t size, const ch
     info.data = data;
     info.size = size;
     info.meta = NULL;
+    s_content_crc = netplay_crc32(data, size);
 
     if (sys_info.need_fullpath) {
         info.path = libretro_spill_rom_to_tmp(data, size, name, &sys_info);
@@ -516,7 +641,7 @@ bool native_libretro_game_from_buffer(const uint8_t *data, size_t size, const ch
     if (p_retro_set_audio_sample)       p_retro_set_audio_sample(core_audio_sample);
     if (p_retro_set_audio_sample_batch) p_retro_set_audio_sample_batch(core_audio_sample_batch);
     if (p_retro_set_input_poll)         p_retro_set_input_poll(core_input_poll);
-    if (p_retro_set_input_state)        p_retro_set_input_state(engine_input_state_cb);
+    if (p_retro_set_input_state)        p_retro_set_input_state(core_input_state);
 
     if (!core_init_done) {
         if (p_retro_init) p_retro_init();
@@ -540,6 +665,7 @@ void native_libretro_exit(void) {
 }
 
 static void libretro_deinit_core(void) {
+    netplay_client_stop();
     api->registry("set", "core:state", (void *)(uintptr_t)GECND_FSM_RUNNING, NULL);
     if (core_initialized) {
         if (p_retro_unload_game) p_retro_unload_game();
@@ -573,10 +699,19 @@ MediaFrame *libretro_get_frame(void) {
     return media_bind() ? media.get_frame() : NULL;
 }
 
-void libretro_run_frame(void) {
-    if (!core_initialized || !p_retro_run) return;
+/* One frame of the core; netplay runs it as many times as a tick allows. */
+static void libretro_run_core(void) {
     p_retro_run();
     if (libretro_hw_is_active()) libretro_hw_restore_context();
+}
+
+void libretro_run_frame(void) {
+    if (!core_initialized || !p_retro_run) return;
+    if (netplay_client_active()) {
+        netplay_client_tick();
+        return;
+    }
+    libretro_run_core();
 }
 
 bool libretro_is_running(void) {
