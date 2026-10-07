@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "libretro.h"
 #include "protocol.h"
 
 /** @brief Frames of input kept per player. */
@@ -45,6 +46,13 @@ typedef struct {
     uint32_t  (*local_buttons)(unsigned local_port);
     /** @brief Frames run again after a misprediction: no video nor audio. */
     void      (*replay)(bool on);
+    /**
+     * @brief The core's own netcode (RETRO_ENVIRONMENT_SET_NETPACKET_
+     * INTERFACE), or NULL. With it the session syncs no input and no
+     * state: it only carries the core's packets (NP_CMD_NETPACKET), and
+     * every machine runs its core with its own controllers.
+     */
+    const struct retro_netpacket_callback *packets;
 } netplay_core_t;
 
 typedef struct {

@@ -16,6 +16,10 @@
  * joins at the last final frame, with that frame's state and the inputs
  * since. A client that leaves stops counting from the first frame it did
  * not send.
+ *
+ * A core with its own netcode (netplay_core_t.packets) gets none of that:
+ * the host runs it freely and carries its packets, delivering the ones
+ * for the host and passing on the ones for other clients.
  */
 #include "netplay/host/host.h"
 
@@ -69,8 +73,9 @@ void netplay_host_tick(void) {}
 /** @brief Seconds a client may take to finish the handshake. */
 #define NP_HANDSHAKE_TIMEOUT 15
 
-/** @brief MODE_REFUSED reason: every port is taken. */
+/** @brief MODE_REFUSED reasons: every port is taken; anything else. */
 #define NP_REFUSED_NO_SLOTS 2
+#define NP_REFUSED_OTHER    4
 
 /** @brief RETRO_DEVICE_JOYPAD, what every port holds. */
 #define NP_DEVICE_JOYPAD 1
@@ -187,6 +192,11 @@ static uint32_t hc_stop_playing(np_conn_t *c) {
     uint32_t end = np_session.confirmed > p->from ? np_session.confirmed : p->from;
     uint8_t idle[8 + 4 * NP_MAX_WORDS] = {0};
 
+    if (h.core.packets) {  /* no input stream */
+        p->until = h.next_own;
+        c->playing = false;
+        return p->until;
+    }
     while (np_input(c->client, end)) end++;
     while (h.next_own < end) hc_send_own(h.next_own++);
     wr32(idle + 4, c->client);
@@ -203,6 +213,11 @@ static uint32_t hc_stop_playing(np_conn_t *c) {
 static void hc_drop(np_conn_t *c, const char *why) {
     if (c->phase == HC_FREE) return;
     fprintf(stderr, "[netplay] %s left: %s\n", c->nick[0] ? c->nick : "a client", why);
+    if (h.core.packets && c->phase == HC_RUNNING && c->playing) {
+        c->phase = HC_FREE;  /* gone before the core hears of it */
+        c->playing = false;
+        if (h.core.packets->disconnected) h.core.packets->disconnected((uint16_t)c->client);
+    }
     if (c->phase == HC_RUNNING && c->playing) {
         /* nobody waits for it from the first frame it did not send */
         const uint32_t until = hc_stop_playing(c);
@@ -232,13 +247,75 @@ static void hc_flush(np_conn_t *c) {
 /* Handshake                                                           */
 /* ------------------------------------------------------------------ */
 
+/** @brief The version peers compare: the core's netcode's, if it has one. */
+static const char *hc_version(void) {
+    if (h.core.packets && h.core.packets->protocol_version) return h.core.packets->protocol_version;
+    return h.core.core_version ? h.core.core_version : "";
+}
+
 static void hc_send_info(np_conn_t *c) {
     uint8_t p[NP_INFO_SIZE] = {0};
     wr32(p, h.core.content_crc);
     snprintf((char *)p + 4, NP_NICK_LEN, "%s", h.core.core_name ? h.core.core_name : "");
-    snprintf((char *)p + 4 + NP_NICK_LEN, NP_NICK_LEN, "%s",
-             h.core.core_version ? h.core.core_version : "");
+    snprintf((char *)p + 4 + NP_NICK_LEN, NP_NICK_LEN, "%s", hc_version());
     hc_send_cmd(c, NP_CMD_INFO, p, sizeof(p));
+}
+
+/* ------------------------------------------------------------------ */
+/* The core's packets                                                  */
+/* ------------------------------------------------------------------ */
+
+/** @brief A packet to one client: the word says who sent it. */
+static void hc_send_packet(np_conn_t *c, uint32_t from, const void *buf, size_t len) {
+    uint8_t head[12];
+    wr32(head, NP_CMD_NETPACKET);
+    wr32(head + 4, (uint32_t)len);  /* the packet only */
+    wr32(head + 8, from);
+    hc_send_raw(c, head, sizeof(head));
+    if (len) hc_send_raw(c, buf, len);
+}
+
+static void hc_flush(np_conn_t *c);
+
+/** @brief The core sends: to a client, or to every one. */
+static void RETRO_CALLCONV hc_core_send(int flags, const void *buf, size_t len, uint16_t client_id) {
+    if (!h.active) return;
+    if (buf && len)
+        for (unsigned i = 0; i < NP_HOST_CONNS; i++) {
+            np_conn_t *c = &h.conns[i];
+            if (c->phase != HC_RUNNING || !c->playing) continue;
+            if (client_id == RETRO_NETPACKET_BROADCAST || c->client == client_id)
+                hc_send_packet(c, 0, buf, len);
+        }
+    if (flags & RETRO_NETPACKET_FLUSH_HINT)
+        for (unsigned i = 0; i < NP_HOST_CONNS; i++)
+            if (h.conns[i].phase != HC_FREE) hc_flush(&h.conns[i]);
+}
+
+static void hc_io(np_conn_t *c);
+
+/** @brief The core reads what arrived, without waiting for the frame. */
+static void RETRO_CALLCONV hc_core_poll_receive(void) {
+    for (unsigned i = 0; h.active && i < NP_HOST_CONNS; i++)
+        if (h.conns[i].phase != HC_FREE) hc_io(&h.conns[i]);
+}
+
+/**
+ * @brief A client's packet: for us (delivered to the core), for another
+ * client, or for everyone (both), passed on with who sent it.
+ */
+static void hc_on_packet(np_conn_t *c, const uint8_t *p, uint32_t size) {
+    const uint32_t to = rd32(p);
+    const uint8_t *data = p + 4;
+    const size_t len = size - 4;
+
+    if (to == 0 || to == NP_PACKET_BROADCAST)
+        h.core.packets->receive(data, len, (uint16_t)c->client);
+    for (unsigned i = 0; i < NP_HOST_CONNS; i++) {
+        np_conn_t *o = &h.conns[i];
+        if (o == c || o->phase != HC_RUNNING || !o->playing) continue;
+        if (to == NP_PACKET_BROADCAST || o->client == to) hc_send_packet(o, c->client, data, len);
+    }
 }
 
 /**
@@ -282,8 +359,9 @@ static void hc_send_state(np_conn_t *c) {
  * each port then, the client's nick and our SRAM.
  */
 static void hc_send_sync(np_conn_t *c) {
-    const size_t sram = h.core.memory_size && h.core.memory_data && h.core.memory_data(0) ?
-                        h.core.memory_size(0) : 0;
+    /* no SRAM for a core with its own netcode */
+    const size_t sram = !h.core.packets && h.core.memory_size && h.core.memory_data &&
+                        h.core.memory_data(0) ? h.core.memory_size(0) : 0;
     uint8_t *p = calloc(1, NP_SYNC_MIN + sram);
     uint8_t *q;
 
@@ -349,6 +427,24 @@ static void hc_on_play(np_conn_t *c) {
     uint8_t refused[4];
 
     if (c->playing) return;
+    if (h.core.packets) {
+        /* the core's own netcode: no port, the core takes it or not;
+         * it may send to the client already while deciding */
+        c->playing = true;
+        if (h.core.packets->connected && !h.core.packets->connected((uint16_t)c->client)) {
+            c->playing = false;
+            wr32(refused, NP_REFUSED_OTHER);
+            hc_send_cmd(c, NP_CMD_MODE_REFUSED, refused, sizeof(refused));
+            return;
+        }
+        p->devices = 0;
+        p->from = h.next_own;
+        p->until = UINT32_MAX;
+        memcpy(p->nick, c->nick, NP_NICK_LEN);
+        fprintf(stderr, "[netplay] %s plays (client %u)\n", c->nick, c->client);
+        hc_send_mode(c, true, p->from);
+        return;
+    }
     for (unsigned d = 0; d < NP_HOST_PORTS; d++) {
         bool taken = false;
         for (unsigned k = 0; k < NP_MAX_CLIENTS; k++)
@@ -378,8 +474,13 @@ static void hc_on_spectate(np_conn_t *c) {
 
 static void hc_on_command(np_conn_t *c, uint32_t cmd, const uint8_t *p, uint32_t size) {
     switch (cmd) {
+    case NP_CMD_NETPACKET:
+        /* taken even before PLAY: a client's core starts right after
+         * SYNC and may speak first */
+        if (size >= 4 && h.core.packets) hc_on_packet(c, p, size);
+        break;
     case NP_CMD_INPUT:
-        if (size >= 8 && c->playing) {
+        if (size >= 8 && c->playing && !h.core.packets) {
             const uint32_t frame = rd32(p);
             const np_player_t *pl = &np_session.players[c->client];
             unsigned words = np_words_for(pl->devices);
@@ -480,7 +581,7 @@ static void hc_parse(np_conn_t *c) {
 
     while (c->fd >= 0 && c->in_len - used >= 8) {
         const uint32_t cmd  = rd32(c->in + used);
-        const uint32_t size = rd32(c->in + used + 4);
+        const uint32_t size = np_payload_size(cmd, rd32(c->in + used + 4));
         const uint8_t *p    = c->in + used + 8;
 
         if (size > 1024u * 1024) {
@@ -512,6 +613,13 @@ static void hc_parse(np_conn_t *c) {
                             c->nick, rd32(p), h.core.content_crc);
             }
             hc_send_sync(c);
+            if (h.core.packets) {
+                /* the core's own netcode: no state; the core hears of
+                 * the client once it asks to play */
+                c->phase = HC_RUNNING;
+                fprintf(stderr, "[netplay] %s joined as client %u\n", c->nick, c->client);
+                break;
+            }
             hc_send_state(c);
             c->phase = HC_RUNNING;
             hc_catch_up(c);
@@ -670,7 +778,7 @@ bool netplay_host_start(uint16_t port, const char *nick, const netplay_core_t *c
     np_session.players[0].until = UINT32_MAX;
     memcpy(np_session.players[0].nick, h.nick, NP_NICK_LEN);
 
-    if (!np_rb_start(&h.core, 0, hc_on_final)) {
+    if (!h.core.packets && !np_rb_start(&h.core, 0, hc_on_final)) {
         close(fd);
         h.listen_fd = -1;
         return false;
@@ -680,7 +788,9 @@ bool netplay_host_start(uint16_t port, const char *nick, const netplay_core_t *c
     netplay_relay_stop();
 
     h.active = true;
-    fprintf(stderr, "[netplay] hosting on port %u as %s\n", port, h.nick);
+    fprintf(stderr, "[netplay] hosting on port %u as %s%s\n", port, h.nick,
+            h.core.packets ? " (the core's own netcode)" : "");
+    if (h.core.packets) h.core.packets->start(0, hc_core_send, hc_core_poll_receive);
     return true;
 }
 
@@ -704,6 +814,7 @@ void netplay_host_stop(void) {
     h.listen_fd = -1;
     h.active = false;
     np_rb_stop();
+    if (h.core.packets && h.core.packets->stop) h.core.packets->stop();
     netplay_lobby_stop();
     netplay_relay_stop();
 }
@@ -808,11 +919,17 @@ void netplay_host_tick(void) {
     for (unsigned i = 0; i < NP_HOST_CONNS; i++)
         if (h.conns[i].phase != HC_FREE) hc_io(&h.conns[i]);
 
-    /* wrong guesses first, then what became final */
-    np_rb_resolve();
-    np_rb_confirm(NP_NO_FRAME);
-    hc_send_states();
-    hc_run_frame();
+    if (h.core.packets) {
+        /* the core's own netcode: a frame as without netplay */
+        if (h.core.packets->poll) h.core.packets->poll();
+        h.core.run();
+    } else {
+        /* wrong guesses first, then what became final */
+        np_rb_resolve();
+        np_rb_confirm(NP_NO_FRAME);
+        hc_send_states();
+        hc_run_frame();
+    }
     for (unsigned i = 0; i < NP_HOST_CONNS; i++)
         if (h.conns[i].phase != HC_FREE) hc_flush(&h.conns[i]);
     {

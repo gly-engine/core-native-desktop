@@ -72,7 +72,14 @@ static void content_name_set(const char *path) {
     if ((dot = strrchr(s_content_name, '.')) != NULL) *dot = '\0';
 }
 
+/* The core's own netcode, if it has one (netplay then only carries its
+ * packets), and the name netplay knows this player by */
+static struct retro_netpacket_callback s_netpacket;
+static bool s_has_netpacket = false;
+static char s_username[32] = "gecnd";
+
 static void reset_pointers(void) {
+    s_has_netpacket = false;
     p_retro_set_environment = NULL;
     p_retro_set_video_refresh = NULL;
     p_retro_set_audio_sample = NULL;
@@ -167,9 +174,10 @@ extern int16_t RETRO_CALLCONV engine_input_state_cb(unsigned port, unsigned devi
 uint32_t native_libretro_buttons(unsigned port);
 
 /* During a netplay session the core sees the inputs of the session's
- * frame, every player's; otherwise the local controllers. */
+ * frame, every player's; otherwise (or when the core does its own
+ * netcode) the local controllers. */
 static int16_t RETRO_CALLCONV core_input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
-    if (netplay_client_active() || netplay_host_active())
+    if (!s_has_netpacket && (netplay_client_active() || netplay_host_active()))
         return np_session_input(port, device, index, id);
     return engine_input_state_cb(port, device, index, id);
 }
@@ -255,7 +263,11 @@ static bool core_environment(unsigned cmd, void *data) {
             if (data) *(unsigned*)data = 0;
             return true;
         case RETRO_ENVIRONMENT_GET_USERNAME:
-            if (data) *(const char**)data = "gecnd";
+            if (data) *(const char**)data = s_username;
+            return true;
+        case RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE:
+            s_has_netpacket = data != NULL;
+            if (data) s_netpacket = *(const struct retro_netpacket_callback *)data;
             return true;
         case RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES:
             if (data) *(uint64_t*)data = (1ULL << RETRO_DEVICE_JOYPAD);
@@ -577,6 +589,9 @@ static void libretro_netplay_from_url(void) {
     core.run             = libretro_run_core;
     core.local_buttons   = native_libretro_buttons;
     core.replay          = libretro_netplay_replay;
+    core.packets         = s_has_netpacket ? &s_netpacket : NULL;
+    if (url_opt_get("netplay_nick") && url_opt_get("netplay_nick")[0])
+        snprintf(s_username, sizeof(s_username), "%s", url_opt_get("netplay_nick"));
 
     if (url_opt_get("netplay_delay")) {
         const int delay = atoi(url_opt_get("netplay_delay"));

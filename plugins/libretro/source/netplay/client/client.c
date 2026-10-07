@@ -14,6 +14,10 @@
  * Pacing: the host's latest input says where it was half a round trip
  * ago (PING); this client runs one frame per tick, two to catch up when
  * behind that, none when ahead of it.
+ *
+ * A core with its own netcode (netplay_core_t.packets) gets none of that:
+ * after SYNC the core starts with our client number, runs freely, and
+ * this client only carries its packets.
  */
 #include "netplay/client/client.h"
 #include "netplay/common/protocol.h"
@@ -134,6 +138,7 @@ static struct {
 
     bool     play_asked;
     bool     playing;
+    bool     packets_on;     /* the core's netcode was started */
     uint32_t next_send;     /* next frame of ours to send */
 } np = { .fd = -1 };
 
@@ -149,6 +154,10 @@ static uint64_t np_now_ms(void) {
 
 static void np_close(void) {
     np_rb_stop();
+    if (np.packets_on) {
+        np.packets_on = false;
+        if (np.core.packets->stop) np.core.packets->stop();
+    }
     if (np.fd >= 0) close(np.fd);
     np.fd = -1;
     np.phase = NP_OFF;
@@ -214,9 +223,36 @@ static void np_send_info(void) {
     uint8_t p[NP_INFO_SIZE] = {0};
     wr32(p, np.core.content_crc);
     snprintf((char *)p + 4, NP_NICK_LEN, "%s", np.core.core_name ? np.core.core_name : "");
+    /* the version peers compare: the core's netcode's, if it has one */
     snprintf((char *)p + 4 + NP_NICK_LEN, NP_NICK_LEN, "%s",
+             np.core.packets && np.core.packets->protocol_version ? np.core.packets->protocol_version :
              np.core.core_version ? np.core.core_version : "");
     np_send_cmd(NP_CMD_INFO, p, sizeof(p));
+}
+
+/* ------------------------------------------------------------------ */
+/* The core's packets                                                  */
+/* ------------------------------------------------------------------ */
+
+/** @brief The core sends, through the host: to it, a client or everyone. */
+static void RETRO_CALLCONV np_core_send(int flags, const void *buf, size_t len, uint16_t client_id) {
+    if (np.phase != NP_RUNNING) return;
+    if (buf && len) {
+        uint8_t head[12];
+        wr32(head, NP_CMD_NETPACKET);
+        wr32(head + 4, (uint32_t)len);  /* the packet only */
+        wr32(head + 8, client_id);
+        np_send_raw(head, sizeof(head));
+        np_send_raw(buf, len);
+    }
+    if (flags & RETRO_NETPACKET_FLUSH_HINT) np_flush();
+}
+
+static void np_io(void);
+
+/** @brief The core reads what arrived, without waiting for the frame. */
+static void RETRO_CALLCONV np_core_poll_receive(void) {
+    if (np.phase != NP_OFF) np_io();
 }
 
 /** @brief Asks to play, on whatever device the host gives. */
@@ -371,7 +407,7 @@ static bool np_on_sync(const uint8_t *p, uint32_t size) {
     /* SRAM, when ours is the same size */
     {
         const size_t sram = size - (uint32_t)(q - p);
-        if (sram && np.core.memory_size && np.core.memory_data &&
+        if (sram && !np.core.packets && np.core.memory_size && np.core.memory_data &&
             np.core.memory_size(0) == sram && np.core.memory_data(0))
             memcpy(np.core.memory_data(0), q, sram);
     }
@@ -477,6 +513,23 @@ static void np_on_savestate(const uint8_t *p, uint32_t size) {
 }
 
 static void np_on_command(uint32_t cmd, const uint8_t *p, uint32_t size) {
+    if (np.core.packets) {
+        /* the core's own netcode: its packets, and the connection */
+        switch (cmd) {
+        case NP_CMD_NETPACKET:
+            if (size >= 4 && np.packets_on)
+                np.core.packets->receive(p + 4, size - 4, (uint16_t)rd32(p));
+            return;
+        case NP_CMD_PING_REQUEST:
+        case NP_CMD_NAK:
+        case NP_CMD_DISCONNECT:
+        case NP_CMD_PLAYER_CHAT:
+        case NP_CMD_MODE_REFUSED:
+            break;
+        default:
+            return;  /* inputs, states, CRCs: not for this session */
+        }
+    }
     switch (cmd) {
     case NP_CMD_INPUT:
         if (size >= 8) {
@@ -583,7 +636,7 @@ static void np_parse(void) {
 
     while (np.fd >= 0 && np.in_len - used >= 8) {
         const uint32_t cmd  = rd32(np.in + used);
-        const uint32_t size = rd32(np.in + used + 4);
+        const uint32_t size = np_payload_size(cmd, rd32(np.in + used + 4));
         const uint8_t *p    = np.in + used + 8;
 
         if (size > 64u * 1024 * 1024) {
@@ -617,6 +670,14 @@ static void np_parse(void) {
         case NP_SYNC:
             if (cmd != NP_CMD_SYNC || !np_on_sync(p, size)) { np_fail("bad SYNC"); return; }
             np.phase = NP_RUNNING;
+            if (np.core.packets) {
+                /* the core's own netcode: no input, no state; it starts now */
+                np.have_state = true;
+                np.packets_on = true;
+                np.core.packets->start((uint16_t)np.client, np_core_send, np_core_poll_receive);
+                np_send_play();  /* the host only passes packets to players */
+                break;
+            }
             np_send_play();
             break;
         case NP_RUNNING:
@@ -808,6 +869,13 @@ void netplay_client_tick(void) {
 
     if (np.phase == NP_OFF) return;
     np_io();
+    if (np.core.packets) {
+        /* the core's own netcode: a frame as without netplay */
+        if (np.packets_on && np.core.packets->poll) np.core.packets->poll();
+        np.core.run();
+        np_flush();
+        return;
+    }
     if (np.phase != NP_RUNNING || !np.have_state || np.paused) return;
 
     if (!np.ping_sent && np_now_ms() >= np.ping_next) {

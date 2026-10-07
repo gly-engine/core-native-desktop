@@ -79,6 +79,19 @@ enum {
     NP_CMD_SETTING_INPUT_LATENCY_FRAMES = 0x2001
 };
 
+/**
+ * @brief NETPACKET: a word, then the core's packet. From a client the word
+ * says who the packet is for (0 the host, NP_PACKET_BROADCAST everyone);
+ * from the host, who sent it (0 the host itself). Unlike every other
+ * command, its size counts the packet only, not the word before it.
+ */
+#define NP_PACKET_BROADCAST 0xFFFFu
+
+/** @brief Bytes a command's payload takes after its 8 byte head. */
+static inline uint32_t np_payload_size(uint32_t cmd, uint32_t size) {
+    return cmd == 0x0048 /* NP_CMD_NETPACKET */ ? size + 4 : size;
+}
+
 /** @brief SYNC: the high bit of the client number word means paused. */
 #define NP_SYNC_PAUSED (1u << 31)
 
