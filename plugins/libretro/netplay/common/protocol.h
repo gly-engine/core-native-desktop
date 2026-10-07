@@ -1,5 +1,5 @@
 /**
- * @file plugins/libretro/netplay/client/protocol.h
+ * @file plugins/libretro/netplay/common/protocol.h
  * @brief Wire format of the libretro netplay protocol (versions 5 and 6),
  * as RetroArch speaks it, so this frontend can join a RetroArch host.
  *

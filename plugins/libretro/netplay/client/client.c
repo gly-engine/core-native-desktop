@@ -13,22 +13,7 @@
  * input for every frame it runs.
  */
 #include "client.h"
-#include "protocol.h"
-
-uint32_t netplay_crc32(const void *data, size_t size) {
-    static uint32_t table[256];
-    const uint8_t *p = data;
-    uint32_t crc = 0xffffffffu;
-
-    if (!table[1])
-        for (uint32_t i = 0; i < 256; i++) {
-            uint32_t c = i;
-            for (int k = 0; k < 8; k++) c = c & 1 ? 0xedb88320u ^ (c >> 1) : c >> 1;
-            table[i] = c;
-        }
-    while (size--) crc = table[(crc ^ *p++) & 0xff] ^ (crc >> 8);
-    return crc ^ 0xffffffffu;
-}
+#include "../common/protocol.h"
 
 #ifdef _WIN32
 
@@ -66,19 +51,23 @@ int16_t netplay_client_input(unsigned port, unsigned device, unsigned index, uns
 
 #ifdef GECND_NETPLAY_ZLIB
 #include <zlib.h>
-#define NP_COMPRESSION 1u  /* zlib */
-#else
-#define NP_COMPRESSION 0u
 #endif
 
-/** @brief Frames of input kept per client. */
-#define NP_RING 256
-
-/** @brief Most words of input a client sends per frame (4 analog pads). */
-#define NP_MAX_WORDS 16
+#define rd32    np_rd32
+#define wr32    np_wr32
+#define reserve np_reserve
 
 /** @brief Frames run in one tick at most, to catch up with the host. */
 #define NP_MAX_CATCHUP 4
+
+/**
+ * @brief Frames ahead of the one running that our input is sent for. A
+ * host that predicts (RetroArch) would not need it, but one that waits for
+ * every input before running a frame (another gecnd) would wait for us
+ * while we wait for it; sending ahead breaks that, at the cost of this
+ * many frames of input delay for us.
+ */
+#define NP_INPUT_LEAD 4
 
 /** @brief Seconds without a byte from the host before giving up. */
 #define NP_TIMEOUT 15
@@ -91,9 +80,6 @@ int16_t netplay_client_input(unsigned port, unsigned device, unsigned index, uns
 #define NP_HISTORY      32
 #define NP_HISTORY_STEP 60
 
-/** @brief This implementation's tag in the connection header. */
-#define NP_IMPL_TAG 0x4743444Eu /* "GCDN" */
-
 typedef enum {
     NP_OFF,
     NP_CONNECTING,
@@ -103,18 +89,6 @@ typedef enum {
     NP_SYNC,
     NP_RUNNING
 } np_phase_t;
-
-typedef struct {
-    uint32_t frame;
-    bool     set;
-    uint32_t words[NP_MAX_WORDS];
-} np_input_t;
-
-typedef struct {
-    uint32_t devices;  /* device bitmap */
-    uint32_t from;     /* first frame with input */
-    uint32_t until;    /* first frame without input */
-} np_player_t;
 
 static struct {
     np_phase_t     phase;
@@ -129,13 +103,9 @@ static struct {
     uint32_t protocol;
     uint32_t compression;   /* agreed with the host: 1 = zlib */
     uint32_t client;        /* our client number */
-    uint32_t devices[NP_MAX_DEVICES];   /* device type per port */
-    np_player_t players[NP_MAX_CLIENTS];
-    np_input_t  inputs[NP_MAX_CLIENTS][NP_RING];
 
     uint32_t self_frame;    /* next frame to run */
     uint32_t server_frame;  /* every frame before it has the host's word */
-    uint32_t run_frame;     /* the frame running, for the input callback */
     bool     have_state;
     bool     paused;
     uint32_t stall;
@@ -159,32 +129,6 @@ static struct {
     bool     playing;
     uint32_t next_send;     /* next frame of ours to send */
 } np = { .fd = -1 };
-
-/* ------------------------------------------------------------------ */
-/* Bytes                                                               */
-/* ------------------------------------------------------------------ */
-
-static uint32_t rd32(const uint8_t *p) {
-    return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
-}
-
-static void wr32(uint8_t *p, uint32_t v) {
-    p[0] = (uint8_t)(v >> 24);
-    p[1] = (uint8_t)(v >> 16);
-    p[2] = (uint8_t)(v >> 8);
-    p[3] = (uint8_t)v;
-}
-
-static bool reserve(uint8_t **buf, size_t *cap, size_t need) {
-    if (need <= *cap) return true;
-    size_t ncap = *cap ? *cap : 4096;
-    while (ncap < need) ncap *= 2;
-    uint8_t *nb = realloc(*buf, ncap);
-    if (!nb) return false;
-    *buf = nb;
-    *cap = ncap;
-    return true;
-}
 
 /* ------------------------------------------------------------------ */
 /* Connection                                                          */
@@ -229,16 +173,6 @@ static void np_send_cmd(uint32_t cmd, const void *payload, uint32_t size) {
     wr32(head + 4, size);
     np_send_raw(head, sizeof(head));
     if (size) np_send_raw(payload, size);
-}
-
-/**
- * @brief Platform word of the header: big endian flag, sizeof(size_t),
- * sizeof(long); only cores with platform quirks care.
- */
-static uint32_t np_platform(void) {
-    const uint16_t one = 1;
-    const uint32_t big = *(const uint8_t *)&one == 0;
-    return big << 30 | (uint32_t)sizeof(size_t) << 15 | (uint32_t)sizeof(long);
 }
 
 static void np_send_header(void) {
@@ -287,9 +221,7 @@ bool netplay_client_start(const char *host, uint16_t port, const char *mitm_sess
         return false;
     }
 
-    memset(&np.players, 0, sizeof(np.players));
-    memset(&np.inputs, 0, sizeof(np.inputs));
-    memset(&np.devices, 0, sizeof(np.devices));
+    np_session_reset();
     np.core = *core;
     snprintf(np.nick, sizeof(np.nick), "%s", nick && nick[0] ? nick : "gecnd");
     np.have_state = np.paused = np.play_asked = np.playing = np.reset_pending = false;
@@ -352,88 +284,26 @@ bool netplay_client_active(void) {
 /* Players and input                                                   */
 /* ------------------------------------------------------------------ */
 
-/** @brief Words a client sends per frame for its devices. */
-static unsigned np_words_for(uint32_t devices) {
-    unsigned words = 0;
-    for (unsigned d = 0; d < NP_MAX_DEVICES; d++)
-        if (devices & (1u << d)) words += np_device_words(np.devices[d]);
-    return words;
-}
-
-static bool np_player_at(uint32_t client, uint32_t frame) {
-    const np_player_t *p = &np.players[client];
-    return p->devices && frame >= p->from && frame < p->until;
-}
-
-static void np_store_input(uint32_t client, uint32_t frame, const uint8_t *data, unsigned words) {
-    np_input_t *in = &np.inputs[client][frame % NP_RING];
-    in->frame = frame;
-    in->set = true;
-    memset(in->words, 0, sizeof(in->words));
-    for (unsigned i = 0; i < words && i < NP_MAX_WORDS; i++)
-        in->words[i] = rd32(data + 4 * i);
-}
-
-static const np_input_t *np_input(uint32_t client, uint32_t frame) {
-    const np_input_t *in = &np.inputs[client][frame % NP_RING];
-    return in->set && in->frame == frame ? in : NULL;
-}
-
 /** @brief Whether every input of a frame is here. */
 static bool np_frame_ready(uint32_t frame) {
-    if (frame >= np.server_frame) return false;
-    for (uint32_t c = 0; c < NP_MAX_CLIENTS; c++)
-        if (c != np.client && np_player_at(c, frame) && !np_input(c, frame))
-            return false;
-    return true;
+    return frame < np.server_frame && np_inputs_ready(frame, np.client);
 }
 
 /** @brief Our input for a frame, from the local controllers (live) or
  * zero (a frame already run before we were told we play it). */
 static void np_send_own(uint32_t frame, bool live) {
     uint8_t p[8 + 4 * NP_MAX_WORDS];
-    const uint32_t devices = np.players[np.client].devices;
-    unsigned words = 0, local = 0;
+    unsigned size;
 
     wr32(p, frame);
     wr32(p + 4, np.client);
-    for (unsigned d = 0; d < NP_MAX_DEVICES && words < NP_MAX_WORDS; d++) {
-        if (!(devices & (1u << d))) continue;
-        const unsigned n = np_device_words(np.devices[d]);
-        for (unsigned w = 0; w < n && words < NP_MAX_WORDS; w++, words++) {
-            uint32_t v = 0;
-            if (live && w == 0 && np.core.local_buttons)
-                v = np.core.local_buttons(local) & 0xffff;
-            wr32(p + 8 + 4 * words, v);
-        }
-        local++;
-    }
-    np_store_input(np.client, frame, p + 8, words);
-    np_send_cmd(NP_CMD_INPUT, p, 8 + 4 * words);
+    size = np_local_input(np.client, &np.core, live, p + 8);
+    np_store_input(np.client, frame, p + 8, size / 4);
+    np_send_cmd(NP_CMD_INPUT, p, 8 + size);
 }
 
 int16_t netplay_client_input(unsigned port, unsigned device, unsigned index, unsigned id) {
-    uint32_t buttons = 0;
-    (void)index;
-
-    if (port >= NP_MAX_DEVICES) return 0;
-    for (uint32_t c = 0; c < NP_MAX_CLIENTS; c++) {
-        const np_player_t *p = &np.players[c];
-        const np_input_t *in;
-        unsigned offset = 0;
-
-        if (!(p->devices & (1u << port)) || !np_player_at(c, np.run_frame)) continue;
-        if (!(in = np_input(c, np.run_frame))) continue;
-        for (unsigned d = 0; d < port; d++)
-            if (p->devices & (1u << d)) offset += np_device_words(np.devices[d]);
-        if (offset < NP_MAX_WORDS) buttons |= in->words[offset];
-    }
-
-    /* joypad buttons, also the buttons of an analog pad; sticks: TODO */
-    if ((device & 0xff) != 1 && (device & 0xff) != 5) return 0;
-    if ((device & 0xff) == 5 && index) return 0;
-    if (id == 256) return (int16_t)(buttons & 0xffff);  /* RETRO_DEVICE_ID_JOYPAD_MASK */
-    return id < 16 ? (int16_t)((buttons >> id) & 1) : 0;
+    return np_session_input(port, device, index, id);
 }
 
 /* ------------------------------------------------------------------ */
@@ -455,17 +325,17 @@ static bool np_on_sync(const uint8_t *p, uint32_t size) {
 
     q = p + 8;
     for (unsigned d = 0; d < NP_MAX_DEVICES; d++, q += 4) {
-        np.devices[d] = rd32(q);
-        if (np.core.set_port_device) np.core.set_port_device(d, np.devices[d]);
+        np_session.devices[d] = rd32(q);
+        if (np.core.set_port_device) np.core.set_port_device(d, np_session.devices[d]);
     }
     q += NP_MAX_DEVICES;  /* share modes */
     for (unsigned d = 0; d < NP_MAX_DEVICES; d++, q += 4) {
         const uint32_t clients = rd32(q);
         for (unsigned c = 0; c < NP_MAX_CLIENTS; c++)
             if (clients & (1u << c)) {
-                np.players[c].devices |= 1u << d;
-                np.players[c].from = frame;
-                np.players[c].until = UINT32_MAX;
+                np_session.players[c].devices |= 1u << d;
+                np_session.players[c].from = frame;
+                np_session.players[c].until = UINT32_MAX;
             }
     }
     {
@@ -486,7 +356,7 @@ static bool np_on_sync(const uint8_t *p, uint32_t size) {
             memcpy(np.core.memory_data(0), q, sram);
     }
 
-    np.self_frame = np.server_frame = np.run_frame = frame;
+    np.self_frame = np.server_frame = np_session.run_frame = frame;
     fprintf(stderr, "[netplay] in sync at frame %u as client %u%s\n",
             frame, np.client, np.paused ? " (paused)" : "");
     return true;
@@ -505,11 +375,11 @@ static void np_on_mode(const uint8_t *p, uint32_t size) {
     if (client >= NP_MAX_CLIENTS) return;
 
     if (flags & NP_MODE_PLAYING) {
-        np.players[client].devices = devices;
-        np.players[client].from = frame;
-        np.players[client].until = UINT32_MAX;
+        np_session.players[client].devices = devices;
+        np_session.players[client].from = frame;
+        np_session.players[client].until = UINT32_MAX;
     } else {
-        np.players[client].until = frame;
+        np_session.players[client].until = frame;
     }
 
     if (flags & NP_MODE_YOU) {
@@ -521,6 +391,21 @@ static void np_on_mode(const uint8_t *p, uint32_t size) {
         fprintf(stderr, "[netplay] %s is %s from frame %u\n", nick,
                 (flags & NP_MODE_PLAYING) ? "playing" : "spectating", frame);
     }
+}
+
+/**
+ * @brief Whether the 8 byte word holding a byte looks like a user space
+ * address on both sides: a pointer the core saved as is, which differs
+ * between processes without meaning anything for the game.
+ */
+static bool np_both_pointers(const uint8_t *a, const uint8_t *b, size_t size, size_t at) {
+    const size_t o = at & ~(size_t)7;
+    uint64_t va = 0, vb = 0;
+
+    if (sizeof(void *) != 8 || o + 8 > size) return false;
+    memcpy(&va, a + o, 8);
+    memcpy(&vb, b + o, 8);
+    return va >> 47 == 0 && vb >> 47 == 0 && va > 0x10000 && vb > 0x10000;
 }
 
 /** @brief Bytes that differ between two states of the same size. */
@@ -576,6 +461,7 @@ static void np_load_pending(void) {
             if (np.state[i] == np.pending[i]) continue;
             diff++;
             if (np.unstable && np.unstable[i]) continue;  /* a saved pointer */
+            if (np_both_pointers(np.state, np.pending, np.pending_size, i)) continue;
             if (real < 4) first[real] = i;
             real++;
         }
@@ -621,8 +507,9 @@ static void np_on_savestate(const uint8_t *p, uint32_t size) {
         fprintf(stderr, "[netplay] truncated savestate\n");
         return;
     }
-    /* joining, or a frame we already passed: load it now */
-    if (!np.have_state || frame <= np.self_frame) {
+    /* joining, or a frame we already passed: load it now (the frame we
+     * are about to run waits a moment, to be compared first) */
+    if (!np.have_state || frame < np.self_frame) {
         np_load_state(state, raw, frame);
         free(inflated);
         return;
@@ -645,7 +532,7 @@ static void np_on_command(uint32_t cmd, const uint8_t *p, uint32_t size) {
         if (size >= 8) {
             const uint32_t frame = rd32(p), client = rd32(p + 4) & 0xffff;
             if (client < NP_MAX_CLIENTS && client != np.client) {
-                const unsigned words = np_words_for(np.players[client].devices);
+                const unsigned words = np_words_for(np_session.players[client].devices);
                 np_store_input(client, frame, p + 8,
                                words < (size - 8) / 4 ? words : (size - 8) / 4);
                 if (client == 0 && frame + 1 > np.server_frame) np.server_frame = frame + 1;
@@ -923,7 +810,7 @@ static void np_run_frame(void) {
         np.reset_pending = false;
         if (np.core.reset) np.core.reset();
     }
-    np.run_frame = frame;
+    np_session.run_frame = frame;
     np.core.run();
     np.self_frame++;
     if (np.self_frame % 600 == 0)
@@ -941,6 +828,12 @@ void netplay_client_tick(void) {
     if (np.stall) {
         np.stall--;
         return;
+    }
+
+    /* our input, read now, for the frames up to NP_INPUT_LEAD ahead */
+    if (np.playing) {
+        while (np.next_send < np.self_frame) np_send_own(np.next_send++, false);
+        while (np.next_send < np.self_frame + NP_INPUT_LEAD) np_send_own(np.next_send++, true);
     }
 
     /* one frame per tick; more only to catch up with the host */

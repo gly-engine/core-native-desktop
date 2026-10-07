@@ -12,6 +12,7 @@
 #include "hw_render.h"
 #include "main.h"
 #include "netplay/client/client.h"
+#include "netplay/host/host.h"
 
 const char *scanner_resolve_core(const char *name);
 const char *scanner_resolve_rom(const char *name);
@@ -149,8 +150,8 @@ uint32_t native_libretro_buttons(unsigned port);
 /* During a netplay session the core sees the inputs of the session's
  * frame, every player's; otherwise the local controllers. */
 static int16_t RETRO_CALLCONV core_input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
-    if (netplay_client_active())
-        return netplay_client_input(port, device, index, id);
+    if (netplay_client_active() || netplay_host_active())
+        return np_session_input(port, device, index, id);
     return engine_input_state_cb(port, device, index, id);
 }
 
@@ -523,26 +524,21 @@ bool native_libretro_game_none(void) {
     return ok;
 }
 
-/* Joins a netplay host when the url asks for it, once the game runs:
- *   #netplay=HOST:PORT       (PORT defaults to 55435)
+/* Hosts or joins a netplay session when the url asks for it, once the
+ * game runs:
+ *   #netplay_host=PORT       hosts (PORT defaults to 55435)
+ *   #netplay=HOST:PORT       joins (PORT defaults to 55435)
  *   #netplay_nick=NAME       (optional)
  *   #netplay_mitm=SESSION    (relay session, optional) */
 static void libretro_netplay_from_url(void) {
     const char *target = url_opt_get("netplay");
+    const char *hosting = url_opt_get("netplay_host");
     char host[256];
     unsigned port = 55435;
     netplay_core_t core = {0};
     struct retro_system_info info = {0};
 
-    if (!target || !target[0]) return;
-    snprintf(host, sizeof(host), "%s", target);
-    {
-        char *colon = strrchr(host, ':');
-        if (colon && !strchr(colon + 1, ']')) {
-            *colon = '\0';
-            port = (unsigned)atoi(colon + 1);
-        }
-    }
+    if ((!target || !target[0]) && !hosting) return;
     if (p_retro_get_system_info) p_retro_get_system_info(&info);
 
     core.core_name       = info.library_name;
@@ -557,6 +553,20 @@ static void libretro_netplay_from_url(void) {
     core.set_port_device = p_retro_set_controller_port_device;
     core.run             = libretro_run_core;
     core.local_buttons   = native_libretro_buttons;
+
+    if (hosting) {
+        if (hosting[0] && atoi(hosting) > 0) port = (unsigned)atoi(hosting);
+        netplay_host_start((uint16_t)port, url_opt_get("netplay_nick"), &core);
+        return;
+    }
+    snprintf(host, sizeof(host), "%s", target);
+    {
+        char *colon = strrchr(host, ':');
+        if (colon && !strchr(colon + 1, ']')) {
+            *colon = '\0';
+            port = (unsigned)atoi(colon + 1);
+        }
+    }
     netplay_client_start(host, (uint16_t)port, url_opt_get("netplay_mitm"),
                          url_opt_get("netplay_nick"), &core);
 }
@@ -666,6 +676,7 @@ void native_libretro_exit(void) {
 
 static void libretro_deinit_core(void) {
     netplay_client_stop();
+    netplay_host_stop();
     api->registry("set", "core:state", (void *)(uintptr_t)GECND_FSM_RUNNING, NULL);
     if (core_initialized) {
         if (p_retro_unload_game) p_retro_unload_game();
@@ -709,6 +720,10 @@ void libretro_run_frame(void) {
     if (!core_initialized || !p_retro_run) return;
     if (netplay_client_active()) {
         netplay_client_tick();
+        return;
+    }
+    if (netplay_host_active()) {
+        netplay_host_tick();
         return;
     }
     libretro_run_core();
