@@ -9,10 +9,13 @@
  * a spectator; PLAY gives it the first free port, announced to everyone
  * with MODE.
  *
- * Every frame: once every player's input for it is here, the host
- * forwards each client's input to the others, sends its own (the frame's
- * synchronization point) and runs the core. A client that leaves stops
- * being waited for from the first frame it did not send.
+ * The host is the session's clock: one frame per tick, guessing the
+ * clients' inputs not here yet and going back when a guess was wrong
+ * (rollback.h). Its own input goes to every client np_input_delay frames
+ * ahead; a client's is forwarded to the others as it arrives. A client
+ * joins at the last final frame, with that frame's state and the inputs
+ * since. A client that leaves stops counting from the first frame it did
+ * not send.
  */
 #include "netplay/host/host.h"
 
@@ -49,10 +52,9 @@ void netplay_host_tick(void) {}
 #include <zlib.h>
 #endif
 
-#include "netplay/lobby/relay.h"
+#include "netplay/common/rollback.h"
 #include "netplay/lobby/lobby.h"
-#include <netdb.h>
-#include <poll.h>
+#include "netplay/lobby/relay.h"
 
 #define rd32    np_rd32
 #define wr32    np_wr32
@@ -73,6 +75,9 @@ void netplay_host_tick(void) {}
 /** @brief RETRO_DEVICE_JOYPAD, what every port holds. */
 #define NP_DEVICE_JOYPAD 1
 
+/** @brief Frames between two CRCs sent to the clients. */
+#define NP_CRC_PERIOD 120
+
 typedef enum {
     HC_FREE,
     HC_HEADER,
@@ -90,6 +95,7 @@ typedef struct {
     time_t     since;        /* when the handshake started */
     bool       playing;
     bool       wants_state;  /* asked for a savestate */
+    bool       gecnd;        /* this frontend: compares game CRCs */
     uint8_t   *in;  size_t in_len,  in_cap;
     uint8_t   *out; size_t out_len, out_cap;
 } np_conn_t;
@@ -101,43 +107,14 @@ static struct {
     char           nick[NP_NICK_LEN];
     uint16_t       port;
     np_conn_t      conns[NP_HOST_CONNS];
-    uint32_t       self_frame;   /* next frame to run */
-    uint32_t       waited;       /* ticks spent waiting for a client's input */
-    uint8_t       *state;  size_t state_cap;
+    uint32_t       next_own;     /* next frame of ours to send */
+    uint32_t       last_crc;     /* last frame a CRC was sent for */
+    uint32_t       waited;       /* ticks too far ahead of a client's input */
     uint8_t       *zstate; size_t zstate_cap;
     bool           announce;     /* list the room in the lobby */
     char           game_name[128];
 } h = { .listen_fd = -1 };
 
-/** @brief Clients waiting to be linked through the relay at once. */
-#define NP_RELAY_PENDING 8
-
-/**
- * @brief The relay session (netplay/lobby/relay.h): the control
- * connection, the session's id, and the links being opened for clients.
- */
-static struct {
-    bool     wanted;
-    char     handle[32];
-    int      fd;               /* control connection */
-    bool     connecting;
-    bool     ready;            /* the session's id is known */
-    uint8_t  sid[NP_RELAY_ID_SIZE];
-    char     session[17];      /* the id's unique bytes, base64 */
-    struct sockaddr_storage addr;
-    socklen_t addr_len;
-    uint8_t  buf[NP_RELAY_ID_SIZE + NP_RELAY_ADDR_SIZE];
-    size_t   got;
-    struct {
-        int      fd;
-        uint8_t  id[NP_RELAY_ID_SIZE];
-        bool     has_addr;
-        time_t   since;
-    } pending[NP_RELAY_PENDING];
-} r = { .fd = -1 };
-
-static void hr_close(const char *why);
-static void hr_tick(void);
 
 /* ------------------------------------------------------------------ */
 /* Connections                                                         */
@@ -164,23 +141,63 @@ static void hc_broadcast(uint32_t cmd, const void *payload, uint32_t size, const
             hc_send_cmd(&h.conns[i], cmd, payload, size);
 }
 
+/** @brief MODE to one client: a player starts or stops playing at a frame. */
+static void hc_send_mode_to(np_conn_t *to, uint32_t client, bool playing, uint32_t frame) {
+    const np_player_t *p = &np_session.players[client];
+    uint8_t m[NP_MODE_SIZE] = {0};
+
+    wr32(m, frame);
+    wr32(m + 4, (to->client == client ? NP_MODE_YOU : 0) | (playing ? NP_MODE_PLAYING : 0) | client);
+    wr32(m + 8, playing ? p->devices : 0);
+    memcpy(m + 12 + NP_MAX_DEVICES, p->nick, NP_NICK_LEN);
+    hc_send_cmd(to, NP_CMD_MODE, m, sizeof(m));
+}
+
 /**
  * @brief MODE: a player starts or stops playing from a frame. The client
  * it is about gets it with the YOU bit.
  */
 static void hc_send_mode(const np_conn_t *about, bool playing, uint32_t frame) {
-    const np_player_t *p = &np_session.players[about->client];
-    uint8_t m[NP_MODE_SIZE] = {0};
+    for (unsigned i = 0; i < NP_HOST_CONNS; i++)
+        if (h.conns[i].phase == HC_RUNNING)
+            hc_send_mode_to(&h.conns[i], about->client, playing, frame);
+}
 
-    wr32(m, frame);
-    wr32(m + 8, playing ? p->devices : 0);
-    memcpy(m + 12 + NP_MAX_DEVICES, about->nick, NP_NICK_LEN);
-    for (unsigned i = 0; i < NP_HOST_CONNS; i++) {
-        np_conn_t *c = &h.conns[i];
-        if (c->phase != HC_RUNNING) continue;
-        wr32(m + 4, (c == about ? NP_MODE_YOU : 0) | (playing ? NP_MODE_PLAYING : 0) | about->client);
-        hc_send_cmd(c, NP_CMD_MODE, m, sizeof(m));
+/** @brief Our input for a frame, read now, to every client. */
+static void hc_send_own(uint32_t frame) {
+    uint8_t p[8 + 4 * NP_MAX_WORDS];
+    unsigned size;
+
+    wr32(p, frame);
+    wr32(p + 4, 0);
+    size = np_local_input(0, &h.core, true, p + 8);
+    np_store_input(0, frame, p + 8, size / 4);
+    hc_broadcast(NP_CMD_INPUT, p, 8 + size, NULL);
+}
+
+/**
+ * @brief A player stops at the next frame of our input stream: clients
+ * (RetroArch's) take a MODE only at that frame. Frames before it the
+ * player did not send count as idle, for everyone; if it sent past it,
+ * our stream goes on to there first.
+ */
+static uint32_t hc_stop_playing(np_conn_t *c) {
+    np_player_t *p = &np_session.players[c->client];
+    const unsigned words = np_words_for(p->devices);
+    uint32_t end = np_session.confirmed > p->from ? np_session.confirmed : p->from;
+    uint8_t idle[8 + 4 * NP_MAX_WORDS] = {0};
+
+    while (np_input(c->client, end)) end++;
+    while (h.next_own < end) hc_send_own(h.next_own++);
+    wr32(idle + 4, c->client);
+    for (uint32_t f = end; f < h.next_own; f++) {
+        wr32(idle, f);
+        np_store_input(c->client, f, idle + 8, words);  /* rewinds if guessed otherwise */
+        hc_broadcast(NP_CMD_INPUT, idle, 8 + 4 * words, c);
     }
+    p->until = h.next_own;
+    c->playing = false;
+    return p->until;
 }
 
 static void hc_drop(np_conn_t *c, const char *why) {
@@ -188,12 +205,7 @@ static void hc_drop(np_conn_t *c, const char *why) {
     fprintf(stderr, "[netplay] %s left: %s\n", c->nick[0] ? c->nick : "a client", why);
     if (c->phase == HC_RUNNING && c->playing) {
         /* nobody waits for it from the first frame it did not send */
-        np_player_t *p = &np_session.players[c->client];
-        uint32_t until = p->from;
-        while (until < h.self_frame + NP_RING && np_input(c->client, until)) until++;
-        if (until < h.self_frame) until = h.self_frame;
-        p->until = until;
-        c->playing = false;
+        const uint32_t until = hc_stop_playing(c);
         c->phase = HC_FREE;  /* not told about its own leaving */
         hc_send_mode(c, false, until);
     }
@@ -230,27 +242,25 @@ static void hc_send_info(np_conn_t *c) {
 }
 
 /**
- * @brief Our savestate as the start of the next frame, compressed when
- * the client takes zlib.
+ * @brief The state at the start of the last final frame (no guess in
+ * it), compressed when the client takes zlib.
  */
 static void hc_send_state(np_conn_t *c) {
-    const size_t size = h.core.serialize_size ? h.core.serialize_size() : 0;
-    const uint8_t *data;
-    size_t len;
+    const uint8_t *state, *data;
+    size_t size, len;
     uint8_t *p;
 
-    if (!size || !h.core.serialize || !reserve(&h.state, &h.state_cap, size) ||
-        !h.core.serialize(h.state, size)) {
+    if (!np_rb_final_state(&state, &size)) {
         fprintf(stderr, "[netplay] the core cannot make a savestate for %s\n", c->nick);
         return;
     }
-    data = h.state;
+    data = state;
     len = size;
 #ifdef GECND_NETPLAY_ZLIB
     if (c->compression) {
         uLongf zlen = compressBound(size);
         if (!reserve(&h.zstate, &h.zstate_cap, zlen) ||
-            compress2(h.zstate, &zlen, h.state, size, Z_BEST_SPEED) != Z_OK) {
+            compress2(h.zstate, &zlen, state, size, Z_BEST_SPEED) != Z_OK) {
             fprintf(stderr, "[netplay] cannot compress a savestate for %s\n", c->nick);
             return;
         }
@@ -260,7 +270,7 @@ static void hc_send_state(np_conn_t *c) {
 #endif
     p = malloc(8 + len);
     if (!p) return;
-    wr32(p, h.self_frame);
+    wr32(p, np_session.confirmed);  /* the next frame of our stream */
     wr32(p + 4, (uint32_t)size);
     memcpy(p + 8, data, len);
     hc_send_cmd(c, NP_CMD_LOAD_SAVESTATE, p, (uint32_t)(8 + len));
@@ -268,8 +278,8 @@ static void hc_send_state(np_conn_t *c) {
 }
 
 /**
- * @brief SYNC: where the session is, who controls each port, the
- * client's nick and our SRAM.
+ * @brief SYNC: where the session is (the last final frame), who controls
+ * each port then, the client's nick and our SRAM.
  */
 static void hc_send_sync(np_conn_t *c) {
     const size_t sram = h.core.memory_size && h.core.memory_data && h.core.memory_data(0) ?
@@ -278,7 +288,7 @@ static void hc_send_sync(np_conn_t *c) {
     uint8_t *q;
 
     if (!p) return;
-    wr32(p, h.self_frame);
+    wr32(p, np_session.confirmed);
     wr32(p + 4, c->client);
     q = p + 8;
     for (unsigned d = 0; d < NP_MAX_DEVICES; d++, q += 4) wr32(q, np_session.devices[d]);
@@ -286,7 +296,7 @@ static void hc_send_sync(np_conn_t *c) {
     for (unsigned d = 0; d < NP_MAX_DEVICES; d++, q += 4) {
         uint32_t clients = 0;
         for (unsigned k = 0; k < NP_MAX_CLIENTS; k++)
-            if ((np_session.players[k].devices & (1u << d)) && np_player_at(k, h.self_frame))
+            if ((np_session.players[k].devices & (1u << d)) && np_player_at(k, np_session.confirmed))
                 clients |= 1u << k;
         wr32(q, clients);
     }
@@ -316,6 +326,7 @@ static bool hc_on_header(np_conn_t *c, const uint8_t *in) {
     protocol = !hi ? lo : hi > NP_PROTOCOL_HIGH ? NP_PROTOCOL_HIGH : hi;
     if (protocol < NP_PROTOCOL_LOW || protocol > NP_PROTOCOL_HIGH) return false;
     c->compression = rd32(in + 4 * NP_HDR_COMPRESSION) & NP_COMPRESSION;
+    c->gecnd = rd32(in + 4 * NP_HDR_IMPL) == NP_IMPL_TAG;
 
     wr32(out + 4 * NP_HDR_MAGIC,       NP_MAGIC_RANP);
     wr32(out + 4 * NP_HDR_PLATFORM,    np_platform());
@@ -347,28 +358,22 @@ static void hc_on_play(np_conn_t *c) {
         if (taken) continue;
 
         p->devices = 1u << d;
-        p->from = h.self_frame;
+        p->from = h.next_own;  /* the next frame of our input stream */
         p->until = UINT32_MAX;
         memcpy(p->nick, c->nick, NP_NICK_LEN);
         c->playing = true;
-        fprintf(stderr, "[netplay] %s plays on port %u from frame %u\n", c->nick, d + 1, h.self_frame);
-        hc_send_mode(c, true, h.self_frame);
+        fprintf(stderr, "[netplay] %s plays on port %u from frame %u\n", c->nick, d + 1, p->from);
+        hc_send_mode(c, true, p->from);
         return;
     }
     wr32(refused, NP_REFUSED_NO_SLOTS);
     hc_send_cmd(c, NP_CMD_MODE_REFUSED, refused, sizeof(refused));
 }
 
-/** @brief SPECTATE: stops being waited for after what it already sent. */
+/** @brief SPECTATE: stops counting after what it already sent. */
 static void hc_on_spectate(np_conn_t *c) {
-    np_player_t *p = &np_session.players[c->client];
-    uint32_t until = h.self_frame;
-
     if (!c->playing) return;
-    while (until < h.self_frame + NP_RING && np_input(c->client, until)) until++;
-    p->until = until;
-    c->playing = false;
-    hc_send_mode(c, false, until);
+    hc_send_mode(c, false, hc_stop_playing(c));
 }
 
 static void hc_on_command(np_conn_t *c, uint32_t cmd, const uint8_t *p, uint32_t size) {
@@ -376,12 +381,22 @@ static void hc_on_command(np_conn_t *c, uint32_t cmd, const uint8_t *p, uint32_t
     case NP_CMD_INPUT:
         if (size >= 8 && c->playing) {
             const uint32_t frame = rd32(p);
-            const unsigned words = np_words_for(np_session.players[c->client].devices);
-            /* the client number is the connection's, whatever it wrote */
-            if (frame >= h.self_frame && frame < h.self_frame + NP_RING &&
-                frame >= np_session.players[c->client].from)
-                np_store_input(c->client, frame, p + 8,
-                               words < (size - 8) / 4 ? words : (size - 8) / 4);
+            const np_player_t *pl = &np_session.players[c->client];
+            unsigned words = np_words_for(pl->devices);
+            uint8_t fwd[8 + 4 * NP_MAX_WORDS];
+
+            if (words > (size - 8) / 4) words = (size - 8) / 4;
+            if (words > NP_MAX_WORDS) words = NP_MAX_WORDS;
+            /* frames still open, and the client number the connection's,
+             * whatever it wrote; then on to everyone else at once */
+            if (frame < np_session.confirmed || frame - np_session.confirmed >= NP_RING / 2 ||
+                frame < pl->from || frame >= pl->until || np_input(c->client, frame))
+                break;
+            np_store_input(c->client, frame, p + 8, words);
+            wr32(fwd, frame);
+            wr32(fwd + 4, c->client);
+            memcpy(fwd + 8, p + 8, 4 * words);
+            hc_broadcast(NP_CMD_INPUT, fwd, 8 + 4 * words, c);
         }
         break;
     case NP_CMD_PLAY:
@@ -404,6 +419,35 @@ static void hc_on_command(np_conn_t *c, uint32_t cmd, const uint8_t *p, uint32_t
         break;
     default:  /* CRC, chat, settings: nothing to do */
         break;
+    }
+}
+
+/**
+ * @brief A client joining at the last final frame: who started or stopped
+ * playing since, and every real input since, ours included.
+ */
+static void hc_catch_up(np_conn_t *c) {
+    const uint32_t from = np_session.confirmed;
+    uint8_t p[8 + 4 * NP_MAX_WORDS];
+
+    /* in stream order: a MODE goes right before the inputs of its frame */
+    for (uint32_t f = from; f <= h.next_own; f++) {
+        for (uint32_t k = 0; k < NP_MAX_CLIENTS; k++) {
+            const np_player_t *pl = &np_session.players[k];
+            if (!pl->devices || k == c->client) continue;
+            if (pl->from == f && f > from) hc_send_mode_to(c, k, true, f);
+            if (pl->until == f && f > from) hc_send_mode_to(c, k, false, f);
+        }
+        if (f == h.next_own) break;
+        for (uint32_t k = 0; k < NP_MAX_CLIENTS; k++) {
+            const np_input_t *in = np_input(k, f);
+            const unsigned words = np_words_for(np_session.players[k].devices);
+            if (!in || !np_player_at(k, f)) continue;
+            wr32(p, f);
+            wr32(p + 4, k);
+            for (unsigned w = 0; w < words && w < NP_MAX_WORDS; w++) wr32(p + 8 + 4 * w, in->words[w]);
+            hc_send_cmd(c, NP_CMD_INPUT, p, 8 + 4 * words);
+        }
     }
 }
 
@@ -470,7 +514,8 @@ static void hc_parse(np_conn_t *c) {
             hc_send_sync(c);
             hc_send_state(c);
             c->phase = HC_RUNNING;
-            fprintf(stderr, "[netplay] %s joined at frame %u\n", c->nick, h.self_frame);
+            hc_catch_up(c);
+            fprintf(stderr, "[netplay] %s joined at frame %u\n", c->nick, np_session.confirmed);
             break;
         case HC_RUNNING:
             hc_on_command(c, cmd, p, size);
@@ -538,7 +583,7 @@ static void hc_adopt(int fd) {
     c->phase = HC_HEADER;
     c->since = time(NULL);
     c->nick[0] = '\0';
-    c->playing = c->wants_state = false;
+    c->playing = c->wants_state = c->gecnd = false;
     c->in_len = c->out_len = 0;
     c->client = (uint32_t)(c - h.conns) + 1;
     memset(&np_session.players[c->client], 0, sizeof(np_player_t));
@@ -556,6 +601,34 @@ static void hc_accept(void) {
 /* ------------------------------------------------------------------ */
 /* Session                                                             */
 /* ------------------------------------------------------------------ */
+
+/**
+ * @brief A frame became final: every NP_CRC_PERIOD frames its CRC goes
+ * to the clients, of the game to this frontend's, of the whole state to
+ * RetroArch's when that means something for the core.
+ */
+static void hc_on_final(uint32_t frame, uint32_t game_crc) {
+    uint8_t p[8];
+    uint32_t state_crc = 0;
+    bool has_state_crc = false;
+
+    if (frame % NP_CRC_PERIOD || frame <= h.last_crc) return;
+    h.last_crc = frame;
+    for (unsigned i = 0; i < NP_HOST_CONNS; i++) {
+        np_conn_t *c = &h.conns[i];
+        if (c->phase != HC_RUNNING) continue;
+        wr32(p, frame);
+        if (c->gecnd) {
+            wr32(p + 4, game_crc);
+        } else {
+            if (!has_state_crc && (!np_rb_states_portable() || !np_rb_state_crc(frame, &state_crc)))
+                continue;
+            has_state_crc = true;
+            wr32(p + 4, state_crc);
+        }
+        hc_send_cmd(c, NP_CMD_CRC, p, sizeof(p));
+    }
+}
 
 bool netplay_host_start(uint16_t port, const char *nick, const netplay_core_t *core) {
     struct sockaddr_in addr = {0};
@@ -582,7 +655,8 @@ bool netplay_host_start(uint16_t port, const char *nick, const netplay_core_t *c
     h.port = port;
     h.core = *core;
     snprintf(h.nick, sizeof(h.nick), "%s", nick && nick[0] ? nick : "gecnd");
-    h.self_frame = 0;
+    h.next_own = 0;
+    h.last_crc = 0;
     h.waited = 0;
 
     /* every port a joypad, on our core as on every client's */
@@ -596,10 +670,14 @@ bool netplay_host_start(uint16_t port, const char *nick, const netplay_core_t *c
     np_session.players[0].until = UINT32_MAX;
     memcpy(np_session.players[0].nick, h.nick, NP_NICK_LEN);
 
+    if (!np_rb_start(&h.core, 0, hc_on_final)) {
+        close(fd);
+        h.listen_fd = -1;
+        return false;
+    }
+
     h.announce = false;
-    hr_close(NULL);
-    r.wanted = false;
-    for (unsigned i = 0; i < NP_RELAY_PENDING; i++) r.pending[i].fd = -1;
+    netplay_relay_stop();
 
     h.active = true;
     fprintf(stderr, "[netplay] hosting on port %u as %s\n", port, h.nick);
@@ -625,9 +703,9 @@ void netplay_host_stop(void) {
     if (h.listen_fd >= 0) close(h.listen_fd);
     h.listen_fd = -1;
     h.active = false;
+    np_rb_stop();
     netplay_lobby_stop();
-    hr_close(NULL);
-    r.wanted = false;
+    netplay_relay_stop();
 }
 
 /** @brief Lists the room, through the relay when there is one. */
@@ -639,8 +717,8 @@ static void hc_lobby_start(void) {
         .game_name    = h.game_name,
         .game_crc     = h.core.content_crc,
         .port         = h.port,
-        .mitm_server  = r.ready ? r.handle : NULL,
-        .mitm_session = r.ready ? r.session : NULL,
+        .mitm_server  = netplay_relay_session() ? netplay_relay_handle() : NULL,
+        .mitm_session = netplay_relay_session(),
     };
     netplay_lobby_start(&room);
 }
@@ -650,252 +728,75 @@ void netplay_host_announce(const char *game_name) {
     h.announce = true;
     snprintf(h.game_name, sizeof(h.game_name), "%s", game_name ? game_name : "");
     /* with a relay coming, wait for its session to list it */
-    if (!r.wanted || r.ready) hc_lobby_start();
+    if (!netplay_relay_wanted() || netplay_relay_session()) hc_lobby_start();
 }
 
-/* ------------------------------------------------------------------ */
-/* Relay                                                               */
-/* ------------------------------------------------------------------ */
-
-static void hr_close(const char *why) {
-    if (why) fprintf(stderr, "[netplay] relay: %s\n", why);
-    if (r.fd >= 0) close(r.fd);
-    r.fd = -1;
-    r.connecting = r.ready = false;
-    r.got = 0;
-    for (unsigned i = 0; i < NP_RELAY_PENDING; i++) {
-        if (r.pending[i].fd >= 0) close(r.pending[i].fd);
-        r.pending[i].fd = -1;
-    }
-}
-
-/** @brief A non blocking connection to the relay. */
-static int hr_connect(void) {
-    int fd = socket(r.addr.ss_family, SOCK_STREAM, 0), one = 1;
-
-    if (fd < 0) return -1;
-    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
-    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-    if (connect(fd, (struct sockaddr *)&r.addr, r.addr_len) < 0 && errno != EINPROGRESS) {
-        close(fd);
-        return -1;
-    }
-    return fd;
-}
-
-/** @brief Where the relay is (from the lobby): open the control link. */
-static void hr_on_tunnel(const char *addr, uint16_t port, void *user) {
-    struct addrinfo hints = {0}, *res = NULL;
-    char service[8];
+static void hc_on_relay_link(int fd, void *user) {
     (void)user;
+    hc_adopt(fd);
+}
 
-    if (!h.active || !r.wanted) return;
-    if (!addr) {
-        hr_close("no address for it");
-        return;
-    }
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    snprintf(service, sizeof(service), "%u", port);
-    if (getaddrinfo(addr, service, &hints, &res) || !res) {
-        hr_close("cannot resolve it");
-        return;
-    }
-    memcpy(&r.addr, res->ai_addr, res->ai_addrlen);
-    r.addr_len = res->ai_addrlen;
-    freeaddrinfo(res);
-    if ((r.fd = hr_connect()) < 0) {
-        hr_close("cannot connect to it");
-        return;
-    }
-    r.connecting = true;
-    fprintf(stderr, "[netplay] relay: connecting to %s:%u\n", addr, port);
+static void hc_on_relay_session(const char *handle, const char *session, void *user) {
+    (void)handle; (void)session; (void)user;
+    if (h.announce) hc_lobby_start();
 }
 
 bool netplay_host_relay(const char *handle) {
-    if (!h.active || !handle || !handle[0]) return false;
-    hr_close(NULL);
-    snprintf(r.handle, sizeof(r.handle), "%s", handle);
-    r.wanted = true;
-    return netplay_lobby_tunnel(handle, hr_on_tunnel, NULL);
-}
-
-static bool hr_send(int fd, const void *data, size_t len) {
-    return send(fd, data, len, MSG_NOSIGNAL) == (ssize_t)len;
-}
-
-/** @brief A client arrives (RATL): open its link and ask its address. */
-static void hr_on_link(const uint8_t *id) {
-    uint8_t ask[NP_RELAY_ID_SIZE];
-
-    for (unsigned i = 0; i < NP_RELAY_PENDING; i++) {
-        if (r.pending[i].fd >= 0) continue;
-        if ((r.pending[i].fd = hr_connect()) < 0) {
-            fprintf(stderr, "[netplay] relay: cannot open a link for a client\n");
-            return;
-        }
-        memcpy(r.pending[i].id, id, NP_RELAY_ID_SIZE);
-        r.pending[i].has_addr = false;
-        r.pending[i].since = time(NULL);
-        np_relay_id(ask, NP_RELAY_ADDR, id + 4);
-        if (!hr_send(r.fd, ask, sizeof(ask))) hr_close("lost while asking a client's address");
-        return;
-    }
-    fprintf(stderr, "[netplay] relay: too many clients arriving at once\n");
-}
-
-/** @brief The relay's messages on the control connection. */
-static void hr_read(void) {
-    for (;;) {
-        size_t need;
-        ssize_t n;
-
-        if (!r.ready) need = NP_RELAY_ID_SIZE;
-        else if (r.got < 4) need = 4;
-        else switch (rd32(r.buf)) {
-            case NP_RELAY_PING: need = 4; break;
-            case NP_RELAY_LINK: need = NP_RELAY_ID_SIZE; break;
-            case NP_RELAY_ADDR: need = NP_RELAY_ID_SIZE + NP_RELAY_ADDR_SIZE; break;
-            default:
-                hr_close("unknown message");
-                return;
-        }
-        if (r.got < need) {
-            n = recv(r.fd, r.buf + r.got, need - r.got, 0);
-            if (n == 0) { hr_close("closed the session"); return; }
-            if (n < 0) {
-                if (errno != EAGAIN && errno != EWOULDBLOCK) hr_close(strerror(errno));
-                return;
-            }
-            r.got += (size_t)n;
-            continue;
-        }
-        r.got = 0;
-
-        if (!r.ready) {
-            static const uint8_t zero[NP_RELAY_UNIQUE_SIZE];
-            if (rd32(r.buf) != NP_RELAY_SESSION || !memcmp(r.buf + 4, zero, sizeof(zero))) {
-                hr_close("refused a session");
-                return;
-            }
-            memcpy(r.sid, r.buf, NP_RELAY_ID_SIZE);
-            np_relay_encode(r.sid + 4, r.session);
-            r.ready = true;
-            fprintf(stderr, "[netplay] relay: session %s on %s\n", r.session, r.handle);
-            if (h.announce) hc_lobby_start();
-            continue;
-        }
-        switch (rd32(r.buf)) {
-        case NP_RELAY_PING:
-            if (!hr_send(r.fd, r.buf, 4)) { hr_close("lost on a ping"); return; }
-            break;
-        case NP_RELAY_LINK:
-            hr_on_link(r.buf);
-            break;
-        case NP_RELAY_ADDR:
-            for (unsigned i = 0; i < NP_RELAY_PENDING; i++)
-                if (r.pending[i].fd >= 0 && !r.pending[i].has_addr &&
-                    !memcmp(r.pending[i].id + 4, r.buf + 4, NP_RELAY_UNIQUE_SIZE)) {
-                    r.pending[i].has_addr = true;
-                    break;
-                }
-            break;
-        }
-        if (r.fd < 0) return;
-    }
-}
-
-/**
- * @brief Relay work in a tick: finish the control link, read the relay,
- * and hand links that are ready over as client connections.
- */
-static void hr_tick(void) {
-    if (!r.wanted) return;
-    if (r.fd >= 0 && r.connecting) {
-        struct pollfd pfd = { .fd = r.fd, .events = POLLOUT };
-        int err = 0;
-        socklen_t len = sizeof(err);
-        uint8_t ask[NP_RELAY_ID_SIZE];
-
-        if (poll(&pfd, 1, 0) <= 0) return;
-        getsockopt(r.fd, SOL_SOCKET, SO_ERROR, &err, &len);
-        if (err) { hr_close(strerror(err)); return; }
-        r.connecting = false;
-        np_relay_id(ask, NP_RELAY_SESSION, NULL);  /* a new session, please */
-        if (!hr_send(r.fd, ask, sizeof(ask))) { hr_close("lost asking for a session"); return; }
-    }
-    if (r.fd >= 0) hr_read();
-
-    for (unsigned i = 0; i < NP_RELAY_PENDING; i++) {
-        struct pollfd pfd = { .fd = r.pending[i].fd, .events = POLLOUT };
-        if (r.pending[i].fd < 0) continue;
-        if (time(NULL) - r.pending[i].since > 15) {
-            close(r.pending[i].fd);
-            r.pending[i].fd = -1;
-            fprintf(stderr, "[netplay] relay: a client's link timed out\n");
-            continue;
-        }
-        if (!r.pending[i].has_addr || poll(&pfd, 1, 0) <= 0 || !(pfd.revents & POLLOUT)) continue;
-        if (!hr_send(r.pending[i].fd, r.pending[i].id, NP_RELAY_ID_SIZE)) {
-            close(r.pending[i].fd);
-        } else {
-            fprintf(stderr, "[netplay] relay: a client is linked\n");
-            hc_adopt(r.pending[i].fd);
-        }
-        r.pending[i].fd = -1;
-    }
+    return h.active && netplay_relay_host(handle, hc_on_relay_link, hc_on_relay_session, NULL);
 }
 
 bool netplay_host_active(void) {
     return h.active;
 }
 
+/** @brief Whether a running client asked for a savestate. */
+static bool hc_state_wanted(void) {
+    for (unsigned i = 0; i < NP_HOST_CONNS; i++)
+        if (h.conns[i].phase == HC_RUNNING && h.conns[i].wants_state) return true;
+    return false;
+}
+
 /**
- * @brief Runs the next frame if every player's input for it is here:
- * savestates asked for, the clients' inputs to everyone else, our input
- * (the frame's synchronization point), then the core.
+ * @brief Savestates asked for. A state goes in our input stream at its
+ * next frame (clients take it only there), and only once every frame
+ * before is final: until then our stream stops (hc_run_frame).
  */
-static void hc_run_frame(void) {
-    const uint32_t frame = h.self_frame;
-    uint8_t p[8 + 4 * NP_MAX_WORDS];
-    unsigned size;
-
-    if (!np_inputs_ready(frame, 0)) {  /* waiting for someone */
-        h.waited++;
-        return;
-    }
-
+static void hc_send_states(void) {
+    if (np_session.confirmed != h.next_own || np_session.self_frame != h.next_own) return;
     for (unsigned i = 0; i < NP_HOST_CONNS; i++)
         if (h.conns[i].phase == HC_RUNNING && h.conns[i].wants_state) {
             h.conns[i].wants_state = false;
             hc_send_state(&h.conns[i]);
         }
+}
 
-    for (unsigned i = 0; i < NP_HOST_CONNS; i++) {
-        const np_conn_t *c = &h.conns[i];
-        const np_input_t *in;
-        if (!np_player_at(c->client, frame) || !(in = np_input(c->client, frame))) continue;
-        wr32(p, frame);
-        wr32(p + 4, c->client);
-        size = 4 * np_words_for(np_session.players[c->client].devices);
-        for (unsigned w = 0; w < size / 4; w++) wr32(p + 8 + 4 * w, in->words[w]);
-        hc_broadcast(NP_CMD_INPUT, p, 8 + size, c);
+/**
+ * @brief Runs the next frame, unless that would get too far past the
+ * last final one (a client's input is late), or a savestate is waiting
+ * for the frames already in our stream to be final: then it waits.
+ */
+static void hc_run_frame(void) {
+    const uint32_t frame = np_session.self_frame;
+
+    if (!np_rb_can_run()) {
+        h.waited++;
+        return;
     }
+    if (!hc_state_wanted())
+        while (h.next_own <= frame + np_input_delay) hc_send_own(h.next_own++);
+    if (h.next_own <= frame) {
+        h.waited++;
+        return;
+    }
+    np_rb_run();
 
-    wr32(p, frame);
-    wr32(p + 4, 0);
-    size = np_local_input(0, &h.core, true, p + 8);
-    np_store_input(0, frame, p + 8, size / 4);
-    hc_broadcast(NP_CMD_INPUT, p, 8 + size, NULL);
-
-    np_session.run_frame = frame;
-    h.core.run();
-    h.self_frame++;
-    if (h.self_frame % 600 == 0) {
-        unsigned players = 0;
-        for (unsigned k = 0; k < NP_MAX_CLIENTS; k++) players += np_player_at(k, h.self_frame);
-        fprintf(stderr, "[netplay] frame %u, %u players, %u ticks waiting for input\n",
-                h.self_frame, players, h.waited);
+    if (np_session.self_frame % 600 == 0) {
+        unsigned players = 0, rollbacks, replayed;
+        for (unsigned k = 0; k < NP_MAX_CLIENTS; k++) players += np_player_at(k, np_session.self_frame);
+        np_rb_stats(&rollbacks, &replayed);
+        fprintf(stderr, "[netplay] frame %u, final %u, %u players, %u rollbacks "
+                "(%u frames run again), %u ticks waiting for input\n",
+                np_session.self_frame, np_session.confirmed, players, rollbacks, replayed, h.waited);
         h.waited = 0;
     }
 }
@@ -903,9 +804,14 @@ static void hc_run_frame(void) {
 void netplay_host_tick(void) {
     if (!h.active) return;
     hc_accept();
-    hr_tick();
+    netplay_relay_tick();
     for (unsigned i = 0; i < NP_HOST_CONNS; i++)
         if (h.conns[i].phase != HC_FREE) hc_io(&h.conns[i]);
+
+    /* wrong guesses first, then what became final */
+    np_rb_resolve();
+    np_rb_confirm(NP_NO_FRAME);
+    hc_send_states();
     hc_run_frame();
     for (unsigned i = 0; i < NP_HOST_CONNS; i++)
         if (h.conns[i].phase != HC_FREE) hc_flush(&h.conns[i]);

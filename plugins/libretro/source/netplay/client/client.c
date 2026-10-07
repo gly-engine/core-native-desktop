@@ -4,16 +4,20 @@
  *
  * Flow: connect, exchange the connection header, NICK, receive the host's
  * INFO and answer with ours, receive SYNC (frame, devices, who controls
- * them, SRAM), then the host's savestate. From there every frame needs
- * the host's INPUT or NOINPUT for it (the host's clock) and the input of
- * every other player in the game; once all is there the frame runs with
- * exactly those inputs, ours included, so the core stays in sync without
- * ever predicting. A PLAY request turns this client into a player: the
- * host answers with MODE, and from its frame on this client sends its
- * input for every frame it runs.
+ * them, SRAM), then the host's savestate. From there frames run on time,
+ * guessing the inputs not here yet and going back when a guess was wrong
+ * (rollback.h); the host's INPUT or NOINPUT for a frame (the host's
+ * clock) and every other player's make it final. A PLAY request turns
+ * this client into a player: the host answers with MODE, and from its
+ * frame on this client sends its input, np_input_delay frames ahead.
+ *
+ * Pacing: the host's latest input says where it was half a round trip
+ * ago (PING); this client runs one frame per tick, two to catch up when
+ * behind that, none when ahead of it.
  */
 #include "netplay/client/client.h"
 #include "netplay/common/protocol.h"
+#include "netplay/common/rollback.h"
 #include "netplay/lobby/relay.h"
 
 #ifdef _WIN32
@@ -59,16 +63,19 @@ int16_t netplay_client_input(unsigned port, unsigned device, unsigned index, uns
 #define reserve np_reserve
 
 /** @brief Frames run in one tick at most, to catch up with the host. */
-#define NP_MAX_CATCHUP 4
+#define NP_MAX_CATCHUP 8
 
-/**
- * @brief Frames ahead of the one running that our input is sent for. A
- * host that predicts (RetroArch) would not need it, but one that waits for
- * every input before running a frame (another gecnd) would wait for us
- * while we wait for it; sending ahead breaks that, at the cost of this
- * many frames of input delay for us.
- */
-#define NP_INPUT_LEAD 4
+/** @brief Frames off the host's time (on average) before pacing corrects. */
+#define NP_PACE_SLACK 1.5f
+
+/** @brief Ticks at least between two skipped ticks, so a stutter is short. */
+#define NP_PACE_SKIP_GAP 8
+
+/** @brief Frames behind the host past which catching up goes all out. */
+#define NP_PACE_FAR 10
+
+/** @brief Milliseconds between two pings to the host. */
+#define NP_PING_PERIOD 1000
 
 /** @brief Seconds without a byte from the host before giving up. */
 #define NP_TIMEOUT 15
@@ -105,26 +112,25 @@ static struct {
     uint32_t compression;   /* agreed with the host: 1 = zlib */
     uint32_t client;        /* our client number */
 
-    uint32_t self_frame;    /* next frame to run */
     uint32_t server_frame;  /* every frame before it has the host's word */
     bool     have_state;
     bool     paused;
     uint32_t stall;
-    bool     reset_pending;
-    uint32_t reset_frame;
 
+    /* sync checks: the host's CRCs, and ours of final frames */
+    bool     gecnd_host;     /* the host is this frontend: game CRCs */
+    bool     crc_off;        /* RetroArch host, core states not portable */
     struct { uint32_t frame, hash; bool set; } crcs[NP_CRCS];
     struct { uint32_t frame, hash; bool set; } history[NP_HISTORY];
     unsigned crc_ok, crc_bad;
-    bool     crc_usable;     /* the core's states are byte stable */
-    bool     crc_known;      /* crc_usable was measured */
-    uint8_t *pending;        /* a host savestate for a frame still ahead */
-    uint32_t pending_frame;
-    size_t   pending_size;
-    unsigned stable_bytes;   /* bytes a round trip changes (pointers) */
-    uint8_t *unstable;       /* 1 where a round trip changes the byte */
-    uint8_t *state;          /* scratch for CRC checks */
-    size_t   state_cap;
+
+    /* pacing */
+    uint64_t ping_sent;      /* ms, 0 when none is out */
+    uint64_t ping_next;
+    unsigned rtt;            /* ms, smoothed */
+    unsigned waited;         /* ticks without running: ahead or stalled */
+    float    advance;        /* frames ahead of the host's time, averaged */
+    unsigned since_skip;     /* ticks since the last skipped one */
 
     bool     play_asked;
     bool     playing;
@@ -135,9 +141,14 @@ static struct {
 /* Connection                                                          */
 /* ------------------------------------------------------------------ */
 
+static uint64_t np_now_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
+}
+
 static void np_close(void) {
-    free(np.pending);
-    np.pending = NULL;
+    np_rb_stop();
     if (np.fd >= 0) close(np.fd);
     np.fd = -1;
     np.phase = NP_OFF;
@@ -237,14 +248,14 @@ bool netplay_client_start(const char *host, uint16_t port, const char *mitm_sess
     np_session_reset();
     np.core = *core;
     snprintf(np.nick, sizeof(np.nick), "%s", nick && nick[0] ? nick : "gecnd");
-    np.have_state = np.paused = np.play_asked = np.playing = np.reset_pending = false;
+    np.have_state = np.paused = np.play_asked = np.playing = false;
     np.stall = 0;
     np.crc_ok = np.crc_bad = 0;
-    np.crc_known = np.crc_usable = false;
-    free(np.pending);
-    np.pending = NULL;
-    free(np.unstable);
-    np.unstable = NULL;
+    np.gecnd_host = np.crc_off = false;
+    np.ping_sent = np.ping_next = 0;
+    np.rtt = np.waited = 0;
+    np.advance = 0;
+    np.since_skip = 0;
     memset(np.crcs, 0, sizeof(np.crcs));
     memset(np.history, 0, sizeof(np.history));
 
@@ -297,11 +308,6 @@ bool netplay_client_active(void) {
 /* ------------------------------------------------------------------ */
 /* Players and input                                                   */
 /* ------------------------------------------------------------------ */
-
-/** @brief Whether every input of a frame is here. */
-static bool np_frame_ready(uint32_t frame) {
-    return frame < np.server_frame && np_inputs_ready(frame, np.client);
-}
 
 /** @brief Our input for a frame, from the local controllers (live) or
  * zero (a frame already run before we were told we play it). */
@@ -370,7 +376,8 @@ static bool np_on_sync(const uint8_t *p, uint32_t size) {
             memcpy(np.core.memory_data(0), q, sram);
     }
 
-    np.self_frame = np.server_frame = np_session.run_frame = frame;
+    np_session.self_frame = np_session.confirmed = np_session.run_frame = frame;
+    np.server_frame = frame;
     fprintf(stderr, "[netplay] in sync at frame %u as client %u%s\n",
             frame, np.client, np.paused ? " (paused)" : "");
     return true;
@@ -393,7 +400,9 @@ static void np_on_mode(const uint8_t *p, uint32_t size) {
         np_session.players[client].from = frame;
         np_session.players[client].until = UINT32_MAX;
     } else {
+        /* frames since ran with guesses for a player who was gone */
         np_session.players[client].until = frame;
+        np_session_rewind(frame);
     }
 
     if (flags & NP_MODE_YOU) {
@@ -407,89 +416,31 @@ static void np_on_mode(const uint8_t *p, uint32_t size) {
     }
 }
 
-/**
- * @brief Whether the 8 byte word holding a byte looks like a user space
- * address on both sides: a pointer the core saved as is, which differs
- * between processes without meaning anything for the game.
- */
-static bool np_both_pointers(const uint8_t *a, const uint8_t *b, size_t size, size_t at) {
-    const size_t o = at & ~(size_t)7;
-    uint64_t va = 0, vb = 0;
-
-    if (sizeof(void *) != 8 || o + 8 > size) return false;
-    memcpy(&va, a + o, 8);
-    memcpy(&vb, b + o, 8);
-    return va >> 47 == 0 && vb >> 47 == 0 && va > 0x10000 && vb > 0x10000;
-}
-
-/** @brief Bytes that differ between two states of the same size. */
-static unsigned np_state_diff(const uint8_t *a, const uint8_t *b, size_t size) {
-    unsigned n = 0;
-    for (size_t i = 0; i < size; i++) n += a[i] != b[i];
-    return n;
-}
+static void np_on_final(uint32_t frame, uint32_t game_crc);
 
 /**
- * @brief Loads a host savestate as the start of a frame. The first one
- * also tells whether the core's states are byte stable (some cores save
- * pointers, which no two processes share): without that the host's CRC
- * checks can never match, so they are left off.
+ * @brief Loads a host savestate as the start of a frame (a final one on
+ * the host): frames run from there, the ones we had run are forgotten.
  */
 static void np_load_state(const uint8_t *state, size_t size, uint32_t frame) {
     if (!np.core.unserialize(state, size)) {
         fprintf(stderr, "[netplay] the core refused the host's savestate\n");
         return;
     }
-    if (!np.crc_known && np.core.serialize && reserve(&np.state, &np.state_cap, size) &&
-        np.core.serialize(np.state, size)) {
-        np.stable_bytes = np_state_diff(np.state, state, size);
-        np.crc_usable = np.stable_bytes == 0;
-        np.crc_known = true;
-        np.unstable = calloc(1, size);
-        if (np.unstable)
-            for (size_t i = 0; i < size; i++)
-                np.unstable[i] = np.state[i] != state[i];
-        if (!np.crc_usable)
-            fprintf(stderr, "[netplay] the core's states change %u bytes on a round trip "
-                    "(saved pointers?): CRC checks off\n", np.stable_bytes);
+    if (!np_rb_start(&np.core, frame, np_on_final)) {
+        np_fail("cannot keep the core's states");
+        return;
     }
-    np.self_frame = frame;
+    if (!np.have_state && !np.gecnd_host && !np_rb_states_portable()) {
+        np.crc_off = true;
+        fprintf(stderr, "[netplay] the core saves pointers in its states: no CRC checks "
+                "with a RetroArch host\n");
+    }
+    for (unsigned i = 0; i < NP_CRCS; i++)
+        if (np.crcs[i].frame < frame) np.crcs[i].set = false;
     if (np.playing && np.next_send < frame) np.next_send = frame;
     np.have_state = true;
     fprintf(stderr, "[netplay] loaded the host's savestate for frame %u\n", frame);
-}
-
-/**
- * @brief A host savestate for a frame still ahead waits for it: once we
- * reach it, our own state is compared with the host's (a sync check that
- * works even for cores whose CRCs cannot), then the host's is loaded.
- */
-static void np_load_pending(void) {
-    if (!np.pending || np.self_frame < np.pending_frame) return;
-    if (np.self_frame == np.pending_frame && np.core.serialize &&
-        reserve(&np.state, &np.state_cap, np.pending_size) &&
-        np.core.serialize(np.state, np.pending_size)) {
-        unsigned diff = 0, real = 0;
-        size_t first[4];
-        for (size_t i = 0; i < np.pending_size; i++) {
-            if (np.state[i] == np.pending[i]) continue;
-            diff++;
-            if (np.unstable && np.unstable[i]) continue;  /* a saved pointer */
-            if (np_both_pointers(np.state, np.pending, np.pending_size, i)) continue;
-            if (real < 4) first[real] = i;
-            real++;
-        }
-        /* a few bytes may still differ where the host replayed frames
-         * with the core's audio off (rollback): audio buffers, not the
-         * game; a real desync grows */
-        fprintf(stderr, "[netplay] sync check at frame %u: %u bytes differ, %u beyond saved "
-                "pointers%s", np.pending_frame, diff, real, real ? " (at" : "\n");
-        for (unsigned i = 0; i < real && i < 4; i++)
-            fprintf(stderr, " 0x%zx%s", first[i], i + 1 < real && i < 3 ? "," : ")\n");
-    }
-    np_load_state(np.pending, np.pending_size, np.pending_frame);
-    free(np.pending);
-    np.pending = NULL;
 }
 
 static void np_on_savestate(const uint8_t *p, uint32_t size) {
@@ -521,22 +472,7 @@ static void np_on_savestate(const uint8_t *p, uint32_t size) {
         fprintf(stderr, "[netplay] truncated savestate\n");
         return;
     }
-    /* joining, or a frame we already passed: load it now (the frame we
-     * are about to run waits a moment, to be compared first) */
-    if (!np.have_state || frame < np.self_frame) {
-        np_load_state(state, raw, frame);
-        free(inflated);
-        return;
-    }
-    free(np.pending);
-    np.pending = malloc(raw);
-    if (!np.pending) {
-        free(inflated);
-        return;
-    }
-    memcpy(np.pending, state, raw);
-    np.pending_frame = frame;
-    np.pending_size = raw;
+    np_load_state(state, raw, frame);
     free(inflated);
 }
 
@@ -545,12 +481,13 @@ static void np_on_command(uint32_t cmd, const uint8_t *p, uint32_t size) {
     case NP_CMD_INPUT:
         if (size >= 8) {
             const uint32_t frame = rd32(p), client = rd32(p + 4) & 0xffff;
-            if (client < NP_MAX_CLIENTS && client != np.client) {
+            if (client < NP_MAX_CLIENTS && client != np.client &&
+                frame >= np_session.confirmed && frame - np_session.confirmed < NP_RING / 2) {
                 const unsigned words = np_words_for(np_session.players[client].devices);
                 np_store_input(client, frame, p + 8,
                                words < (size - 8) / 4 ? words : (size - 8) / 4);
-                if (client == 0 && frame + 1 > np.server_frame) np.server_frame = frame + 1;
             }
+            if (client == 0 && frame + 1 > np.server_frame) np.server_frame = frame + 1;
         }
         break;
     case NP_CMD_NOINPUT:
@@ -577,8 +514,9 @@ static void np_on_command(uint32_t cmd, const uint8_t *p, uint32_t size) {
         break;
     case NP_CMD_RESET:
         if (size >= 4) {
-            np.reset_pending = true;
-            np.reset_frame = rd32(p);
+            np_session.reset_pending = true;
+            np_session.reset_frame = rd32(p);
+            np_session_rewind(np_session.reset_frame);
         }
         break;
     case NP_CMD_CRC:
@@ -587,6 +525,13 @@ static void np_on_command(uint32_t cmd, const uint8_t *p, uint32_t size) {
         break;
     case NP_CMD_PING_REQUEST:
         np_send_cmd(NP_CMD_PING_RESPONSE, NULL, 0);
+        break;
+    case NP_CMD_PING_RESPONSE:
+        if (np.ping_sent) {
+            const unsigned rtt = (unsigned)(np_now_ms() - np.ping_sent);
+            np.rtt = np.rtt ? (np.rtt * 3 + rtt) / 4 : rtt;
+            np.ping_sent = 0;
+        }
         break;
     case NP_CMD_PLAYER_CHAT:
         if (size > NP_NICK_LEN)
@@ -621,6 +566,7 @@ static void np_parse(void) {
             return;
         }
         np.protocol = rd32(np.in + 4 * NP_HDR_PROTOCOL);
+        np.gecnd_host = rd32(np.in + 4 * NP_HDR_IMPL) == NP_IMPL_TAG;
         np.compression = rd32(np.in + 4 * NP_HDR_COMPRESSION) & NP_COMPRESSION;
         if (np.protocol < NP_PROTOCOL_LOW || np.protocol > NP_PROTOCOL_HIGH) {
             np_fail("the host speaks another netplay protocol");
@@ -739,9 +685,11 @@ static void np_io(void) {
 /* Frames                                                              */
 /* ------------------------------------------------------------------ */
 
-/** @brief Compares a host CRC with ours; out of sync, asks for its state. */
+/**
+ * @brief Compares a host CRC with ours of the same final frame; out of
+ * sync, asks for the host's state.
+ */
 static void np_compare_crc(uint32_t frame, uint32_t host, uint32_t ours) {
-    if (!np.crc_usable) return;
     if (host == ours) {
         np.crc_ok++;
         return;
@@ -752,49 +700,26 @@ static void np_compare_crc(uint32_t frame, uint32_t host, uint32_t ours) {
     np_send_cmd(NP_CMD_REQUEST_SAVESTATE, NULL, 0);
 }
 
-/**
- * @brief A CRC of the host's state at the start of a frame. The host only
- * sends it once it has every input of that frame, ours included, so it
- * usually comes after we ran the frame: then our CRC is in the history;
- * if the frame is still ahead, it waits for it.
- */
-static void np_on_crc(uint32_t frame, uint32_t hash) {
-    const unsigned h = (frame / NP_HISTORY_STEP) % NP_HISTORY;
-
-    if (frame < np.self_frame) {
-        if (np.history[h].set && np.history[h].frame == frame)
-            np_compare_crc(frame, hash, np.history[h].hash);
-        return;
+/** @brief Our CRC of a final frame, the kind the host compares. */
+static bool np_our_crc(uint32_t frame, uint32_t game_crc, uint32_t *crc) {
+    if (np.gecnd_host) {
+        *crc = game_crc;
+        return true;
     }
-    for (unsigned i = 0; i < NP_CRCS; i++)
-        if (!np.crcs[i].set) {
-            np.crcs[i].frame = frame;
-            np.crcs[i].hash  = hash;
-            np.crcs[i].set   = true;
-            return;
-        }
+    return !np.crc_off && np_rb_state_crc(frame, crc);
 }
 
 /**
- * @brief Before running a frame: our state's CRC, kept every
- * NP_HISTORY_STEP frames and checked against a host CRC already here.
+ * @brief A frame became final: its CRC is kept every NP_HISTORY_STEP
+ * frames, and checked against a host CRC already here.
  */
-static void np_check_crc(uint32_t frame) {
+static void np_on_final(uint32_t frame, uint32_t game_crc) {
     bool wanted = frame % NP_HISTORY_STEP == 0;
-    size_t size;
     uint32_t ours;
 
     for (unsigned i = 0; i < NP_CRCS; i++)
-        if (np.crcs[i].set && np.crcs[i].frame <= frame) {
-            if (np.crcs[i].frame == frame) wanted = true;
-            else np.crcs[i].set = false;  /* jumped past it (a savestate) */
-        }
-    if (!wanted || !np.crc_usable || !np.core.serialize || !np.core.serialize_size) return;
-
-    size = np.core.serialize_size();
-    if (!reserve(&np.state, &np.state_cap, size) || !np.core.serialize(np.state, size))
-        return;
-    ours = netplay_crc32(np.state, size);
+        if (np.crcs[i].set && np.crcs[i].frame == frame) wanted = true;
+    if (!wanted || !np_our_crc(frame, game_crc, &ours)) return;
 
     if (frame % NP_HISTORY_STEP == 0) {
         const unsigned h = (frame / NP_HISTORY_STEP) % NP_HISTORY;
@@ -809,54 +734,109 @@ static void np_check_crc(uint32_t frame) {
         }
 }
 
-static void np_run_frame(void) {
-    uint32_t frame;
+/**
+ * @brief A CRC of the host's state at the start of a frame, sent once the
+ * frame is final there: compared now if final here too, or when it is.
+ */
+static void np_on_crc(uint32_t frame, uint32_t hash) {
+    const unsigned h = (frame / NP_HISTORY_STEP) % NP_HISTORY;
 
-    np_load_pending();
-    frame = np.self_frame;
-    np_check_crc(frame);
+    if (np.crc_off || !np.have_state) return;
+    if (frame <= np_session.confirmed && frame < np_session.self_frame) {
+        if (np.history[h].set && np.history[h].frame == frame)
+            np_compare_crc(frame, hash, np.history[h].hash);
+        return;
+    }
+    for (unsigned i = 0; i < NP_CRCS; i++)
+        if (!np.crcs[i].set) {
+            np.crcs[i].frame = frame;
+            np.crcs[i].hash  = hash;
+            np.crcs[i].set   = true;
+            return;
+        }
+}
+
+/** @brief Runs the next frame, our input sent np_input_delay ahead. */
+static void np_run_frame(void) {
+    const uint32_t frame = np_session.self_frame;
 
     if (np.playing) {
         /* frames the host says we play but that already ran without us
          * ran with an idle pad: tell the host exactly that */
         while (np.next_send < frame) np_send_own(np.next_send++, false);
-        if (np.next_send == frame) np_send_own(np.next_send++, true);
+        while (np.next_send <= frame + np_input_delay) np_send_own(np.next_send++, true);
     }
-    if (np.reset_pending && np.reset_frame == frame) {
-        np.reset_pending = false;
-        if (np.core.reset) np.core.reset();
+    np_rb_run();
+    if (np_session.self_frame % 600 == 0) {
+        unsigned rollbacks, replayed;
+        np_rb_stats(&rollbacks, &replayed);
+        fprintf(stderr, "[netplay] frame %u, host at %u, final %u, ping %u ms, "
+                "%u rollbacks (%u frames run again), %u ticks waiting, "
+                "CRC checks %u ok / %u off%s\n",
+                np_session.self_frame, np.server_frame, np_session.confirmed, np.rtt,
+                rollbacks, replayed, np.waited, np.crc_ok, np.crc_bad,
+                np.crc_off ? " (not usable with this core)" : "");
+        np.waited = 0;
     }
-    np_session.run_frame = frame;
-    np.core.run();
-    np.self_frame++;
-    if (np.self_frame % 600 == 0)
-        fprintf(stderr, "[netplay] frame %u, host at %u, CRC checks %u ok / %u off%s\n",
-                np.self_frame, np.server_frame, np.crc_ok, np.crc_bad,
-                np.crc_usable ? "" : " (not usable with this core)");
+}
+
+/**
+ * @brief Frames to run this tick. The host's time is its latest frame
+ * plus half the ping; the host's input comes in bursts (a relay more so),
+ * so what counts is how far ahead of it we are on average. Ahead: a tick
+ * now and then runs nothing; behind: two frames a tick, more when far.
+ */
+static unsigned np_frames_due(void) {
+    const int32_t target = (int32_t)(np.server_frame + (np.rtt * 60 / 1000 + 1) / 2);
+    const int32_t ahead = (int32_t)np_session.self_frame - target;
+
+    np.advance += (ahead - np.advance) * 0.1f;
+    np.since_skip++;
+    if (ahead < -NP_PACE_FAR) {
+        np.advance = 0;
+        return -ahead > NP_MAX_CATCHUP ? NP_MAX_CATCHUP : (unsigned)-ahead;
+    }
+    if (np.advance > NP_PACE_SLACK && np.since_skip >= NP_PACE_SKIP_GAP) {
+        np.since_skip = 0;
+        return 0;
+    }
+    return np.advance < -NP_PACE_SLACK ? 2 : 1;
 }
 
 void netplay_client_tick(void) {
-    unsigned ran = 0;
+    unsigned due;
 
     if (np.phase == NP_OFF) return;
     np_io();
     if (np.phase != NP_RUNNING || !np.have_state || np.paused) return;
+
+    if (!np.ping_sent && np_now_ms() >= np.ping_next) {
+        np.ping_sent = np_now_ms();
+        np.ping_next = np.ping_sent + NP_PING_PERIOD;
+        np_send_cmd(NP_CMD_PING_REQUEST, NULL, 0);
+    }
+
+    /* wrong guesses first, then what became final */
+    np_rb_resolve();
+    np_rb_confirm(np.server_frame);
+
     if (np.stall) {
         np.stall--;
+        np.waited++;
+        np_flush();
         return;
     }
-
-    /* our input, read now, for the frames up to NP_INPUT_LEAD ahead */
-    if (np.playing) {
-        while (np.next_send < np.self_frame) np_send_own(np.next_send++, false);
-        while (np.next_send < np.self_frame + NP_INPUT_LEAD) np_send_own(np.next_send++, true);
-    }
-
-    /* one frame per tick; more only to catch up with the host */
-    while (ran < NP_MAX_CATCHUP && np_frame_ready(np.self_frame)) {
+    due = np_frames_due();
+    if (!due) np.waited++;
+    for (unsigned i = 0; i < due; i++) {
+        if (!np_rb_can_run()) {
+            np.waited++;
+            break;
+        }
+        /* catching up: only the last frame of the tick is seen and heard */
+        if (np.core.replay && i + 1 < due) np.core.replay(true);
         np_run_frame();
-        ran++;
-        if (np.server_frame - np.self_frame <= 2) break;
+        if (np.core.replay && i + 1 < due) np.core.replay(false);
     }
     np_flush();
 }

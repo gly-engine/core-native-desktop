@@ -9,6 +9,7 @@
 #include "netplay/common/session.h"
 
 np_session_t np_session;
+unsigned     np_input_delay = 1;
 
 uint32_t np_rd32(const uint8_t *p) {
     return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
@@ -55,6 +56,12 @@ uint32_t np_platform(void) {
 
 void np_session_reset(void) {
     memset(&np_session, 0, sizeof(np_session));
+    np_session.rewind = NP_NO_FRAME;
+}
+
+void np_session_rewind(uint32_t frame) {
+    if (frame < np_session.self_frame && frame < np_session.rewind)
+        np_session.rewind = frame;
 }
 
 unsigned np_words_for(uint32_t devices) {
@@ -71,21 +78,46 @@ bool np_player_at(uint32_t client, uint32_t frame) {
 
 void np_store_input(uint32_t client, uint32_t frame, const uint8_t *data, unsigned words) {
     np_input_t *in = &np_session.inputs[client][frame % NP_RING];
+    uint32_t real[NP_MAX_WORDS] = {0};
+
+    for (unsigned i = 0; i < words && i < NP_MAX_WORDS; i++)
+        real[i] = np_rd32(data + 4 * i);
+    /* a frame that ran with a wrong guess runs again */
+    if (in->set && in->guess && in->frame == frame && memcmp(in->words, real, sizeof(real)))
+        np_session_rewind(frame);
     in->frame = frame;
     in->set = true;
-    memset(in->words, 0, sizeof(in->words));
-    for (unsigned i = 0; i < words && i < NP_MAX_WORDS; i++)
-        in->words[i] = np_rd32(data + 4 * i);
+    in->guess = false;
+    memcpy(in->words, real, sizeof(real));
 }
 
 const np_input_t *np_input(uint32_t client, uint32_t frame) {
     const np_input_t *in = &np_session.inputs[client][frame % NP_RING];
-    return in->set && in->frame == frame ? in : NULL;
+    return in->set && !in->guess && in->frame == frame ? in : NULL;
 }
 
-bool np_inputs_ready(uint32_t frame, uint32_t except) {
+void np_guess_inputs(uint32_t frame) {
+    for (uint32_t c = 0; c < NP_MAX_CLIENTS; c++) {
+        np_input_t *in = &np_session.inputs[c][frame % NP_RING];
+        const np_input_t *last = NULL;
+
+        if (!np_player_at(c, frame) || np_input(c, frame)) continue;
+        /* the player keeps doing what it did */
+        for (uint32_t back = 1; back < 64 && back <= frame && !last; back++) {
+            const np_input_t *prev = &np_session.inputs[c][(frame - back) % NP_RING];
+            if (prev->set && prev->frame == frame - back) last = prev;
+        }
+        in->frame = frame;
+        in->set = true;
+        in->guess = true;
+        if (last) memcpy(in->words, last->words, sizeof(in->words));
+        else memset(in->words, 0, sizeof(in->words));
+    }
+}
+
+bool np_inputs_ready(uint32_t frame) {
     for (uint32_t c = 0; c < NP_MAX_CLIENTS; c++)
-        if (c != except && np_player_at(c, frame) && !np_input(c, frame))
+        if (np_player_at(c, frame) && !np_input(c, frame))
             return false;
     return true;
 }
@@ -119,7 +151,8 @@ int16_t np_session_input(unsigned port, unsigned device, unsigned index, unsigne
         unsigned offset = 0;
 
         if (!(p->devices & (1u << port)) || !np_player_at(c, frame)) continue;
-        if (!(in = np_input(c, frame))) continue;
+        in = &np_session.inputs[c][frame % NP_RING];  /* real or guessed */
+        if (!in->set || in->frame != frame) continue;
         for (unsigned d = 0; d < port; d++)
             if (p->devices & (1u << d)) offset += np_device_words(np_session.devices[d]);
         if (offset < NP_MAX_WORDS) buttons |= in->words[offset];  /* shared ports OR */

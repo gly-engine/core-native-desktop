@@ -43,11 +43,14 @@ typedef struct {
     void      (*run)(void);
     /** @brief Local buttons of a local controller, bit n = joypad id n. */
     uint32_t  (*local_buttons)(unsigned local_port);
+    /** @brief Frames run again after a misprediction: no video nor audio. */
+    void      (*replay)(bool on);
 } netplay_core_t;
 
 typedef struct {
     uint32_t frame;
     bool     set;
+    bool     guess;    /* predicted, the player's real input not here yet */
     uint32_t words[NP_MAX_WORDS];
 } np_input_t;
 
@@ -58,15 +61,37 @@ typedef struct {
     char     nick[NP_NICK_LEN];
 } np_player_t;
 
-/** @brief The session: one at a time, client or host. */
+/**
+ * @brief The session: one at a time, client or host.
+ *
+ * Frames run as soon as their time comes, with a guess (the last real
+ * input) for every player whose input is not here yet. Frames before
+ * `confirmed` ran with real inputs only; when a real input differs from
+ * the guess a frame ran with, the session goes back to that frame
+ * (`rewind`) and runs again up to `self_frame` (rollback.h).
+ */
 typedef struct {
     uint32_t    devices[NP_MAX_DEVICES];  /* device type per port */
     np_player_t players[NP_MAX_CLIENTS];
     np_input_t  inputs[NP_MAX_CLIENTS][NP_RING];
     uint32_t    run_frame;                /* the frame running */
+    uint32_t    self_frame;               /* next frame to run */
+    uint32_t    confirmed;                /* every frame before it is final */
+    uint32_t    rewind;                   /* first frame to run again, or NP_NO_FRAME */
+    bool        reset_pending;            /* the core resets at reset_frame */
+    uint32_t    reset_frame;
 } np_session_t;
 
+#define NP_NO_FRAME UINT32_MAX
+
 extern np_session_t np_session;
+
+/**
+ * @brief Frames between reading a local controller and the frame its
+ * input is for: more means fewer guesses gone wrong (rollbacks), less
+ * means less delay. RetroArch calls it input latency frames.
+ */
+extern unsigned np_input_delay;
 
 /** @brief Forgets every player and input. */
 void np_session_reset(void);
@@ -77,14 +102,24 @@ unsigned np_words_for(uint32_t devices);
 /** @brief Whether a player has input in a frame. */
 bool np_player_at(uint32_t client, uint32_t frame);
 
-/** @brief Stores a player's input for a frame, from big endian words. */
+/**
+ * @brief Stores a player's real input for a frame, from big endian words;
+ * one that differs from what a frame already ran with rewinds to it.
+ */
 void np_store_input(uint32_t client, uint32_t frame, const uint8_t *data, unsigned words);
 
-/** @brief A player's input for a frame, or NULL. */
+/** @brief A player's real input for a frame, or NULL. */
 const np_input_t *np_input(uint32_t client, uint32_t frame);
 
-/** @brief Whether every player in a frame but one has input for it. */
-bool np_inputs_ready(uint32_t frame, uint32_t except);
+/** @brief Guesses the input of the players whose input for a frame is not
+ * here: what each last sent. */
+void np_guess_inputs(uint32_t frame);
+
+/** @brief Whether every player in a frame has real input for it. */
+bool np_inputs_ready(uint32_t frame);
+
+/** @brief Runs again from a frame (a guess or a player turned out wrong). */
+void np_session_rewind(uint32_t frame);
 
 /**
  * @brief A player's input for a frame, read from the local controllers

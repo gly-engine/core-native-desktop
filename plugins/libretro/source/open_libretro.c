@@ -130,8 +130,15 @@ static bool media_bind(void) {
     return media.claim != NULL;
 }
 
+/* Netplay runs frames again after a wrong guess: nobody sees nor hears them */
+static bool s_netplay_replay = false;
+
+static void libretro_netplay_replay(bool on) {
+    s_netplay_replay = on;
+}
+
 static void RETRO_CALLCONV core_video_refresh(const void *data, unsigned width, unsigned height, size_t pitch) {
-    if (!data) return;
+    if (!data || s_netplay_replay) return;
     if (libretro_hw_video_refresh(data, width, height, pitch)) return;
     if (!media_bind()) return;
     if (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) {
@@ -143,11 +150,13 @@ static void RETRO_CALLCONV core_video_refresh(const void *data, unsigned width, 
 
 static void RETRO_CALLCONV core_audio_sample(int16_t left, int16_t right) {
     int16_t buf[2] = { left, right };
+    if (s_netplay_replay) return;
     /* audio vem de outro serviço que o claim — pode não estar registrado */
     if (media_bind() && media.audio_push) media.audio_push(buf, 1);
 }
 
 static size_t RETRO_CALLCONV core_audio_sample_batch(const int16_t *data, size_t frames) {
+    if (s_netplay_replay) return frames;
     if (media_bind() && media.audio_push) media.audio_push(data, frames);
     return frames;
 }
@@ -542,6 +551,7 @@ bool native_libretro_game_none(void) {
  *   #netplay_relay=HANDLE    hosts through a libretro relay (saopaulo...)
  *   #netplay=HOST:PORT       joins (PORT defaults to 55435)
  *   #netplay_nick=NAME       (optional)
+ *   #netplay_delay=FRAMES    input delay, fewer rollbacks (default 1)
  *   #netplay_mitm=SESSION    (relay session, optional) */
 static void libretro_netplay_from_url(void) {
     const char *target = url_opt_get("netplay");
@@ -566,6 +576,12 @@ static void libretro_netplay_from_url(void) {
     core.set_port_device = p_retro_set_controller_port_device;
     core.run             = libretro_run_core;
     core.local_buttons   = native_libretro_buttons;
+    core.replay          = libretro_netplay_replay;
+
+    if (url_opt_get("netplay_delay")) {
+        const int delay = atoi(url_opt_get("netplay_delay"));
+        np_input_delay = delay < 0 ? 0 : delay > 8 ? 8 : (unsigned)delay;
+    }
 
     if (hosting) {
         if (hosting[0] && atoi(hosting) > 0) port = (unsigned)atoi(hosting);

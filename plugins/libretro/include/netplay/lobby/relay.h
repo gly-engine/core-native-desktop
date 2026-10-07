@@ -43,4 +43,29 @@ void np_relay_encode(const uint8_t unique[NP_RELAY_UNIQUE_SIZE], char out[17]);
 /** @brief The unique bytes of a session in base64; false if malformed. */
 bool np_relay_decode(const char *text, uint8_t unique[NP_RELAY_UNIQUE_SIZE]);
 
+/** @brief A client's connection through the relay, ready for netplay. */
+typedef void (*netplay_relay_link_cb_t)(int fd, void *user);
+
+/** @brief The relay gave the session (handle and base64 id) to list. */
+typedef void (*netplay_relay_session_cb_t)(const char *handle, const char *session, void *user);
+
+/**
+ * @brief Hosts through a relay (nyc, madrid, saopaulo, singapore): asks
+ * the lobby where it is, opens the control connection and takes a
+ * session; then hands every client that arrives over to on_link.
+ */
+bool netplay_relay_host(const char *handle, netplay_relay_link_cb_t on_link,
+                        netplay_relay_session_cb_t on_session, void *user);
+
+/** @brief Relay work: call every tick while hosting. */
+void netplay_relay_tick(void);
+
+/** @brief Closes the session and every link still opening. */
+void netplay_relay_stop(void);
+
+/** @brief Whether a relay is wanted, and its session once given (or NULL). */
+bool        netplay_relay_wanted(void);
+const char *netplay_relay_session(void);
+const char *netplay_relay_handle(void);
+
 #endif
