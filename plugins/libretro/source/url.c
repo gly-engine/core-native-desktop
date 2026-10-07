@@ -1,5 +1,5 @@
 /**
- * @file plugins/libretro/url.c
+ * @file plugins/libretro/source/url.c
  * @date 2026-06-30
  * @author Rodrigo Dornelles
  */

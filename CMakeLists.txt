@@ -177,10 +177,19 @@ if(GECND_USE_PLUGIN_LIBRETRO)
     if(NOT EXISTS "${LIBRETRO_DIR}/libretro.h")
         file(DOWNLOAD "${LIBRETRO_DOWNLOAD}" "${LIBRETRO_DIR}/libretro.h")
     endif()
-    file(GLOB_RECURSE libretro_files "${CMAKE_CURRENT_LIST_DIR}/plugins/libretro/*.c")
+    file(GLOB_RECURSE libretro_files CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/plugins/libretro/source/*.c")
     add_library(libretro_gecnd SHARED "${libretro_files}")
-    target_include_directories(libretro_gecnd PRIVATE "${LIBRETRO_DIR}")
+    target_include_directories(libretro_gecnd PRIVATE "${LIBRETRO_DIR}" "${CMAKE_CURRENT_LIST_DIR}/plugins/libretro/include")
     target_link_libraries(libretro_gecnd PRIVATE gecnd_header)
+    # netplay: RetroArch hosts send savestates zlib compressed
+    if(TARGET zlibstatic)
+        # hidden visibility keeps the static zlib inside the plugin, away from a core's own
+        # (zig's linker rejects -Wl,--exclude-libs, so do it at compile time instead)
+        set_target_properties(zlibstatic PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
+        target_link_libraries(libretro_gecnd PRIVATE zlibstatic)
+        target_include_directories(libretro_gecnd PRIVATE "${ZLIB_DIR}" "${zlib_BINARY_DIR}")
+        target_compile_definitions(libretro_gecnd PRIVATE GECND_NETPLAY_ZLIB=1)
+    endif()
     set_target_properties(libretro_gecnd PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
