@@ -1,5 +1,5 @@
 /**
- * @file plugins/libretro/netplay/client/client.h
+ * @file plugins/libretro/include/netplay/client/client.h
  * @brief Netplay client: joins a RetroArch (or compatible) netplay host
  * and plays the loaded core in sync with it.
  *

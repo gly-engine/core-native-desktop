@@ -59,8 +59,18 @@ static bool (*p_retro_unserialize)(const void*, size_t) = NULL;
 static void *(*p_retro_get_memory_data)(unsigned) = NULL;
 static size_t (*p_retro_get_memory_size)(unsigned) = NULL;
 
-/* CRC-32 of the loaded content, netplay's content checksum */
+/* CRC-32 of the loaded content, netplay's content checksum, and its name
+ * without directory nor extension, for the netplay lobby */
 static uint32_t s_content_crc = 0;
+static char     s_content_name[128] = "";
+
+static void content_name_set(const char *path) {
+    const char *base = path ? strrchr(path, '/') : NULL;
+    char *dot;
+    base = base ? base + 1 : (path ? path : "");
+    snprintf(s_content_name, sizeof(s_content_name), "%s", base);
+    if ((dot = strrchr(s_content_name, '.')) != NULL) *dot = '\0';
+}
 
 static void reset_pointers(void) {
     p_retro_set_environment = NULL;
@@ -451,6 +461,7 @@ bool native_libretro_game_load_only(const char *path) {
             } else {
                 info.data = data;
                 s_content_crc = netplay_crc32(data, info.size);
+                content_name_set(full_path);
             }
         }
         fclose(f);
@@ -527,6 +538,7 @@ bool native_libretro_game_none(void) {
 /* Hosts or joins a netplay session when the url asks for it, once the
  * game runs:
  *   #netplay_host=PORT       hosts (PORT defaults to 55435)
+ *   #netplay_public=1        lists the hosted room in the libretro lobby
  *   #netplay=HOST:PORT       joins (PORT defaults to 55435)
  *   #netplay_nick=NAME       (optional)
  *   #netplay_mitm=SESSION    (relay session, optional) */
@@ -556,7 +568,9 @@ static void libretro_netplay_from_url(void) {
 
     if (hosting) {
         if (hosting[0] && atoi(hosting) > 0) port = (unsigned)atoi(hosting);
-        netplay_host_start((uint16_t)port, url_opt_get("netplay_nick"), &core);
+        if (netplay_host_start((uint16_t)port, url_opt_get("netplay_nick"), &core) &&
+            url_opt_get("netplay_public"))
+            netplay_host_announce(s_content_name);
         return;
     }
     snprintf(host, sizeof(host), "%s", target);
@@ -639,6 +653,7 @@ bool native_libretro_game_from_buffer(const uint8_t *data, size_t size, const ch
     info.size = size;
     info.meta = NULL;
     s_content_crc = netplay_crc32(data, size);
+    content_name_set(name);
 
     if (sys_info.need_fullpath) {
         info.path = libretro_spill_rom_to_tmp(data, size, name, &sys_info);

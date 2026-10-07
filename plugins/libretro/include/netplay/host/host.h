@@ -1,5 +1,5 @@
 /**
- * @file plugins/libretro/netplay/host/host.h
+ * @file plugins/libretro/include/netplay/host/host.h
  * @brief Netplay host: RetroArch (or compatible) clients join the game
  * running here.
  *
@@ -18,6 +18,12 @@
 
 /** @brief Opens the session on a TCP port; the host is player 1. */
 bool netplay_host_start(uint16_t port, const char *nick, const netplay_core_t *core);
+
+/**
+ * @brief Lists the room in the libretro lobby while it is hosted, under
+ * the content's name (netplay/lobby/lobby.h).
+ */
+void netplay_host_announce(const char *game_name);
 
 /** @brief Closes every connection and the session. */
 void netplay_host_stop(void);

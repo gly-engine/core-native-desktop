@@ -15,6 +15,7 @@ typedef struct {
     const char  *path;
     const char  *body;
     size_t       body_len;
+    const char  *content_type;  /* of the body; NULL = application/json */
 } gdweb_http_req_t;
 
 typedef struct {

@@ -1,5 +1,5 @@
 /**
- * @file plugins/libretro/netplay/host/host.c
+ * @file plugins/libretro/source/netplay/host/host.c
  * @brief Netplay host for RetroArch compatible clients (protocol.h).
  *
  * Handshake, host side: take the client's header and answer ours (no
@@ -14,7 +14,7 @@
  * synchronization point) and runs the core. A client that leaves stops
  * being waited for from the first frame it did not send.
  */
-#include "host.h"
+#include "netplay/host/host.h"
 
 #ifdef _WIN32
 
@@ -23,6 +23,7 @@ bool netplay_host_start(uint16_t port, const char *nick, const netplay_core_t *c
     (void)port; (void)nick; (void)core;
     return false;
 }
+void netplay_host_announce(const char *game_name) { (void)game_name; }
 void netplay_host_stop(void) {}
 bool netplay_host_active(void) { return false; }
 void netplay_host_tick(void) {}
@@ -46,6 +47,8 @@ void netplay_host_tick(void) {}
 #ifdef GECND_NETPLAY_ZLIB
 #include <zlib.h>
 #endif
+
+#include "netplay/lobby/lobby.h"
 
 #define rd32    np_rd32
 #define wr32    np_wr32
@@ -92,6 +95,7 @@ static struct {
     int            listen_fd;
     netplay_core_t core;
     char           nick[NP_NICK_LEN];
+    uint16_t       port;
     np_conn_t      conns[NP_HOST_CONNS];
     uint32_t       self_frame;   /* next frame to run */
     uint32_t       waited;       /* ticks spent waiting for a client's input */
@@ -257,6 +261,14 @@ static void hc_send_sync(np_conn_t *c) {
     free(p);
 }
 
+/** @brief Closes a connection that never joined, quietly. */
+static void hc_close(np_conn_t *c) {
+    if (c->fd >= 0) close(c->fd);
+    c->fd = -1;
+    c->phase = HC_FREE;
+    c->in_len = c->out_len = 0;
+}
+
 /** @brief The client's header: answer ours, then our nick. */
 static bool hc_on_header(np_conn_t *c, const uint8_t *in) {
     uint32_t hi, lo, protocol;
@@ -364,6 +376,19 @@ static void hc_parse(np_conn_t *c) {
     size_t used = 0;
 
     if (c->phase == HC_HEADER) {
+        /* the lobby checking the room: answer our header and close */
+        if (c->in_len >= 4 && rd32(c->in) == NP_MAGIC_POKE) {
+            uint8_t out[NP_HDR_WORDS * 4];
+            wr32(out + 4 * NP_HDR_MAGIC,       NP_MAGIC_RANP);
+            wr32(out + 4 * NP_HDR_PLATFORM,    np_platform());
+            wr32(out + 4 * NP_HDR_COMPRESSION, NP_COMPRESSION);
+            wr32(out + 4 * NP_HDR_SALT,        0);
+            wr32(out + 4 * NP_HDR_PROTOCOL,    NP_PROTOCOL_HIGH);
+            wr32(out + 4 * NP_HDR_IMPL,        NP_IMPL_TAG);
+            send(c->fd, out, sizeof(out), MSG_NOSIGNAL);
+            hc_close(c);
+            return;
+        }
         if (c->in_len < NP_HDR_WORDS * 4) return;
         if (!hc_on_header(c, c->in)) {
             hc_drop(c, "not a netplay client of a protocol we speak");
@@ -512,6 +537,7 @@ bool netplay_host_start(uint16_t port, const char *nick, const netplay_core_t *c
     memset(h.conns, 0, sizeof(h.conns));
     for (unsigned i = 0; i < NP_HOST_CONNS; i++) h.conns[i].fd = -1;
     h.listen_fd = fd;
+    h.port = port;
     h.core = *core;
     snprintf(h.nick, sizeof(h.nick), "%s", nick && nick[0] ? nick : "gecnd");
     h.self_frame = 0;
@@ -552,6 +578,19 @@ void netplay_host_stop(void) {
     if (h.listen_fd >= 0) close(h.listen_fd);
     h.listen_fd = -1;
     h.active = false;
+    netplay_lobby_stop();
+}
+
+void netplay_host_announce(const char *game_name) {
+    netplay_lobby_room_t room = {
+        .nick         = h.nick,
+        .core_name    = h.core.core_name,
+        .core_version = h.core.core_version,
+        .game_name    = game_name,
+        .game_crc     = h.core.content_crc,
+        .port         = h.port,
+    };
+    if (h.active) netplay_lobby_start(&room);
 }
 
 bool netplay_host_active(void) {
@@ -616,6 +655,15 @@ void netplay_host_tick(void) {
     hc_run_frame();
     for (unsigned i = 0; i < NP_HOST_CONNS; i++)
         if (h.conns[i].phase != HC_FREE) hc_flush(&h.conns[i]);
+    {
+        unsigned players = 1, spectators = 0;  /* the host plays */
+        for (unsigned i = 0; i < NP_HOST_CONNS; i++)
+            if (h.conns[i].phase == HC_RUNNING) {
+                if (h.conns[i].playing) players++;
+                else spectators++;
+            }
+        netplay_lobby_tick(players, spectators);
+    }
 }
 
 #endif

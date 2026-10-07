@@ -1,12 +1,12 @@
 /**
- * @file plugins/libretro/netplay/common/session.c
+ * @file plugins/libretro/source/netplay/common/session.c
  * @brief Players, inputs by frame and the core's input during a netplay
  * session, shared by the client and the host.
  */
 #include <string.h>
 #include <stdlib.h>
 
-#include "session.h"
+#include "netplay/common/session.h"
 
 np_session_t np_session;
 

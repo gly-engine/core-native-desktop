@@ -1,5 +1,5 @@
 /**
- * @file plugins/libretro/netplay/common/session.h
+ * @file plugins/libretro/include/netplay/common/session.h
  * @brief What a netplay session is on either side (client or host): the
  * players and the ports they control, every player's input by frame, and
  * the input the core sees while a frame runs.

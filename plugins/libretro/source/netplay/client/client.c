@@ -1,5 +1,5 @@
 /**
- * @file plugins/libretro/netplay/client/client.c
+ * @file plugins/libretro/source/netplay/client/client.c
  * @brief Netplay client for RetroArch compatible hosts (protocol.h).
  *
  * Flow: connect, exchange the connection header, NICK, receive the host's
@@ -12,8 +12,8 @@
  * host answers with MODE, and from its frame on this client sends its
  * input for every frame it runs.
  */
-#include "client.h"
-#include "../common/protocol.h"
+#include "netplay/client/client.h"
+#include "netplay/common/protocol.h"
 
 #ifdef _WIN32
 

@@ -1,5 +1,5 @@
 /**
- * @file plugins/libretro/netplay/common/protocol.h
+ * @file plugins/libretro/include/netplay/common/protocol.h
  * @brief Wire format of the libretro netplay protocol (versions 5 and 6),
  * as RetroArch speaks it, so this frontend can join a RetroArch host.
  *
@@ -20,6 +20,10 @@
  * from a full host ("FULL"). */
 #define NP_MAGIC_RANP 0x52414E50u
 #define NP_MAGIC_FULL 0x46554C4Cu
+
+/** @brief What the lobby sends to check a room ("POKE"): a host answers
+ * with its header and closes. */
+#define NP_MAGIC_POKE 0x504F4B45u
 
 /** @brief Protocol versions this client speaks. */
 #define NP_PROTOCOL_LOW  5u
