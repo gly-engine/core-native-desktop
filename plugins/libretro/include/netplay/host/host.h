@@ -25,6 +25,13 @@ bool netplay_host_start(uint16_t port, const char *nick, const netplay_core_t *c
  */
 void netplay_host_announce(const char *game_name);
 
+/**
+ * @brief Hosts through a libretro relay (nyc, madrid, saopaulo,
+ * singapore), for clients that cannot reach this machine: the lobby lists
+ * the relay's session instead of our address.
+ */
+bool netplay_host_relay(const char *handle);
+
 /** @brief Closes every connection and the session. */
 void netplay_host_stop(void);
 

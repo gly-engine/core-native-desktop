@@ -4,6 +4,7 @@
  * a form to /add, the fields RetroArch announces with.
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -11,7 +12,8 @@
 #include "main.h"
 #include "netplay/lobby/lobby.h"
 
-#define NP_LOBBY_URL "http://lobby.libretro.com/add"
+#define NP_LOBBY_URL    "http://lobby.libretro.com/add"
+#define NP_LOBBY_TUNNEL "http://lobby.libretro.com/tunnel?name="
 
 static struct {
     bool  active;
@@ -23,6 +25,8 @@ static struct {
     char  game_name[128];
     uint32_t game_crc;
     uint16_t port;
+    char  mitm_server[32];
+    char  mitm_session[32];
     time_t next;         /* when to announce again */
     char  reply[512];
     size_t reply_len;
@@ -108,15 +112,16 @@ static void lb_announce(unsigned players, unsigned spectators) {
     lb_append(body, sizeof(body), "game_name", lb.game_name);
     lb_append(body, sizeof(body), "game_crc", crc);
     lb_append_uint(body, sizeof(body), "port", lb.port);
-    lb_append(body, sizeof(body), "mitm_server", "");
+    lb_append(body, sizeof(body), "mitm_server", lb.mitm_server);
     lb_append_uint(body, sizeof(body), "has_password", 0);
     lb_append_uint(body, sizeof(body), "has_spectate_password", 0);
-    lb_append_uint(body, sizeof(body), "force_mitm", 0);
+    /* the lobby only takes the relay's session with this set */
+    lb_append_uint(body, sizeof(body), "force_mitm", lb.mitm_session[0] != '\0');
     /* not RetroArch: say which frontend this is */
     lb_append(body, sizeof(body), "retroarch_version", "gecnd");
     lb_append(body, sizeof(body), "frontend", "gecnd");
     lb_append(body, sizeof(body), "subsystem_name", "N/A");
-    lb_append(body, sizeof(body), "mitm_session", "");
+    lb_append(body, sizeof(body), "mitm_session", lb.mitm_session);
     lb_append(body, sizeof(body), "mitm_custom_addr", "");
     lb_append_uint(body, sizeof(body), "mitm_custom_port", 0);
     lb_append_uint(body, sizeof(body), "player_count", players);
@@ -138,6 +143,8 @@ void netplay_lobby_start(const netplay_lobby_room_t *room) {
     snprintf(lb.game_name, sizeof(lb.game_name), "%s", room->game_name ? room->game_name : "");
     lb.game_crc = room->game_crc;
     lb.port = room->port;
+    snprintf(lb.mitm_server, sizeof(lb.mitm_server), "%s", room->mitm_server ? room->mitm_server : "");
+    snprintf(lb.mitm_session, sizeof(lb.mitm_session), "%s", room->mitm_session ? room->mitm_session : "");
     lb.active = true;
     lb.next = 0;  /* right away */
 }
@@ -152,4 +159,65 @@ void netplay_lobby_tick(unsigned players, unsigned spectators) {
 
 void netplay_lobby_stop(void) {
     lb.active = false;
+}
+
+/* ------------------------------------------------------------------ */
+/* Relay lookup: "status=OK\ntunnel_addr=...\ntunnel_port=..."        */
+/* ------------------------------------------------------------------ */
+
+static struct {
+    netplay_tunnel_cb_t cb;
+    void  *user;
+    int    status;
+    char   reply[512];
+    size_t len;
+} tn;
+
+static void tn_on_status(gdweb_id_t id, int status, void *user) {
+    (void)id; (void)user;
+    tn.status = status;
+    tn.len = 0;
+}
+
+static void tn_on_data(gdweb_id_t id, const char *data, size_t len, void *user) {
+    (void)id; (void)user;
+    if (tn.len + len >= sizeof(tn.reply)) len = sizeof(tn.reply) - 1 - tn.len;
+    memcpy(tn.reply + tn.len, data, len);
+    tn.len += len;
+    tn.reply[tn.len] = '\0';
+}
+
+static void tn_on_done(gdweb_id_t id, void *user) {
+    const char *a = strstr(tn.reply, "tunnel_addr="), *p = strstr(tn.reply, "tunnel_port=");
+    char addr[256] = "";
+    (void)id; (void)user;
+
+    if (tn.status != 200 || !a || !p) {
+        fprintf(stderr, "[netplay] the lobby does not know that relay (HTTP %d)\n", tn.status);
+        if (tn.cb) tn.cb(NULL, 0, tn.user);
+        return;
+    }
+    a += strlen("tunnel_addr=");
+    snprintf(addr, sizeof(addr), "%.*s", (int)strcspn(a, "\r\n"), a);
+    if (tn.cb) tn.cb(addr, (uint16_t)atoi(p + strlen("tunnel_port=")), tn.user);
+}
+
+static void tn_on_error(gdweb_id_t id, const char *msg, void *user) {
+    (void)id; (void)user;
+    fprintf(stderr, "[netplay] cannot reach the lobby for the relay: %s\n", msg ? msg : "error");
+    if (tn.cb) tn.cb(NULL, 0, tn.user);
+}
+
+bool netplay_lobby_tunnel(const char *handle, netplay_tunnel_cb_t cb, void *user) {
+    char url[128];
+    gdweb_http_req_t req = {0};
+
+    if (!lb_bind() || !handle || !handle[0]) return false;
+    snprintf(url, sizeof(url), "%s%s", NP_LOBBY_TUNNEL, handle);
+    memset(&tn, 0, sizeof(tn));
+    tn.cb = cb;
+    tn.user = user;
+    req.method = "GET";
+    lb_client()->http(url, &req, tn_on_status, tn_on_data, tn_on_done, tn_on_error, NULL);
+    return true;
 }

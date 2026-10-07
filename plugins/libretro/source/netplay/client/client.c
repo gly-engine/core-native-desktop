@@ -14,6 +14,7 @@
  */
 #include "netplay/client/client.h"
 #include "netplay/common/protocol.h"
+#include "netplay/lobby/relay.h"
 
 #ifdef _WIN32
 
@@ -175,6 +176,12 @@ static void np_send_cmd(uint32_t cmd, const void *payload, uint32_t size) {
     if (size) np_send_raw(payload, size);
 }
 
+/** @brief The relay session to ask for before speaking netplay, if any. */
+static struct {
+    bool    on;
+    uint8_t id[NP_RELAY_ID_SIZE];
+} np_relay;
+
 static void np_send_header(void) {
     uint8_t h[NP_HDR_WORDS * 4];
     wr32(h + 4 * NP_HDR_MAGIC,       NP_MAGIC_RANP);
@@ -216,9 +223,15 @@ bool netplay_client_start(const char *host, uint16_t port, const char *mitm_sess
     int fd;
 
     netplay_client_stop();
+    np_relay.on = false;
     if (mitm_session && mitm_session[0]) {
-        fprintf(stderr, "[netplay] relay sessions are not supported yet\n");
-        return false;
+        uint8_t unique[NP_RELAY_UNIQUE_SIZE];
+        if (!np_relay_decode(mitm_session, unique)) {
+            fprintf(stderr, "[netplay] not a relay session: %s\n", mitm_session);
+            return false;
+        }
+        np_relay_id(np_relay.id, NP_RELAY_SESSION, unique);
+        np_relay.on = true;
     }
 
     np_session_reset();
@@ -263,7 +276,8 @@ bool netplay_client_start(const char *host, uint16_t port, const char *mitm_sess
     np.fd = fd;
     np.phase = NP_CONNECTING;
     np.last_recv = time(NULL);
-    fprintf(stderr, "[netplay] connecting to %s:%u as %s\n", host, port, np.nick);
+    fprintf(stderr, "[netplay] connecting to %s:%u%s%s as %s\n", host, port,
+            np_relay.on ? " relay session " : "", np_relay.on ? mitm_session : "", np.nick);
     return true;
 }
 
@@ -687,6 +701,8 @@ static void np_io(void) {
             return;
         }
         np.phase = NP_HEADER;
+        /* through a relay: say which session, then it is the host */
+        if (np_relay.on) np_send_raw(np_relay.id, sizeof(np_relay.id));
         np_send_header();
     }
 

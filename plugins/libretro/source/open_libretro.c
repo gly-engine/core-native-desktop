@@ -539,6 +539,7 @@ bool native_libretro_game_none(void) {
  * game runs:
  *   #netplay_host=PORT       hosts (PORT defaults to 55435)
  *   #netplay_public=1        lists the hosted room in the libretro lobby
+ *   #netplay_relay=HANDLE    hosts through a libretro relay (saopaulo...)
  *   #netplay=HOST:PORT       joins (PORT defaults to 55435)
  *   #netplay_nick=NAME       (optional)
  *   #netplay_mitm=SESSION    (relay session, optional) */
@@ -568,9 +569,9 @@ static void libretro_netplay_from_url(void) {
 
     if (hosting) {
         if (hosting[0] && atoi(hosting) > 0) port = (unsigned)atoi(hosting);
-        if (netplay_host_start((uint16_t)port, url_opt_get("netplay_nick"), &core) &&
-            url_opt_get("netplay_public"))
-            netplay_host_announce(s_content_name);
+        if (!netplay_host_start((uint16_t)port, url_opt_get("netplay_nick"), &core)) return;
+        if (url_opt_get("netplay_relay")) netplay_host_relay(url_opt_get("netplay_relay"));
+        if (url_opt_get("netplay_public")) netplay_host_announce(s_content_name);
         return;
     }
     snprintf(host, sizeof(host), "%s", target);

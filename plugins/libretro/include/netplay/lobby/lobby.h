@@ -26,7 +26,18 @@ typedef struct {
     const char *game_name;     /* content name, without extension */
     uint32_t    game_crc;
     uint16_t    port;
+    const char *mitm_server;   /* relay handle (saopaulo...), NULL if direct */
+    const char *mitm_session;  /* relay session, base64 */
 } netplay_lobby_room_t;
+
+/** @brief Where a relay is, once the lobby says; addr NULL on failure. */
+typedef void (*netplay_tunnel_cb_t)(const char *addr, uint16_t port, void *user);
+
+/**
+ * @brief Asks the lobby where a relay is (nyc, madrid, saopaulo,
+ * singapore); the answer comes later, through cb.
+ */
+bool netplay_lobby_tunnel(const char *handle, netplay_tunnel_cb_t cb, void *user);
 
 /** @brief Starts announcing a room. */
 void netplay_lobby_start(const netplay_lobby_room_t *room);
