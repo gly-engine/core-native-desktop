@@ -11,8 +11,10 @@
 
 #include "hw_render.h"
 #include "main.h"
+#include "gecnd_netplay.h"
 #include "netplay/client/client.h"
 #include "netplay/host/host.h"
+#include "netplay/lobby/lobby.h"
 
 const char *scanner_resolve_core(const char *name);
 const char *scanner_resolve_rom(const char *name);
@@ -225,6 +227,8 @@ static const char *core_option_default(const char *key) {
     return NULL;
 }
 
+static bool libretro_netplay_env(unsigned cmd, void *data);
+
 static bool core_environment(unsigned cmd, void *data) {
     switch (cmd & ~RETRO_ENVIRONMENT_EXPERIMENTAL) {
         case RETRO_ENVIRONMENT_GET_CAN_DUPE:
@@ -265,6 +269,11 @@ static bool core_environment(unsigned cmd, void *data) {
         case RETRO_ENVIRONMENT_GET_USERNAME:
             if (data) *(const char**)data = s_username;
             return true;
+        case GECND_ENVIRONMENT_NETPLAY_GET_LOBBY:
+        case GECND_ENVIRONMENT_NETPLAY_POST_LOBBY:
+        case GECND_ENVIRONMENT_NETPLAY_CONNECT:
+        case GECND_ENVIRONMENT_NETPLAY_DISCONNECT:
+            return libretro_netplay_env(cmd, data);
         case RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE:
             s_has_netpacket = data != NULL;
             if (data) s_netpacket = *(const struct retro_netpacket_callback *)data;
@@ -565,17 +574,12 @@ bool native_libretro_game_none(void) {
  *   #netplay_nick=NAME       (optional)
  *   #netplay_delay=FRAMES    input delay, fewer rollbacks (default 1)
  *   #netplay_mitm=SESSION    (relay session, optional) */
-static void libretro_netplay_from_url(void) {
-    const char *target = url_opt_get("netplay");
-    const char *hosting = url_opt_get("netplay_host");
-    char host[256];
-    unsigned port = 55435;
+/* What netplay needs of the loaded core */
+static void libretro_netplay_core(netplay_core_t *core_out) {
     netplay_core_t core = {0};
     struct retro_system_info info = {0};
 
-    if ((!target || !target[0]) && !hosting) return;
     if (p_retro_get_system_info) p_retro_get_system_info(&info);
-
     core.core_name       = info.library_name;
     core.core_version    = info.library_version;
     core.content_crc     = s_content_crc;
@@ -590,8 +594,21 @@ static void libretro_netplay_from_url(void) {
     core.local_buttons   = native_libretro_buttons;
     core.replay          = libretro_netplay_replay;
     core.packets         = s_has_netpacket ? &s_netpacket : NULL;
+    *core_out = core;
+}
+
+static void libretro_netplay_from_url(void) {
+    const char *target = url_opt_get("netplay");
+    const char *hosting = url_opt_get("netplay_host");
+    char host[256];
+    unsigned port = 55435;
+    netplay_core_t core;
+
+    /* the player's name, also for a core that asks (GET_USERNAME) */
     if (url_opt_get("netplay_nick") && url_opt_get("netplay_nick")[0])
         snprintf(s_username, sizeof(s_username), "%s", url_opt_get("netplay_nick"));
+    if ((!target || !target[0]) && !hosting) return;
+    libretro_netplay_core(&core);
 
     if (url_opt_get("netplay_delay")) {
         const int delay = atoi(url_opt_get("netplay_delay"));
@@ -600,7 +617,7 @@ static void libretro_netplay_from_url(void) {
 
     if (hosting) {
         if (hosting[0] && atoi(hosting) > 0) port = (unsigned)atoi(hosting);
-        if (!netplay_host_start((uint16_t)port, url_opt_get("netplay_nick"), &core)) return;
+        if (!netplay_host_start((uint16_t)port, s_username, &core)) return;
         if (url_opt_get("netplay_relay")) netplay_host_relay(url_opt_get("netplay_relay"));
         if (url_opt_get("netplay_public")) netplay_host_announce(s_content_name);
         return;
@@ -613,8 +630,76 @@ static void libretro_netplay_from_url(void) {
             port = (unsigned)atoi(colon + 1);
         }
     }
-    netplay_client_start(host, (uint16_t)port, url_opt_get("netplay_mitm"),
-                         url_opt_get("netplay_nick"), &core);
+    netplay_client_start(host, (uint16_t)port, url_opt_get("netplay_mitm"), s_username, &core);
+}
+
+/* A core's netplay request (gecnd_netplay.h), carried out after its frame */
+static struct {
+    enum { NP_REQ_NONE, NP_REQ_HOST, NP_REQ_JOIN, NP_REQ_LEAVE } kind;
+    char     game[128];
+    uint16_t port;
+    bool     listed;
+    char     relay[32];
+    char     host[256];
+    char     session[32];
+} s_np_request;
+
+static bool libretro_netplay_env(unsigned cmd, void *data) {
+    switch (cmd) {
+    case GECND_ENVIRONMENT_NETPLAY_GET_LOBBY: {
+        struct gecnd_netplay_lobby *lobby = data;
+        if (!lobby) return true;
+        if (lobby->refresh) netplay_lobby_list_refresh();
+        lobby->state = netplay_lobby_list(&lobby->json, &lobby->size);
+        return true;
+    }
+    case GECND_ENVIRONMENT_NETPLAY_POST_LOBBY: {
+        const struct gecnd_netplay_room *room = data;
+        if (!room) return false;
+        s_np_request.kind = NP_REQ_HOST;
+        snprintf(s_np_request.game, sizeof(s_np_request.game), "%s", room->game_name ? room->game_name : "");
+        s_np_request.port = room->port ? room->port : 55435;
+        s_np_request.listed = room->listed;
+        snprintf(s_np_request.relay, sizeof(s_np_request.relay), "%s", room->relay ? room->relay : "");
+        return true;
+    }
+    case GECND_ENVIRONMENT_NETPLAY_CONNECT: {
+        const struct gecnd_netplay_join *join = data;
+        if (!join || !join->host || !join->host[0]) return false;
+        s_np_request.kind = NP_REQ_JOIN;
+        snprintf(s_np_request.host, sizeof(s_np_request.host), "%s", join->host);
+        s_np_request.port = join->port ? join->port : 55435;
+        snprintf(s_np_request.session, sizeof(s_np_request.session), "%s",
+                 join->mitm_session ? join->mitm_session : "");
+        return true;
+    }
+    case GECND_ENVIRONMENT_NETPLAY_DISCONNECT:
+        s_np_request.kind = NP_REQ_LEAVE;
+        return true;
+    default:
+        return false;
+    }
+}
+
+/* Between frames: a session the core asked for replaces the one running */
+static void libretro_netplay_request(void) {
+    const int kind = s_np_request.kind;
+    netplay_core_t core;
+
+    if (kind == NP_REQ_NONE) return;
+    s_np_request.kind = NP_REQ_NONE;
+    netplay_client_stop();
+    netplay_host_stop();
+    if (kind == NP_REQ_LEAVE) return;
+
+    libretro_netplay_core(&core);
+    if (kind == NP_REQ_JOIN) {
+        netplay_client_start(s_np_request.host, s_np_request.port, s_np_request.session, s_username, &core);
+        return;
+    }
+    if (!netplay_host_start(s_np_request.port, s_username, &core)) return;
+    if (s_np_request.relay[0]) netplay_host_relay(s_np_request.relay);
+    if (s_np_request.listed) netplay_host_announce(s_np_request.game);
 }
 
 /* Roda no main thread após uv_thread_join do worker.
@@ -765,6 +850,7 @@ static void libretro_run_core(void) {
 
 void libretro_run_frame(void) {
     if (!core_initialized || !p_retro_run) return;
+    libretro_netplay_request();
     if (netplay_client_active()) {
         netplay_client_tick();
         return;

@@ -13,6 +13,7 @@
 #include "netplay/lobby/lobby.h"
 
 #define NP_LOBBY_URL    "http://lobby.libretro.com/add"
+#define NP_LOBBY_LIST   "http://lobby.libretro.com/list/"
 #define NP_LOBBY_TUNNEL "http://lobby.libretro.com/tunnel?name="
 
 static struct {
@@ -220,4 +221,80 @@ bool netplay_lobby_tunnel(const char *handle, netplay_tunnel_cb_t cb, void *user
     req.method = "GET";
     lb_client()->http(url, &req, tn_on_status, tn_on_data, tn_on_done, tn_on_error, NULL);
     return true;
+}
+
+/* ------------------------------------------------------------------ */
+/* Room list: the lobby's /list, a JSON array of rooms                 */
+/* ------------------------------------------------------------------ */
+
+static struct {
+    int     state;
+    int     status;
+    char   *json;
+    size_t  size, cap;
+    unsigned fetch;      /* the fetch callbacks belong to */
+} ls;
+
+static void ls_on_status(gdweb_id_t id, int status, void *user) {
+    (void)id;
+    if ((uintptr_t)user != ls.fetch) return;
+    ls.status = status;
+    ls.size = 0;
+}
+
+static void ls_on_data(gdweb_id_t id, const char *data, size_t len, void *user) {
+    (void)id;
+    if ((uintptr_t)user != ls.fetch) return;
+    if (ls.size + len + 1 > ls.cap) {
+        size_t cap = ls.cap ? ls.cap : 65536;
+        char *grown;
+        while (cap < ls.size + len + 1) cap *= 2;
+        if (!(grown = realloc(ls.json, cap))) {
+            ls.state = NP_LOBBY_LIST_FAILED;
+            return;
+        }
+        ls.json = grown;
+        ls.cap = cap;
+    }
+    memcpy(ls.json + ls.size, data, len);
+    ls.size += len;
+    ls.json[ls.size] = '\0';
+}
+
+static void ls_on_done(gdweb_id_t id, void *user) {
+    (void)id;
+    if ((uintptr_t)user != ls.fetch || ls.state != NP_LOBBY_LIST_LOADING) return;
+    ls.state = ls.status == 200 && ls.json ? NP_LOBBY_LIST_READY : NP_LOBBY_LIST_FAILED;
+    if (ls.state == NP_LOBBY_LIST_FAILED)
+        fprintf(stderr, "[netplay] the lobby did not give its room list (HTTP %d)\n", ls.status);
+}
+
+static void ls_on_error(gdweb_id_t id, const char *msg, void *user) {
+    (void)id;
+    if ((uintptr_t)user != ls.fetch) return;
+    ls.state = NP_LOBBY_LIST_FAILED;
+    fprintf(stderr, "[netplay] cannot reach the lobby for its rooms: %s\n", msg ? msg : "error");
+}
+
+void netplay_lobby_list_refresh(void) {
+    gdweb_http_req_t req = {0};
+
+    if (!lb_bind()) {
+        ls.state = NP_LOBBY_LIST_FAILED;
+        return;
+    }
+    /* a fetch still on its way is forgotten: its callbacks see another id */
+    ls.fetch++;
+    ls.state = NP_LOBBY_LIST_LOADING;
+    ls.status = 0;
+    ls.size = 0;
+    req.method = "GET";
+    lb_client()->http(NP_LOBBY_LIST, &req, ls_on_status, ls_on_data, ls_on_done, ls_on_error,
+                      (void *)(uintptr_t)ls.fetch);
+}
+
+int netplay_lobby_list(const char **json, size_t *size) {
+    *json = ls.state == NP_LOBBY_LIST_READY ? ls.json : NULL;
+    *size = ls.state == NP_LOBBY_LIST_READY ? ls.size : 0;
+    return ls.state;
 }

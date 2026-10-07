@@ -13,6 +13,7 @@
 #define GECND_NETPLAY_LOBBY_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /** @brief Seconds between two announces (RetroArch uses 20). */
@@ -47,5 +48,19 @@ void netplay_lobby_tick(unsigned players, unsigned spectators);
 
 /** @brief Stops announcing (the lobby drops the room by itself). */
 void netplay_lobby_stop(void);
+
+/** @brief Where the room list is (NP_LOBBY_LIST_*). */
+enum {
+    NP_LOBBY_LIST_NONE = 0,
+    NP_LOBBY_LIST_LOADING,
+    NP_LOBBY_LIST_READY,
+    NP_LOBBY_LIST_FAILED
+};
+
+/** @brief Fetches the lobby's room list (/list) again, in the background. */
+void netplay_lobby_list_refresh(void);
+
+/** @brief The room list as it came (JSON), and where its fetch is. */
+int netplay_lobby_list(const char **json, size_t *size);
 
 #endif
