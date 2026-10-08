@@ -846,6 +846,7 @@ void gdweb_loop_start(void *loop)
     uv_async_init(s_loop, &s_wq_async, wq_drain);
     uv_unref((uv_handle_t *)&s_wq_async); /* nao segura o loop vivo */
     s_wq_ready = 1;
+    gecnd_registry("set", "web_loop", loop, NULL);
 }
 
 void gdweb_loop_stop(void)
