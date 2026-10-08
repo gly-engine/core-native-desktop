@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -15,7 +16,7 @@
 void gecnd_set_opt(gecnd_t *gly, int c, ketopt_t opt);
 
 /* recursively traverse [keymap] tables; path built dot-by-dot */
-static void traverse_keymap(toml_datum_t node, char *path, int path_len)
+static void traverse_keymap(toml_datum_t node, const char *path)
 {
     if (node.type == TOML_TABLE) {
         /* check if all values are arrays (leaf table = keymap class) */
@@ -41,35 +42,167 @@ static void traverse_keymap(toml_datum_t node, char *path, int path_len)
         } else {
             /* inner table — recurse */
             for (int i = 0; i < node.u.tab.size; i++) {
-                char child[128];
-                if (path_len > 0)
-                    snprintf(child, sizeof(child), "%s.%s", path, node.u.tab.key[i]);
-                else
-                    snprintf(child, sizeof(child), "%s", node.u.tab.key[i]);
-                traverse_keymap(node.u.tab.value[i], child, (int)strlen(child));
+                const char *name = node.u.tab.key[i];
+                char child[strlen(path) + strlen(name) + 2];
+                snprintf(child, sizeof(child), path[0] ? "%s.%s" : "%s%s", path, name);
+                traverse_keymap(node.u.tab.value[i], child);
             }
         }
     }
 }
 
+typedef struct {
+    gecnd_t      *gly;
+    const char   *toml_path;
+    toml_datum_t  args;
+    unsigned      busy;     /* SRC_* já sendo expandidos (anti-loop) */
+} expand_ctx_t;
+
+enum { SRC_GAME = 1, SRC_ENGINE = 2 };
+
+static size_t expand_placeholders(const expand_ctx_t *ctx, const char *value, char *out);
+
+static void emit(char *out, size_t *pos, const char *s, size_t n)
+{
+    if (out) memcpy(out + *pos, s, n);
+    *pos += n;
+}
+
+/* emite os n primeiros bytes de `path`; relativo vira absoluto via {cwd}.
+ * URL (http/https) fica como está. */
+static void emit_path(char *out, size_t *pos, const char *path, size_t n)
+{
+    bool is_abs = path[0] == '/' || strstr(path, "://") != NULL
+#if defined(_WIN32)
+        || path[0] == '\\' || (path[0] && path[1] == ':')
+#endif
+        ;
+    if (!is_abs) {
+        const char *cwd = NULL;
+        gecnd_registry("get", "cwd", &cwd, NULL);
+        if (cwd && cwd[0]) {
+            emit(out, pos, cwd, strlen(cwd));
+            if (n > 0) emit(out, pos, "/", 1);
+        }
+    }
+    emit(out, pos, path, n);
+}
+
+/* diretório de `path`, sem a barra final */
+static void emit_dirname(char *out, size_t *pos, const char *path)
+{
+    if (!path || !path[0]) return;
+    const char *sep = strrchr(path, '/');
+#if defined(_WIN32)
+    const char *bsep = strrchr(path, '\\');
+    if (bsep > sep) sep = bsep;
+#endif
+    emit_path(out, pos, path, !sep ? 0 : sep == path ? 1 : (size_t)(sep - path));
+}
+
+/* diretório do game/engine: o [args] deste toml ganha (é aplicado logo
+ * depois do [envs]), senão o que já veio da linha de comando. O valor do
+ * [args] também é expandido; `busy` corta loop tipo game = "{cwd:game}/x". */
+static void emit_source_dir(const expand_ctx_t *ctx, char *out, size_t *pos,
+                            const char *opt, unsigned src, const char *uri)
+{
+    toml_datum_t v = {0};
+    bool whole = false;
+    if (ctx->args.type == TOML_TABLE && !(ctx->busy & src)) {
+        v = toml_get(ctx->args, opt);
+        if (v.type != TOML_STRING) {
+            v = toml_get(ctx->args, "game+engine");
+            whole = true;
+        }
+    }
+    if (v.type != TOML_STRING) { emit_dirname(out, pos, uri); return; }
+
+    expand_ctx_t inner = *ctx;
+    inner.busy |= whole ? (SRC_GAME | SRC_ENGINE) : src;
+    char str[expand_placeholders(&inner, v.u.str.ptr, NULL) + 1];
+    expand_placeholders(&inner, v.u.str.ptr, str);
+    if (!whole) { emit_dirname(out, pos, str); return; }
+
+    size_t n = strlen(str);
+    while (n > 1 && str[n - 1] == '/') n--;
+    emit_path(out, pos, str, n);
+}
+
+/* troca os placeholders de `value`:
+ *   {cwd}         diretório de trabalho do processo
+ *   {cwd:core}    diretório do executável
+ *   {cwd:game}    diretório do --game   (se já conhecido)
+ *   {cwd:engine}  diretório do --engine (se já conhecido)
+ *   {cwd:toml}    diretório deste .toml
+ *   {env:NOME}    variável de ambiente (vazio se não existir)
+ * Vale pra toda string do toml: [envs], [registry] e [args].
+ * Placeholder desconhecido fica literal. Com out == NULL só mede;
+ * retorna o tamanho sem o '\0'. */
+static size_t expand_placeholders(const expand_ctx_t *ctx, const char *value, char *out)
+{
+    size_t pos = 0;
+    for (const char *p = value; *p; ) {
+        const char *end = *p == '{' ? strchr(p, '}') : NULL;
+        if (!end) { emit(out, &pos, p++, 1); continue; }
+
+        const char *tok = p + 1;
+        size_t      len = (size_t)(end - tok);
+        const char *reg = NULL;
+#define IS(lit) (len == sizeof(lit) - 1 && strncmp(tok, lit, len) == 0)
+        if (IS("cwd")) {
+            gecnd_registry("get", "cwd", &reg, NULL);
+            if (reg) emit(out, &pos, reg, strlen(reg));
+        } else if (IS("cwd:core")) {
+            gecnd_registry("get", "pwd", &reg, NULL);
+            if (reg) emit(out, &pos, reg, strlen(reg));
+        } else if (IS("cwd:game")) {
+            emit_source_dir(ctx, out, &pos, "game", SRC_GAME, ctx->gly->game_source.uri);
+        } else if (IS("cwd:engine")) {
+            emit_source_dir(ctx, out, &pos, "engine", SRC_ENGINE, ctx->gly->engine_source.uri);
+        } else if (IS("cwd:toml")) {
+            emit_dirname(out, &pos, ctx->toml_path);
+        } else if (len > 4 && strncmp(tok, "env:", 4) == 0) {
+            char name[len - 3];
+            memcpy(name, tok + 4, len - 4);
+            name[len - 4] = '\0';
+            const char *env = getenv(name);
+            if (env) emit(out, &pos, env, strlen(env));
+        } else {
+            emit(out, &pos, p++, 1);
+            continue;
+        }
+#undef IS
+        p = end + 1;
+    }
+    if (out) out[pos] = '\0';
+    return pos;
+}
+
+static char *expand_strdup(const expand_ctx_t *ctx, const char *value)
+{
+    char *out = malloc(expand_placeholders(ctx, value, NULL) + 1);
+    if (out) expand_placeholders(ctx, value, out);
+    return out;
+}
+
+
 /* [registry] — cada chave vira registry("set", ...); tabelas aninhadas
  * juntam com ':' (ex.: [registry.web_http_path] rc="./rc2" → "web_http_path:rc").
  * O TOML é liberado no fim do parse, então key (e value string) são strdup
- * pelo próprio registry via opções de armazenamento. */
-static void traverse_registry(toml_datum_t node, const char *prefix)
+ * pelo próprio registry via opções de armazenamento. Strings passam
+ * pelos placeholders (ver expand_placeholders). */
+static void traverse_registry(const expand_ctx_t *ctx, toml_datum_t node, const char *prefix)
 {
     if (node.type != TOML_TABLE) return;
     for (int i = 0; i < node.u.tab.size; i++) {
-        char key[192];
-        if (prefix[0])
-            snprintf(key, sizeof(key), "%s:%s", prefix, node.u.tab.key[i]);
-        else
-            snprintf(key, sizeof(key), "%s", node.u.tab.key[i]);
+        const char *name = node.u.tab.key[i];
+        char key[strlen(prefix) + strlen(name) + 2];
+        snprintf(key, sizeof(key), prefix[0] ? "%s:%s" : "%s%s", prefix, name);
 
         toml_datum_t val = node.u.tab.value[i];
         switch (val.type) {
             case TOML_TABLE:
-                traverse_registry(val, key);
+                traverse_registry(ctx, val, key);
                 break;
             case TOML_INT64:
                 gecnd_registry("set", key, (void *)(intptr_t)val.u.int64, "strdup=key");
@@ -77,50 +210,17 @@ static void traverse_registry(toml_datum_t node, const char *prefix)
             case TOML_BOOLEAN:
                 gecnd_registry("set", key, (void *)(intptr_t)(val.u.boolean ? 1 : 0), "strdup=key");
                 break;
-            case TOML_STRING:
-                gecnd_registry("set", key, (void *)val.u.str.ptr, "strdup=keyval");
+            case TOML_STRING: {
+                char str[expand_placeholders(ctx, val.u.str.ptr, NULL) + 1];
+                expand_placeholders(ctx, val.u.str.ptr, str);
+                gecnd_registry("set", key, (void *)str, "strdup=keyval");
                 break;
+            }
             default:
                 fprintf(stderr, "[core:toml] incompatible type for registry key '%s'\n", key);
                 break;
         }
     }
-}
-
-static char *expand_env_placeholders(const char *value)
-{
-    const char *cwd = NULL, *pwd = NULL;
-    gecnd_registry("get", "cwd", &cwd, NULL);
-    gecnd_registry("get", "pwd", &pwd, NULL);
-    if (!cwd) cwd = "";
-    if (!pwd) pwd = "";
-    size_t cwd_len = strlen(cwd);
-    size_t pwd_len = strlen(pwd);
-
-    size_t out_len = 0;
-    for (const char *p = value; *p; ) {
-        if      (strncmp(p, "{cwd}", 5) == 0) { out_len += cwd_len; p += 5; }
-        else if (strncmp(p, "{pwd}", 5) == 0) { out_len += pwd_len; p += 5; }
-        else                                  { out_len++; p++; }
-    }
-
-    char *out = malloc(out_len + 1);
-    size_t pos = 0;
-    for (const char *p = value; *p; ) {
-        if (strncmp(p, "{cwd}", 5) == 0) {
-            memcpy(out + pos, cwd, cwd_len);
-            pos += cwd_len;
-            p   += 5;
-        } else if (strncmp(p, "{pwd}", 5) == 0) {
-            memcpy(out + pos, pwd, pwd_len);
-            pos += pwd_len;
-            p   += 5;
-        } else {
-            out[pos++] = *p++;
-        }
-    }
-    out[pos] = '\0';
-    return out;
 }
 
 void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts)
@@ -134,6 +234,11 @@ void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts)
         return;
     }
 
+    expand_ctx_t ctx = {
+        .gly       = gly,
+        .toml_path = path,
+        .args      = toml_get(res.toptab, "args"),
+    };
     toml_datum_t envs = toml_get(res.toptab, "envs");
     if (envs.type == TOML_TABLE) {
         for (int i = 0; i < envs.u.tab.size; i++) {
@@ -143,29 +248,26 @@ void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts)
                                 envs.u.tab.key[i]);
                 continue;
             }
-            char *expanded = expand_env_placeholders(val.u.str.ptr);
+            char expanded[expand_placeholders(&ctx, val.u.str.ptr, NULL) + 1];
+            expand_placeholders(&ctx, val.u.str.ptr, expanded);
 #if defined(_WIN32)
             SetEnvironmentVariable(envs.u.tab.key[i], expanded);
 #else
             setenv(envs.u.tab.key[i], expanded, 1);
 #endif
-            free(expanded);
         }
     }
 
     /* apply [registry] */
     toml_datum_t reg = toml_get(res.toptab, "registry");
-    if (reg.type == TOML_TABLE) traverse_registry(reg, "");
+    if (reg.type == TOML_TABLE) traverse_registry(&ctx, reg, "");
 
     /* traverse [keymap] */
     toml_datum_t keymap = toml_get(res.toptab, "keymap");
-    if (keymap.type == TOML_TABLE) {
-        char path_buf[128] = {0};
-        traverse_keymap(keymap, path_buf, 0);
-    }
+    if (keymap.type == TOML_TABLE) traverse_keymap(keymap, "");
 
     /* apply [args] — stop before longopts last named entry (toml/9999) to prevent recursion */
-    toml_datum_t args = toml_get(res.toptab, "args");
+    toml_datum_t args = ctx.args;
     if (args.type == TOML_TABLE) {
         for (int i = 0; longopts[i].name != NULL && longopts[i + 1].name != NULL; i++) {
             toml_datum_t val = toml_get(args, longopts[i].name);
@@ -175,7 +277,7 @@ void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts)
                 if (val.type == TOML_BOOLEAN && val.u.boolean)
                     gecnd_set_opt(gly, longopts[i].val, fake);
             } else if (val.type == TOML_STRING) {
-                fake.arg = strdup(val.u.str.ptr); /** @todo memory leak here*/
+                fake.arg = expand_strdup(&ctx, val.u.str.ptr); /** @todo memory leak here*/
                 gecnd_set_opt(gly, longopts[i].val, fake);
             } else if (val.type == TOML_INT64) {
                 char buf[32];
@@ -193,14 +295,14 @@ void gamely_set_toml(gecnd_t *gly, const char *path, ko_longopt_t *longopts)
                 fprintf(stderr, "[core:toml] incompatible type for key '%s'\n",
                         longopts[i].name);
             } else {
-                char plural[68];
+                char plural[strlen(longopts[i].name) + 2];
                 snprintf(plural, sizeof(plural), "%ss", longopts[i].name);
                 toml_datum_t arr = toml_get(args, plural);
                 if (arr.type == TOML_ARRAY) {
                     for (int j = 0; j < arr.u.arr.size; j++) {
                         toml_datum_t elem = arr.u.arr.elem[j];
                         if (elem.type == TOML_STRING) {
-                            fake.arg = strdup(elem.u.str.ptr); /** @todo memory leak here*/
+                            fake.arg = expand_strdup(&ctx, elem.u.str.ptr); /** @todo memory leak here*/
                             gecnd_set_opt(gly, longopts[i].val, fake);
                         }
                     }
