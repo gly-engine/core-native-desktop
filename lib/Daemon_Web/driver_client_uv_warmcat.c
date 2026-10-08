@@ -50,6 +50,7 @@ typedef struct {
 
     char           http_body[BUF_SIZE];
     size_t         http_body_len;
+    char           http_content_type[64];
 
     struct lws    *wsi;
     void          *user;
@@ -188,8 +189,11 @@ static int callback_wc(struct lws *wsi,
         snprintf(len_str, sizeof(len_str), "%zu", c->http_body_len);
         lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_LENGTH,
             (unsigned char *)len_str, (int)strlen(len_str), p, end);
-        lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_TYPE,
-            (unsigned char *)"application/json", 16, p, end);
+        {
+            const char *type = c->http_content_type[0] ? c->http_content_type : "application/json";
+            lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_TYPE,
+                (unsigned char *)type, (int)strlen(type), p, end);
+        }
         lws_client_http_body_pending(wsi, 1);
         lws_callback_on_writable(wsi);
         break;
@@ -344,6 +348,9 @@ static gdweb_id_t wc_http(
         size_t n = body_len < BUF_SIZE ? body_len : BUF_SIZE;
         memcpy(c->http_body, body, n);
         c->http_body_len = n;
+        c->http_content_type[0] = '\0';
+        if (req && req->content_type)
+            snprintf(c->http_content_type, sizeof(c->http_content_type), "%s", req->content_type);
     }
 
     char host[256], path[1024];

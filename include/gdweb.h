@@ -15,6 +15,7 @@ typedef struct {
     const char  *path;
     const char  *body;
     size_t       body_len;
+    const char  *content_type;
 } gdweb_http_req_t;
 
 typedef struct {
