@@ -24,6 +24,9 @@ typedef struct {
     const char      *data;
     size_t           len;
     void           **usr;
+    /* rota da conexao (sem a query); no fim da struct para nao mudar o
+     * layout visto por plugins compilados antes do campo existir */
+    const char      *path;
 } gdweb_ws_req_t;
 
 typedef void (*gdweb_http_cb_t)  (const gdweb_http_req_t *req);

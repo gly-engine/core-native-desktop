@@ -59,10 +59,21 @@ typedef struct {
     int             waiting_for_idr; /* 1: overflow ocorreu — descartar até próximo IDR */
 } http_session_t;
 
+/* fila de saida do ws: um send por WRITEABLE, entao mensagens mandadas em
+ * rajada (ex: linhas de um CGI) esperam aqui em vez de se sobrescreverem */
+typedef struct ws_msg {
+    struct ws_msg *next;
+    size_t         len;
+    unsigned char  buf[]; /* LWS_PRE + len */
+} ws_msg_t;
+
+/* teto da fila por conexao: um cliente lento perde as mais antigas */
+#define WS_QUEUE_MAX (1024u * 1024u)
+
 typedef struct {
-    unsigned char  pending[LWS_PRE + MSG_BUF];
-    size_t         pending_len;
-    int            has_pending;
+    ws_msg_t      *head;
+    ws_msg_t      *tail;
+    size_t         queued;        /* bytes na fila */
     int            close_pending; /* servico pediu close: fecha apos drenar */
     gdweb_ws_cb_t    cb;
     char           path[128];
@@ -200,10 +211,33 @@ static void _ws_send_wsi(struct lws *wsi, const char *text, size_t len)
     ws_session_t *s = (ws_session_t *)lws_wsi_user(wsi);
     if (!s) return;
     size_t n = len < (MSG_BUF - 1) ? len : (MSG_BUF - 1);
-    memcpy(&s->pending[LWS_PRE], text, n);
-    s->pending_len = n;
-    s->has_pending = 1;
+    ws_msg_t *m = malloc(sizeof(*m) + LWS_PRE + n);
+    if (!m) return;
+    m->next = NULL;
+    m->len  = n;
+    memcpy(&m->buf[LWS_PRE], text, n);
+    if (s->tail) s->tail->next = m; else s->head = m;
+    s->tail    = m;
+    s->queued += n;
+
+    while (s->queued > WS_QUEUE_MAX && s->head != s->tail) {
+        ws_msg_t *old = s->head;
+        s->head    = old->next;
+        s->queued -= old->len;
+        free(old);
+    }
     lws_callback_on_writable(wsi);
+}
+
+static void _ws_queue_free(ws_session_t *s)
+{
+    while (s->head) {
+        ws_msg_t *m = s->head;
+        s->head = m->next;
+        free(m);
+    }
+    s->tail   = NULL;
+    s->queued = 0;
 }
 
 /* -----------------------------------------------------------------------
@@ -551,8 +585,9 @@ static int callback_ws(struct lws *wsi,
         g.ws_sessions[g.ws_count] = s;
         g.ws_count++;
 
-        /* extrair query string — LWS separa URI e args em tokens distintos */
-        char qbuf[384] = {0};
+        /* extrair query string — LWS separa URI e args em tokens distintos;
+         * 2 KiB: um CGI pode receber varios caminhos de arquivo (opkg install) */
+        char qbuf[2048] = {0};
         int  qlen      = lws_hdr_total_length(wsi, WSI_TOKEN_HTTP_URI_ARGS);
         if (qlen > 0)
             lws_hdr_copy(wsi, qbuf, sizeof(qbuf), WSI_TOKEN_HTTP_URI_ARGS);
@@ -563,7 +598,8 @@ static int callback_ws(struct lws *wsi,
                 .event = GDWEB_WS_OPEN,
                 .data  = (qlen > 0) ? qbuf : NULL,
                 .len   = (qlen > 0) ? strlen(qbuf) : 0,
-                .usr   = &s->usr
+                .usr   = &s->usr,
+                .path  = s->path
             };
             s->cb(&req);
         }
@@ -584,9 +620,10 @@ static int callback_ws(struct lws *wsi,
             }
         }
         if (s->cb) {
-            gdweb_ws_req_t req = { .id=s->req_id, .event=GDWEB_WS_CLOSE, .usr=&s->usr };
+            gdweb_ws_req_t req = { .id=s->req_id, .event=GDWEB_WS_CLOSE, .usr=&s->usr, .path=s->path };
             s->cb(&req);
         }
+        _ws_queue_free(s);
         memset(s, 0, sizeof(*s));
         break;
     }
@@ -598,7 +635,8 @@ static int callback_ws(struct lws *wsi,
                 .event = GDWEB_WS_MESSAGE,
                 .data  = (const char *)in,
                 .len   = len,
-                .usr   = &s->usr
+                .usr   = &s->usr,
+                .path  = s->path
             };
             s->cb(&req);
         }
@@ -606,12 +644,15 @@ static int callback_ws(struct lws *wsi,
     }
 
     case LWS_CALLBACK_SERVER_WRITEABLE:
-        if (s->has_pending) {
-            lws_write(wsi, &s->pending[LWS_PRE], s->pending_len, LWS_WRITE_TEXT);
-            s->has_pending = 0;
-            s->pending_len = 0;
-            /* drena o frame pendente antes de fechar */
-            if (s->close_pending) lws_callback_on_writable(wsi);
+        if (s->head) {
+            ws_msg_t *m = s->head;
+            s->head    = m->next;
+            if (!s->head) s->tail = NULL;
+            s->queued -= m->len;
+            lws_write(wsi, &m->buf[LWS_PRE], m->len, LWS_WRITE_TEXT);
+            free(m);
+            /* drena a fila (e so entao o close) */
+            if (s->head || s->close_pending) lws_callback_on_writable(wsi);
             break;
         }
         if (s->close_pending) {
