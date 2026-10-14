@@ -36,7 +36,7 @@ static void on_found(const char *path, void *usr) {
 }
 
 static const char *const s_fallbacks[] = {
-    "etc1:etc1", "tga:rgba5551", "tga:rgba8888", "jpg:yuv420p", "jpeg:yuv420p", NULL
+    "etc1:etc1", "tga:rgba5551", "tga:rgba8888", "webp:yuv420p", "jpg:yuv420p", "jpeg:yuv420p", NULL
 };
 
 /* For a requested .png we may substitute a sibling in one of the fallback

@@ -252,6 +252,7 @@ static const char *web_mime_by_ext(const char *path)
     if (!strcmp(dot, "json")) return "application/json";
     if (!strcmp(dot, "png"))  return "image/png";
     if (!strcmp(dot, "jpg") || !strcmp(dot, "jpeg")) return "image/jpeg";
+    if (!strcmp(dot, "webp")) return "image/webp";
     if (!strcmp(dot, "gif"))  return "image/gif";
     if (!strcmp(dot, "svg"))  return "image/svg+xml";
     if (!strcmp(dot, "ico"))  return "image/x-icon";
