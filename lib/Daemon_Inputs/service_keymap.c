@@ -349,7 +349,15 @@ bool gamely_daemon_input_do_init(void)
             }
         }
 
-        if (!src->driver->open(src->port, src->searchparams)) {
+        bool shared = false;
+        for (int j = 0; j < i; j++) {
+            if (g_reg.sources[j].driver == src->driver && g_reg.sources[j].port == src->port) {
+                shared = true;
+                break;
+            }
+        }
+
+        if (!shared && !src->driver->open(src->port, src->searchparams)) {
             fprintf(stderr, "[core:input] driver open failed: %s\n", src->proto);
             free(src->searchparams);
             src->searchparams = NULL;
