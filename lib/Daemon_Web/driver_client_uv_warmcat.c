@@ -294,6 +294,7 @@ static void wc_start(void *loop)
     info.protocols             = protocols;
     info.foreign_loops         = (void **)&uv_loop;
     info.retry_and_idle_policy = &s_retry_policy;
+    info.max_http_header_data  = 16384;
 #if defined(GECND_HAS_SSL)
     info.options               = LWS_SERVER_OPTION_LIBUV | LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
     info.client_ssl_ca_filepath = ca_path;
