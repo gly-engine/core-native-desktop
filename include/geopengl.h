@@ -179,6 +179,7 @@ typedef struct {
     
     GLuint fbo_id;
     GLuint fbo_tex;
+    GLuint fbo_depth_rb;
     int fbo_width, fbo_height;
 
     kvec_t(GEAtlasPage) atlas_pages;   /* unified: all color formats */
@@ -231,6 +232,8 @@ void ge_pipeline_resize(uint16_t w, uint16_t h);
 void ge_pipeline_start(void);
 void ge_pipeline_flush(void);
 void ge_pipeline_flush_primitives(void);
+void ge_pipeline_overlay_start(uint16_t w, uint16_t h);
+const uint8_t *ge_pipeline_overlay_flush(void);
 void    ge_zindex_reset(void);
 int16_t ge_zindex_get(GEProgramType prog, bool opaque, int page_index);
 
