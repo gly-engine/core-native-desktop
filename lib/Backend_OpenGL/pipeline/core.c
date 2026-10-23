@@ -85,6 +85,7 @@ void ge_pipeline_init(uint16_t w, uint16_t h) {
     s->fbo_tex = 0;
     s->fbo_width = 0;
     s->fbo_height = 0;
+    s->fbo_depth_rb = 0;
     
     // Page 0 setup
     GEAtlasPage *p0 = &s->atlas_pages.a[0];
@@ -163,14 +164,15 @@ bool ge_detect_etc1_support(void) {
     return ext && strstr(ext, "GL_OES_compressed_ETC1_RGB8_texture") != NULL;
 }
 
-static void ensure_fbo(GLBackendState *s) {
-    if (s->fbo_width == s->window_width && s->fbo_height == s->window_height && s->fbo_id != 0) return;
+static void ensure_fbo(GLBackendState *s, int w, int h) {
+    if (s->fbo_width == w && s->fbo_height == h && s->fbo_id != 0) return;
 
     if (s->fbo_id) glDeleteFramebuffers(1, &s->fbo_id);
     if (s->fbo_tex) glDeleteTextures(1, &s->fbo_tex);
+    if (s->fbo_depth_rb) glDeleteRenderbuffers(1, &s->fbo_depth_rb);
 
-    s->fbo_width = s->window_width;
-    s->fbo_height = s->window_height;
+    s->fbo_width = w;
+    s->fbo_height = h;
 
     glGenTextures(1, &s->fbo_tex);
     glBindTexture(GL_TEXTURE_2D, s->fbo_tex);
@@ -180,9 +182,14 @@ static void ensure_fbo(GLBackendState *s) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+    glGenRenderbuffers(1, &s->fbo_depth_rb);
+    glBindRenderbuffer(GL_RENDERBUFFER, s->fbo_depth_rb);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, w, h);
+
     glGenFramebuffers(1, &s->fbo_id);
     glBindFramebuffer(GL_FRAMEBUFFER, s->fbo_id);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s->fbo_tex, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, s->fbo_depth_rb);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         fprintf(stderr, "FBO Incomplete\n");
@@ -231,6 +238,7 @@ void ge_pipeline_terminate(void) {
 
     if (s->fbo_id)  glDeleteFramebuffers(1, &s->fbo_id);
     if (s->fbo_tex) glDeleteTextures(1,    &s->fbo_tex);
+    if (s->fbo_depth_rb) glDeleteRenderbuffers(1, &s->fbo_depth_rb);
 
     // HW render FBO (cores like PCSX ReARMed)
     if (s->hw_fbo_id)       glDeleteFramebuffers(1,  &s->hw_fbo_id);
@@ -366,4 +374,22 @@ void ge_pipeline_flush(void) {
         gamely_daemon_media_transmit_push(g_readpixels_buf,
                                           s->window_width, s->window_height);
     }
+}
+
+void ge_pipeline_overlay_start(uint16_t w, uint16_t h) {
+    GLBackendState *s = geogl_get_state();
+    ensure_fbo(s, w, h);
+    glBindFramebuffer(GL_FRAMEBUFFER, s->fbo_id);
+    ge_pipeline_start();
+    glViewport(0, 0, w, h);
+    mat4_ortho(s->projection, 0, (float)s->window_width, 0, (float)s->window_height, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
+}
+
+const uint8_t *ge_pipeline_overlay_flush(void) {
+    GLBackendState *s = geogl_get_state();
+    ge_pipeline_flush_primitives();
+    bool fits = s->fbo_width * s->fbo_height * 4 <= g_readpixels_buf_len;
+    if (fits) glReadPixels(0, 0, s->fbo_width, s->fbo_height, GL_RGBA, GL_UNSIGNED_BYTE, g_readpixels_buf);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return fits ? g_readpixels_buf : NULL;
 }

@@ -12,12 +12,20 @@ static bool enabled_gl = false;
 
 static void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r);
 
+static gecnd_overlay_t *overlay;
+
 static void core_pre_draw(const char *key, void *value, void *usr) {
     if (!enabled_gl) return;
     (void)key; (void)usr;
     gecnd_t *gly = (gecnd_t *)value;
-    if (gly->state != GECND_FSM_RUNNING_PERFORMANCE &&
-        gly->state != GECND_FSM_RUNNING_BACKGROUND) {
+    overlay = NULL;
+    if (gly->state == GECND_FSM_RUNNING_BACKGROUND)
+        gecnd_registry("get", "core:overlay", &overlay, NULL);
+    if (overlay) {
+        ge_pipeline_overlay_start(overlay->width, overlay->height);
+        return;
+    }
+    if (gly->state != GECND_FSM_RUNNING_PERFORMANCE) {
         glFinish();
     }
     ge_pipeline_start();
@@ -27,6 +35,11 @@ static void core_pre_draw(const char *key, void *value, void *usr) {
 static void core_pre_tint(const char *key, void *value, void *usr) {
     if (!enabled_gl) return;
     (void)key; (void)value; (void)usr;
+    if (overlay) {
+        const uint8_t *rgba = ge_pipeline_overlay_flush();
+        if (rgba) overlay->frame(rgba);
+        return;
+    }
     ge_pipeline_flush();
     platform_swap_buffers();
 }
