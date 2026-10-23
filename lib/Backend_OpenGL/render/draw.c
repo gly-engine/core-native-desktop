@@ -36,8 +36,9 @@ static void core_pre_tint(const char *key, void *value, void *usr) {
     if (!enabled_gl) return;
     (void)key; (void)value; (void)usr;
     if (overlay) {
-        const uint8_t *rgba = ge_pipeline_overlay_flush();
-        if (rgba) overlay->frame(rgba);
+        uint16_t r[4];
+        const uint8_t *rgba = ge_pipeline_overlay_flush(r);
+        if (rgba) overlay->frame(rgba, r[0], r[1], r[2], r[3]);
         return;
     }
     ge_pipeline_flush();
