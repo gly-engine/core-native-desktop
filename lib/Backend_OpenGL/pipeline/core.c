@@ -10,6 +10,9 @@
 
 static uint8_t *g_readpixels_buf     = NULL;
 static int      g_readpixels_buf_len = 0;
+static bool g_overlay = false;
+static int  g_dirty[4];
+static int  g_prev[4] = {INT16_MAX, INT16_MAX, INT16_MIN, INT16_MIN};
 
 #define MAX_VERTICES GE_MAX_VERTICES
 
@@ -332,6 +335,13 @@ static void flush_batch(GEProgramType type, bool transparent) {
     // Orphan the buffer to avoid driver stalls/crashes
     glBufferData(GL_ARRAY_BUFFER, MAX_VERTICES * stride, NULL, GL_STREAM_DRAW);
     glBufferSubData(GL_ARRAY_BUFFER, 0, b->count * stride, b->buffer);
+    for (int i = 0; g_overlay && i < b->count; i++) {
+        const int16_t *v = (const int16_t *)((const uint8_t *)b->buffer + (size_t)i * stride);
+        if (v[0] < g_dirty[0]) g_dirty[0] = v[0];
+        if (v[1] < g_dirty[1]) g_dirty[1] = v[1];
+        if (v[0] > g_dirty[2]) g_dirty[2] = v[0];
+        if (v[1] > g_dirty[3]) g_dirty[3] = v[1];
+    }
     
     int offset = 0;
     while (offset < b->count) {
@@ -383,13 +393,29 @@ void ge_pipeline_overlay_start(uint16_t w, uint16_t h) {
     ge_pipeline_start();
     glViewport(0, 0, w, h);
     mat4_ortho(s->projection, 0, (float)s->window_width, 0, (float)s->window_height, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
+    g_dirty[0] = g_dirty[1] = INT16_MAX;
+    g_dirty[2] = g_dirty[3] = INT16_MIN;
+    g_overlay = true;
 }
 
-const uint8_t *ge_pipeline_overlay_flush(void) {
+static int to_fbo(int v, int to, int from, bool up) {
+    long r = ((long)v * to + (up ? from - 1 : 0)) / from;
+    return r < 0 ? 0 : r > to ? to : (int)r;
+}
+
+const uint8_t *ge_pipeline_overlay_flush(uint16_t region[4]) {
     GLBackendState *s = geogl_get_state();
     ge_pipeline_flush_primitives();
-    bool fits = s->fbo_width * s->fbo_height * 4 <= g_readpixels_buf_len;
-    if (fits) glReadPixels(0, 0, s->fbo_width, s->fbo_height, GL_RGBA, GL_UNSIGNED_BYTE, g_readpixels_buf);
+    g_overlay = false;
+    int x0 = to_fbo(g_dirty[0] < g_prev[0] ? g_dirty[0] : g_prev[0], s->fbo_width, s->window_width, false);
+    int y0 = to_fbo(g_dirty[1] < g_prev[1] ? g_dirty[1] : g_prev[1], s->fbo_height, s->window_height, false);
+    int x1 = to_fbo(g_dirty[2] > g_prev[2] ? g_dirty[2] : g_prev[2], s->fbo_width, s->window_width, true);
+    int y1 = to_fbo(g_dirty[3] > g_prev[3] ? g_dirty[3] : g_prev[3], s->fbo_height, s->window_height, true);
+    memcpy(g_prev, g_dirty, sizeof(g_prev));
+    bool draw = x1 > x0 && y1 > y0 && s->fbo_width * s->fbo_height * 4 <= g_readpixels_buf_len;
+    if (draw) glReadPixels(x0, y0, x1 - x0, y1 - y0, GL_RGBA, GL_UNSIGNED_BYTE, g_readpixels_buf);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    return fits ? g_readpixels_buf : NULL;
+    region[0] = (uint16_t)x0; region[1] = (uint16_t)y0;
+    region[2] = (uint16_t)(x1 - x0); region[3] = (uint16_t)(y1 - y0);
+    return draw ? g_readpixels_buf : NULL;
 }

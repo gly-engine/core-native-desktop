@@ -229,7 +229,7 @@ int gecnd_registry(const char* cmd, const char *key, void *const value, void *co
 typedef struct {
     uint16_t width;
     uint16_t height;
-    void (*frame)(const uint8_t *rgba);
+    void (*frame)(const uint8_t *rgba, uint16_t x, uint16_t y, uint16_t w, uint16_t h);
 } gecnd_overlay_t;
 
 /* Runs the backend selection in Frontend_Core/backend.c: walks "backend:*" and
