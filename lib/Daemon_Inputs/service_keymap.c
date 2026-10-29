@@ -67,6 +67,7 @@ typedef struct {
 static gamely_keymap_registry_t g_reg;
 static int                      g_initialized = 0;
 static bool                     g_init_failed = false;
+static volatile int             g_init_running = 0;
 
 bool gamely_daemon_input_do_init(void);
 
@@ -316,10 +317,28 @@ void gamely_daemon_input_add_source(const char *uri)
 
 /* -- activate -- */
 
+static void init_free_params(void)
+{
+    for (int i = 0; i < g_reg.source_count; i++) {
+        free(g_reg.sources[i].searchparams);
+        g_reg.sources[i].searchparams = NULL;
+    }
+}
+
+static bool init_fail(void)
+{
+    init_free_params();
+    g_init_failed  = true;
+    g_init_running = 0;
+    return false;
+}
+
 bool gamely_daemon_input_do_init(void)
 {
     if (g_initialized) return true;
     if (g_init_failed) return false;
+    if (g_init_running) return false;  /* a driver thread pushing mid-init */
+    g_init_running = 1;
 
     if (g_reg.source_count == 0) {
         char default_uri[40];
@@ -344,31 +363,34 @@ bool gamely_daemon_input_do_init(void)
             }
             if (!src->active) {
                 fprintf(stderr, "[core:input] class not found: %s\n", src->classname);
-                g_init_failed = true;
-                return false;
+                return init_fail();
             }
         }
 
+        /* one driver instance per port: a second source rides on the first,
+         * and its own searchparams never reach the driver */
         bool shared = false;
         for (int j = 0; j < i; j++) {
-            if (g_reg.sources[j].driver == src->driver && g_reg.sources[j].port == src->port) {
-                shared = true;
-                break;
-            }
+            gamely_input_source_t *prev = &g_reg.sources[j];
+            if (prev->driver != src->driver || prev->port != src->port) continue;
+            shared = true;
+            if (strcmp(prev->searchparams ? prev->searchparams : "",
+                       src->searchparams  ? src->searchparams  : "") != 0)
+                fprintf(stderr, "[core:input] %s port %d already open by %s; ignoring ?%s\n",
+                        src->proto, src->port, prev->classname,
+                        src->searchparams ? src->searchparams : "");
+            break;
         }
 
         if (!shared && !src->driver->open(src->port, src->searchparams)) {
             fprintf(stderr, "[core:input] driver open failed: %s\n", src->proto);
-            free(src->searchparams);
-            src->searchparams = NULL;
-            g_init_failed = true;
-            return false;
+            return init_fail();
         }
-        free(src->searchparams);
-        src->searchparams = NULL;
     }
 
-    g_initialized = 1;
+    init_free_params();
+    g_initialized  = 1;
+    g_init_running = 0;
     return true;
 }
 

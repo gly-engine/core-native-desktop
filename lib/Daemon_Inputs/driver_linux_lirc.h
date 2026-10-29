@@ -25,6 +25,7 @@ typedef void (*gamely_lirc_emit_t)(void *usr, uint32_t scancode, bool repeat);
 
 typedef struct {
     const char *name;
+    bool repeat_frames;   /* a held key arrives as repeat frames, not resent codes */
     void (*reset)(int port);
     void (*feed) (int port, uint32_t entry, unsigned flags,
                   gamely_lirc_emit_t emit, void *usr);
