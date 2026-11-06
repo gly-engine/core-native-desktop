@@ -2,6 +2,7 @@
  * @todo investigar sobre alpn se esta certo colocar para http 1.1
  */
 #include <string.h>
+#include <strings.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -51,6 +52,8 @@ typedef struct {
     char           http_body[BUF_SIZE];
     size_t         http_body_len;
     char           http_content_type[64];
+    char           http_headers[BUF_SIZE / 2];
+    size_t         http_headers_len;
 
     struct lws    *wsi;
     void          *user;
@@ -182,9 +185,18 @@ static int callback_wc(struct lws *wsi,
     }
 
     case LWS_CALLBACK_CLIENT_APPEND_HANDSHAKE_HEADER: {
-        if (!c || !c->http_body_len) break;
+        if (!c) break;
         unsigned char **p   = (unsigned char **)in;
         unsigned char  *end = *p + len - 1;
+        for (size_t at = 0; at < c->http_headers_len;) {
+            const char *name  = c->http_headers + at;
+            const char *value = name + strlen(name) + 1;
+            if (lws_add_http_header_by_name(wsi, (const unsigned char *)name,
+                    (const unsigned char *)value, (int)strlen(value), p, end))
+                return -1;
+            at = (size_t)(value - c->http_headers) + strlen(value) + 1;
+        }
+        if (!c->http_body_len) break;
         char len_str[24];
         snprintf(len_str, sizeof(len_str), "%zu", c->http_body_len);
         lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_LENGTH,
@@ -352,6 +364,23 @@ static gdweb_id_t wc_http(
         c->http_content_type[0] = '\0';
         if (req && req->content_type)
             snprintf(c->http_content_type, sizeof(c->http_content_type), "%s", req->content_type);
+    }
+
+    for (size_t i = 0; req && i < req->header_count; i++) {
+        const char *name  = req->header_names[i];
+        const char *value = req->header_values[i];
+        if (!name || !value) continue;
+        if (strcasecmp(name, "Content-Type") == 0) {
+            snprintf(c->http_content_type, sizeof(c->http_content_type), "%s", value);
+            continue;
+        }
+        size_t room = sizeof(c->http_headers) - c->http_headers_len;
+        int    n    = snprintf(c->http_headers + c->http_headers_len, room, "%s:%c%s", name, '\0', value);
+        if (n < 0 || (size_t)n + 1 > room) {
+            fprintf(stderr, "[webclient] header descartado: %s\n", name);
+            continue;
+        }
+        c->http_headers_len += (size_t)n + 1;
     }
 
     char host[256], path[1024];
