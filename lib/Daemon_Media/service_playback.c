@@ -71,6 +71,7 @@ static bool gate_running(gecnd_fsm_t s) {
     return s == GECND_FSM_RUNNING
         || s == GECND_FSM_RUNNING_PERFORMANCE
         || s == GECND_FSM_RUNNING_BACKGROUND
+        || s == GECND_FSM_RUNNING_OVERLAY
         || s == GECND_FSM_RUNNING_STANDBY;
 }
 

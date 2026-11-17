@@ -196,7 +196,9 @@ static bool init_check_exit(gecnd_t *gly) {
 static void on_core_state(const char *key, void *value, void *usr) {
     (void)key;
     gecnd_t *gly = (gecnd_t *)usr;
-    if (gly) gecnd_set_state(gly, (gecnd_fsm_t)(uintptr_t)value);
+    gecnd_fsm_t state = (gecnd_fsm_t)(uintptr_t)value;
+    if (state == GECND_FSM_RUNNING_OVERLAY && !overlay) state = GECND_FSM_RUNNING_BACKGROUND;
+    if (gly) gecnd_set_state(gly, state);
 }
 
 static bool state_boot(gecnd_t *gly) {
@@ -391,8 +393,9 @@ static bool state_running(gecnd_t *gly) {
     gecnd_registry("set", "core:post_loop", gly, NULL);
     if (gly->error_len) return false;
 
-    if ((gly->state != GECND_FSM_RUNNING_BACKGROUND || overlay) &&
-        gly->state != GECND_FSM_RUNNING_STANDBY) {
+    if (gly->state != GECND_FSM_RUNNING_BACKGROUND &&
+        gly->state != GECND_FSM_RUNNING_STANDBY &&
+        (gly->state != GECND_FSM_RUNNING_OVERLAY || overlay)) {
         if (gly->frameskip_count++ >= gly->frameskip) {
             gly->frameskip_count = 0;
             gecnd_registry("set", "core:pre_draw", gly, NULL);
@@ -441,6 +444,7 @@ bool gecnd_update(gecnd_t *gly) {
     case GECND_FSM_RUNNING:
     case GECND_FSM_RUNNING_PERFORMANCE:
     case GECND_FSM_RUNNING_BACKGROUND:
+    case GECND_FSM_RUNNING_OVERLAY:
     case GECND_FSM_RUNNING_STANDBY: return state_running(gly);
     case GECND_FSM_EXITING:        return state_exiting(gly);
     default:                       return false;

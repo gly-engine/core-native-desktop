@@ -13,15 +13,14 @@ static bool enabled_gl = false;
 static void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r);
 
 static gecnd_overlay_t *overlay;
+static bool offscreen;
 
 static void core_pre_draw(const char *key, void *value, void *usr) {
     if (!enabled_gl) return;
     (void)key; (void)usr;
     gecnd_t *gly = (gecnd_t *)value;
-    overlay = NULL;
-    if (gly->state == GECND_FSM_RUNNING_BACKGROUND)
-        gecnd_registry("get", "core:overlay", &overlay, NULL);
-    if (overlay) {
+    offscreen = gly->state == GECND_FSM_RUNNING_OVERLAY && overlay;
+    if (offscreen) {
         ge_pipeline_overlay_start(overlay->width, overlay->height);
         return;
     }
@@ -35,7 +34,7 @@ static void core_pre_draw(const char *key, void *value, void *usr) {
 static void core_pre_tint(const char *key, void *value, void *usr) {
     if (!enabled_gl) return;
     (void)key; (void)value; (void)usr;
-    if (overlay) {
+    if (offscreen) {
         uint16_t r[4];
         const uint8_t *rgba = ge_pipeline_overlay_flush(r);
         if (rgba) overlay->frame(rgba, r[0], r[1], r[2], r[3]);
@@ -214,6 +213,7 @@ static void native_draw_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
 __attribute__((constructor))
 static void init(void) {
     gecnd_registry("bind", "internal:gl", &enabled_gl, (void*) GECND_TYPE_BOOLEAN);
+    gecnd_registry("bind", "core:overlay", &overlay, (void *)GECND_TYPE_VOID);
     gecnd_registry("hook", "core:pre_draw", (void *)core_pre_draw, NULL);
     gecnd_registry("hook", "core:pre_tint", (void *)core_pre_tint, NULL);
     gecnd_registry("set", "backend_func:native_draw_color", (void *)native_draw_color, NULL);
