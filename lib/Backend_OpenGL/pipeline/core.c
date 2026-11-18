@@ -13,6 +13,13 @@ static int      g_readpixels_buf_len = 0;
 static bool g_overlay = false;
 static int  g_dirty[4];
 static int  g_prev[4] = {INT16_MAX, INT16_MAX, INT16_MIN, INT16_MIN};
+static uint32_t g_hash;
+static uint32_t g_prev_hash;
+
+static uint32_t fnv1a(uint32_t h, const void *data, size_t len) {
+    for (const uint8_t *p = data, *end = p + len; p < end; p++) h = (h ^ *p) * 16777619u;
+    return h;
+}
 
 #define MAX_VERTICES GE_MAX_VERTICES
 
@@ -342,6 +349,10 @@ static void flush_batch(GEProgramType type, bool transparent) {
         if (v[0] > g_dirty[2]) g_dirty[2] = v[0];
         if (v[1] > g_dirty[3]) g_dirty[3] = v[1];
     }
+    if (g_overlay) {
+        g_hash = fnv1a(g_hash, &b->page_index, sizeof(b->page_index));
+        g_hash = fnv1a(g_hash, b->buffer, (size_t)b->count * stride);
+    }
     
     int offset = 0;
     while (offset < b->count) {
@@ -368,6 +379,7 @@ void ge_pipeline_flush_primitives(void) {
 
 void ge_pipeline_flush(void) {
     ge_pipeline_flush_primitives();
+    g_prev_hash = 0;
     bool online = gamely_daemon_media_transmit_is_online();
 
     static bool prev_online  = false;
@@ -395,6 +407,7 @@ void ge_pipeline_overlay_start(uint16_t w, uint16_t h) {
     mat4_ortho(s->projection, 0, (float)s->window_width, 0, (float)s->window_height, -(float)GE_MAX_LAYERS, (float)GE_MAX_LAYERS);
     g_dirty[0] = g_dirty[1] = INT16_MAX;
     g_dirty[2] = g_dirty[3] = INT16_MIN;
+    g_hash = 2166136261u;
     g_overlay = true;
 }
 
@@ -412,7 +425,9 @@ const uint8_t *ge_pipeline_overlay_flush(uint16_t region[4]) {
     int x1 = to_fbo(g_dirty[2] > g_prev[2] ? g_dirty[2] : g_prev[2], s->fbo_width, s->window_width, true);
     int y1 = to_fbo(g_dirty[3] > g_prev[3] ? g_dirty[3] : g_prev[3], s->fbo_height, s->window_height, true);
     memcpy(g_prev, g_dirty, sizeof(g_prev));
-    bool draw = x1 > x0 && y1 > y0 && s->fbo_width * s->fbo_height * 4 <= g_readpixels_buf_len;
+    bool changed = g_hash != g_prev_hash;
+    g_prev_hash = g_hash;
+    bool draw = changed && x1 > x0 && y1 > y0 && s->fbo_width * s->fbo_height * 4 <= g_readpixels_buf_len;
     if (draw) glReadPixels(x0, y0, x1 - x0, y1 - y0, GL_RGBA, GL_UNSIGNED_BYTE, g_readpixels_buf);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     region[0] = (uint16_t)x0; region[1] = (uint16_t)y0;

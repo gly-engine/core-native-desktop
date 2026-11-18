@@ -34,13 +34,6 @@ typedef struct {
 
 extern int gecnd_signal;
 
-static void *overlay;
-
-__attribute__((constructor))
-static void init(void) {
-    gecnd_registry("bind", "core:overlay", &overlay, (void *)GECND_TYPE_VOID);
-}
-
 static const char *reader(lua_State *L, void *ud, size_t *size) {
     (void)L;
     gecnd_buffer_t *data = (gecnd_buffer_t *)ud;
@@ -391,7 +384,7 @@ static bool state_running(gecnd_t *gly) {
     gecnd_registry("set", "core:post_loop", gly, NULL);
     if (gly->error_len) return false;
 
-    if ((gly->state != GECND_FSM_RUNNING_BACKGROUND || overlay) &&
+    if (gly->state != GECND_FSM_RUNNING_BACKGROUND &&
         gly->state != GECND_FSM_RUNNING_STANDBY) {
         if (gly->frameskip_count++ >= gly->frameskip) {
             gly->frameskip_count = 0;
@@ -441,6 +434,7 @@ bool gecnd_update(gecnd_t *gly) {
     case GECND_FSM_RUNNING:
     case GECND_FSM_RUNNING_PERFORMANCE:
     case GECND_FSM_RUNNING_BACKGROUND:
+    case GECND_FSM_RUNNING_OVERLAY:
     case GECND_FSM_RUNNING_STANDBY: return state_running(gly);
     case GECND_FSM_EXITING:        return state_exiting(gly);
     default:                       return false;
