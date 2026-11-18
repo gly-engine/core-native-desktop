@@ -234,6 +234,8 @@ void ge_pipeline_flush(void);
 void ge_pipeline_flush_primitives(void);
 void ge_pipeline_overlay_start(uint16_t w, uint16_t h);
 const uint8_t *ge_pipeline_overlay_flush(uint16_t region[4]);
+void ge_overlay_begin(bool entering);
+void ge_overlay_end(void);
 void    ge_zindex_reset(void);
 int16_t ge_zindex_get(GEProgramType prog, bool opaque, int page_index);
 

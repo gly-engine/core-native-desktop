@@ -34,13 +34,6 @@ typedef struct {
 
 extern int gecnd_signal;
 
-static void *overlay;
-
-__attribute__((constructor))
-static void init(void) {
-    gecnd_registry("bind", "core:overlay", &overlay, (void *)GECND_TYPE_VOID);
-}
-
 static const char *reader(lua_State *L, void *ud, size_t *size) {
     (void)L;
     gecnd_buffer_t *data = (gecnd_buffer_t *)ud;
@@ -196,9 +189,7 @@ static bool init_check_exit(gecnd_t *gly) {
 static void on_core_state(const char *key, void *value, void *usr) {
     (void)key;
     gecnd_t *gly = (gecnd_t *)usr;
-    gecnd_fsm_t state = (gecnd_fsm_t)(uintptr_t)value;
-    if (state == GECND_FSM_RUNNING_OVERLAY && !overlay) state = GECND_FSM_RUNNING_BACKGROUND;
-    if (gly) gecnd_set_state(gly, state);
+    if (gly) gecnd_set_state(gly, (gecnd_fsm_t)(uintptr_t)value);
 }
 
 static bool state_boot(gecnd_t *gly) {
@@ -394,8 +385,7 @@ static bool state_running(gecnd_t *gly) {
     if (gly->error_len) return false;
 
     if (gly->state != GECND_FSM_RUNNING_BACKGROUND &&
-        gly->state != GECND_FSM_RUNNING_STANDBY &&
-        (gly->state != GECND_FSM_RUNNING_OVERLAY || overlay)) {
+        gly->state != GECND_FSM_RUNNING_STANDBY) {
         if (gly->frameskip_count++ >= gly->frameskip) {
             gly->frameskip_count = 0;
             gecnd_registry("set", "core:pre_draw", gly, NULL);
