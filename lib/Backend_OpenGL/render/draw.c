@@ -12,17 +12,16 @@ static bool enabled_gl = false;
 
 static void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r);
 
-static gecnd_overlay_t *overlay;
+static bool offscreen;
 
 static void core_pre_draw(const char *key, void *value, void *usr) {
     if (!enabled_gl) return;
     (void)key; (void)usr;
     gecnd_t *gly = (gecnd_t *)value;
-    overlay = NULL;
-    if (gly->state == GECND_FSM_RUNNING_BACKGROUND)
-        gecnd_registry("get", "core:overlay", &overlay, NULL);
-    if (overlay) {
-        ge_pipeline_overlay_start(overlay->width, overlay->height);
+    bool was_offscreen = offscreen;
+    offscreen = gly->state == GECND_FSM_RUNNING_OVERLAY;
+    if (offscreen) {
+        ge_overlay_begin(!was_offscreen);
         return;
     }
     if (gly->state != GECND_FSM_RUNNING_PERFORMANCE) {
@@ -35,10 +34,8 @@ static void core_pre_draw(const char *key, void *value, void *usr) {
 static void core_pre_tint(const char *key, void *value, void *usr) {
     if (!enabled_gl) return;
     (void)key; (void)value; (void)usr;
-    if (overlay) {
-        uint16_t r[4];
-        const uint8_t *rgba = ge_pipeline_overlay_flush(r);
-        if (rgba) overlay->frame(rgba, r[0], r[1], r[2], r[3]);
+    if (offscreen) {
+        ge_overlay_end();
         return;
     }
     ge_pipeline_flush();

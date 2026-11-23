@@ -214,6 +214,7 @@ Comportamento por sub-estado:
 | `RUNNING`              | ✓ | ✓ | ✓ | ✓ | target_fps |
 | `RUNNING_PERFORMANCE`  | ✓ | ✓ | ✓ | — | target_fps |
 | `RUNNING_BACKGROUND`   | ✓ | ✓ | — | — | target_fps |
+| `RUNNING_OVERLAY`      | ✓ | ✓ | ✓ (no fbdev de `path.overlay`) | — | target_fps |
 | `RUNNING_STANDBY`      | ✓ | ✓ | — | — | 1 Hz |
 
 Com `nogame = 1` os `callback_loop`/`callback_draw` são pulados em qualquer

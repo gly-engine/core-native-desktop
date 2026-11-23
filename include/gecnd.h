@@ -53,6 +53,7 @@ typedef enum __attribute__((packed)) {
     GECND_FSM_RUNNING,
     GECND_FSM_RUNNING_PERFORMANCE,
     GECND_FSM_RUNNING_BACKGROUND,
+    GECND_FSM_RUNNING_OVERLAY,
     GECND_FSM_RUNNING_STANDBY,
     GECND_FSM_EXITING,
     GECND_FSM_EXITING_FORCE,
@@ -225,12 +226,6 @@ bool gecnd_lang(gecnd_lang_t *const ctx);
 typedef void (*gecnd_registry_handler)(const char *key, void *value, void *usr);
 
 int gecnd_registry(const char* cmd, const char *key, void *const value, void *const usr);
-
-typedef struct {
-    uint16_t width;
-    uint16_t height;
-    void (*frame)(const uint8_t *rgba, uint16_t x, uint16_t y, uint16_t w, uint16_t h);
-} gecnd_overlay_t;
 
 /* Runs the backend selection in Frontend_Core/backend.c: walks "backend:*" and
  * calls each candidate until one starts without signalling "error:backend".
