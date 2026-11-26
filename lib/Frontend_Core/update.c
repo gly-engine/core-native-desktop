@@ -434,6 +434,7 @@ bool gecnd_update(gecnd_t *gly) {
     case GECND_FSM_RUNNING:
     case GECND_FSM_RUNNING_PERFORMANCE:
     case GECND_FSM_RUNNING_BACKGROUND:
+    case GECND_FSM_RUNNING_OVERLAY:
     case GECND_FSM_RUNNING_STANDBY: return state_running(gly);
     case GECND_FSM_EXITING:        return state_exiting(gly);
     default:                       return false;
