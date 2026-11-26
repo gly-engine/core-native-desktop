@@ -168,7 +168,11 @@ static void db_schema_cb(const char *url, void *schema_usr,
 /* ── public API ───────────────────────────────────────────────────── */
 
 void gamely_daemon_db_start(void) {
-    if (sqlite3_open("app.db", &s_db) != SQLITE_OK) {
+    const char *path = NULL;
+    gecnd_registry("get", "path:storage", (void *)&path, NULL);
+    if (!path || !path[0]) path = "app.db";
+    if (sqlite3_open(path, &s_db) != SQLITE_OK) {
+        fprintf(stderr, "[db] failed to open %s: %s\n", path, sqlite3_errmsg(s_db));
         sqlite3_close(s_db);
         s_db = NULL;
         return;

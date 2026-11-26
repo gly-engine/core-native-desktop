@@ -23,6 +23,9 @@ if(GECND_USE_WARMCAT)
         CMAKE_ARGS
             ${ZIG_TARGET_FLAG}
             -DCMAKE_INSTALL_PREFIX=${WARMCAT_BIN}
+            # sem isso o lws assume Debug (_DEBUG), que entre outras coisas
+            # chama o close duas vezes no libuv e mata o close frame do ws
+            -DCMAKE_BUILD_TYPE=Release
             -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
             -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
             -DLWS_WITH_STATIC=ON

@@ -46,11 +46,12 @@ static void cb_call(lua_State *L, int nargs)
 
 /* copia o resultado: o ponteiro de lua_tostring morre no lua_pop e o GC
  * pode recolher a string durante os proximos pcall — caller da free() */
-static char *cb_get_str(gecnd_t *gly, int64_t lua_id, const char *evt)
+static char *cb_get_str(gecnd_t *gly, int64_t lua_id, const char *evt, int64_t index)
 {
     lua_State *L = gly->L;
     cb_push(gly, lua_id, evt);
-    if (lua_pcall(L, 2, 1, 0)) {
+    lua_pushinteger(L, index);
+    if (lua_pcall(L, 3, 1, 0)) {
         const char *err = lua_tostring(L, -1);
         fprintf(stderr, "[http] lua callback error: %s\n", err ? err : "?");
         lua_pop(L, 1);
@@ -226,25 +227,30 @@ static int lua_native_http_handler(lua_State *L)
         return 0;
     }
 
-    char *url    = cb_get_str(gly, lua_id, "get-fullurl");
-    char *method = cb_get_str(gly, lua_id, "get-method");
+    char *url    = cb_get_str(gly, lua_id, "get-fullurl", 0);
+    char *method = cb_get_str(gly, lua_id, "get-method", 0);
     int   is_ws  = method && strcmp(method, "SOCK") == 0;
     char *body    = NULL;
     char *upgrade = NULL;
+    char *count   = NULL;
+    size_t header_count = 0;
+    char **header_names  = NULL;
+    char **header_values = NULL;
 
     if (is_ws) {
-        upgrade = cb_get_str(gly, lua_id, "get-sock-upgrade");
+        upgrade = cb_get_str(gly, lua_id, "get-sock-upgrade", 0);
     } else {
-        body = cb_get_str(gly, lua_id, "get-body");
+        body  = cb_get_str(gly, lua_id, "get-body", 0);
+        count = cb_get_str(gly, lua_id, "get-header-count", 0);
+        header_count  = count ? strtoul(count, NULL, 10) : 0;
+        header_names  = calloc(header_count, sizeof(char *));
+        header_values = calloc(header_count, sizeof(char *));
+        if (!header_names || !header_values) header_count = 0;
+        for (size_t i = 0; i < header_count; i++) {
+            header_names[i]  = cb_get_str(gly, lua_id, "get-header-name", (int64_t)i + 1);
+            header_values[i] = cb_get_str(gly, lua_id, "get-header-data", (int64_t)i + 1);
+        }
     }
-
-    /**
-     * @todo iterate request headers via get-header-count / get-header-name /
-     *       get-header-data and forward them to the driver. Will require
-     *       extending gdweb_http_req_t with header_names/header_values/header_count
-     *       (shared between HTTP and WS) and adding header injection in
-     *       LWS_CALLBACK_CLIENT_APPEND_HANDSHAKE_HEADER inside driver_warmcat.c.
-     */
 
     if (!url) {
         cb_error_immediate(L, "missing url");
@@ -272,7 +278,14 @@ static int lua_native_http_handler(lua_State *L)
             ctx
         );
     } else {
-        gdweb_http_req_t req = { .method = method, .body = body, .body_len = body ? strlen(body) : 0 };
+        gdweb_http_req_t req = {
+            .method        = method,
+            .body          = body,
+            .body_len      = body ? strlen(body) : 0,
+            .header_names  = (const char * const *)header_names,
+            .header_values = (const char * const *)header_values,
+            .header_count  = header_count
+        };
         con_id = gdweb_control_client()->http(
             url, &req,
             on_status, on_data, on_done, on_error,
@@ -292,6 +305,13 @@ static int lua_native_http_handler(lua_State *L)
     cb_promise(gly, lua_id);
 
 cleanup_strings:
+    for (size_t i = 0; i < header_count; i++) {
+        free(header_names[i]);
+        free(header_values[i]);
+    }
+    free(header_names);
+    free(header_values);
+    free(count);
     free(url);
     free(method);
     free(body);

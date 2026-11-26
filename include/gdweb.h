@@ -15,7 +15,11 @@ typedef struct {
     const char  *path;
     const char  *body;
     size_t       body_len;
-    const char  *content_type;  /* of the body; NULL = application/json */
+    const char  *content_type;
+    const char  *content_type;
+    const char * const *header_names;
+    const char * const *header_values;
+    size_t       header_count;
 } gdweb_http_req_t;
 
 typedef struct {
@@ -24,6 +28,9 @@ typedef struct {
     const char      *data;
     size_t           len;
     void           **usr;
+    /* rota da conexao (sem a query); no fim da struct para nao mudar o
+     * layout visto por plugins compilados antes do campo existir */
+    const char      *path;
 } gdweb_ws_req_t;
 
 typedef void (*gdweb_http_cb_t)  (const gdweb_http_req_t *req);

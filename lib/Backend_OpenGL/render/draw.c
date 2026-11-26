@@ -12,12 +12,19 @@ static bool enabled_gl = false;
 
 static void native_draw_rect(uint8_t mode, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r);
 
+static bool offscreen;
+
 static void core_pre_draw(const char *key, void *value, void *usr) {
     if (!enabled_gl) return;
     (void)key; (void)usr;
     gecnd_t *gly = (gecnd_t *)value;
-    if (gly->state != GECND_FSM_RUNNING_PERFORMANCE &&
-        gly->state != GECND_FSM_RUNNING_BACKGROUND) {
+    bool was_offscreen = offscreen;
+    offscreen = gly->state == GECND_FSM_RUNNING_OVERLAY;
+    if (offscreen) {
+        ge_overlay_begin(!was_offscreen);
+        return;
+    }
+    if (gly->state != GECND_FSM_RUNNING_PERFORMANCE) {
         glFinish();
     }
     ge_pipeline_start();
@@ -27,6 +34,10 @@ static void core_pre_draw(const char *key, void *value, void *usr) {
 static void core_pre_tint(const char *key, void *value, void *usr) {
     if (!enabled_gl) return;
     (void)key; (void)value; (void)usr;
+    if (offscreen) {
+        ge_overlay_end();
+        return;
+    }
     ge_pipeline_flush();
     platform_swap_buffers();
 }

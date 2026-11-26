@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
 
@@ -49,26 +50,27 @@
  */
 
 typedef struct {
-    int       port;
-    int       running;
-    int       retry_ms;
-    int       ttl_ms;
-    int       repeat;
-    int       debug;
-    int       dump;        /* dump the raw mode2 pulse train */
-    unsigned  decoder_flags;
-    int       seen_repeat;  /* remote uses repeat frames to hold */
-    uint32_t  mask;
-    int       fd;
-    uint32_t  mode;        /* mode in use */
-    uint32_t  want_mode;   /* 0 = auto */
+    int        port;
+    atomic_int running;
+    int        retry_ms;
+    int        ttl_ms;
+    int        repeat;
+    int        debug;
+    int        dump;          /* dump the raw mode2 pulse train */
+    unsigned   decoder_flags;
+    int        repeat_frames; /* source marks a held key with repeat frames */
+    uint32_t   mask;
+    int        fd;
+    uint32_t   mode;          /* mode in use */
+    uint32_t   want_mode;     /* 0 = auto */
     const gamely_lirc_decoder_t *decoder;
-    size_t    code_bytes;  /* read size in LIRCCODE */
-    int       wake[2];
-    int       connected;
-    int       warned;      /* already complained about this connect attempt */
-    char      device[256];
-    pthread_t thread;
+    size_t     code_bytes;    /* read size in LIRCCODE */
+    int        wake[2];
+    int        connected;
+    int        warn_open;     /* open() failure already logged */
+    int        warn_mode;     /* mode setup failure already logged */
+    char       device[256];
+    pthread_t  thread;
 } lirc_instance_t;
 
 static lirc_instance_t g_instances[LIRC_MAX_INSTANCES];
@@ -163,13 +165,11 @@ static const char *lirc_mode_name(uint32_t mode)
     }
 }
 
-/* "/dev/lirc0" | "/lirc0" | "lirc0" | "0" -> "/dev/lirc0" */
+/* absolute path as-is; "lirc0" | "0" -> "/dev/lirc0" */
 static void lirc_normalize_device(const char *in, char *out, size_t outsz)
 {
-    if (strncmp(in, "/dev/", 5) == 0)
+    if (in[0] == '/')
         snprintf(out, outsz, "%s", in);
-    else if (in[0] == '/')
-        snprintf(out, outsz, "/dev%s", in);
     else if (in[0] >= '0' && in[0] <= '9')
         snprintf(out, outsz, "/dev/lirc%s", in);
     else
@@ -184,38 +184,30 @@ static void lirc_emit(lirc_instance_t *inst, uint32_t code, bool repeat)
     gamely_daemon_input_push(code & inst->mask, true, (uint32_t)inst->ttl_ms);
 }
 
-static void lirc_feed_scancode(lirc_instance_t *inst, const struct lirc_scancode *sc)
-{
-    bool repeat = (sc->flags & LIRC_SCANCODE_FLAG_REPEAT) != 0;
-    if (repeat && !inst->repeat) return;
-    lirc_emit(inst, (uint32_t)sc->scancode, repeat);
-}
-
-/* -- mode2: hand the pulse train to the protocol decoder -- */
-
 /*
- * NEC already tells the two apart: a data frame is a new tap, a repeat
- * frame is "still holding". treating both alike forces a choice between a
- * short ttl (taps work, holds flicker) and a long ttl (holds are steady,
- * taps merge).
- *
- * so: if the remote uses repeat frames — which we learn by seeing one —
- * a data frame while the key is already down becomes release+press, and
- * every tap stays a tap no matter how generous the ttl is. a remote that
- * only resends data frames is left out of this and rides on the ttl.
+ * a source that marks a held key with repeat frames (NEC, kernel scancode)
+ * tells a new tap from "still holding": a data frame while the key is
+ * already down becomes release+press, so every tap stays a tap no matter
+ * how generous the ttl is. one that only resends the plain code cannot
+ * tell them apart and rides on the ttl.
  */
 static void lirc_decoder_emit(void *usr, uint32_t scancode, bool repeat)
 {
     lirc_instance_t *inst = (lirc_instance_t *)usr;
 
-    if (repeat) {
-        inst->seen_repeat = 1;
-        if (!inst->repeat) return;
-    } else if (inst->seen_repeat) {
+    if (repeat && !inst->repeat) return;
+    if (!repeat && inst->repeat_frames)
         gamely_daemon_input_push(scancode & inst->mask, false, 0);
-    }
     lirc_emit(inst, scancode, repeat);
 }
+
+static void lirc_feed_scancode(lirc_instance_t *inst, const struct lirc_scancode *sc)
+{
+    lirc_decoder_emit(inst, (uint32_t)sc->scancode,
+                      (sc->flags & LIRC_SCANCODE_FLAG_REPEAT) != 0);
+}
+
+/* -- mode2: hand the pulse train to the protocol decoder -- */
 
 static void lirc_mode2_feed(lirc_instance_t *inst, uint32_t entry)
 {
@@ -235,7 +227,9 @@ static void lirc_mode2_feed(lirc_instance_t *inst, uint32_t entry)
 static int lirc_sleep(lirc_instance_t *inst, int timeout_ms)
 {
     struct pollfd pfd = { .fd = inst->wake[0], .events = POLLIN };
-    if (poll(&pfd, 1, timeout_ms) > 0) return -1;
+    int n;
+    while ((n = poll(&pfd, 1, timeout_ms)) < 0 && errno == EINTR) { }
+    if (n != 0) return -1;
     return inst->running ? 0 : -1;
 }
 
@@ -243,7 +237,7 @@ static int lirc_lirccode_len(lirc_instance_t *inst)
 {
     uint32_t bits = 32;
     if (ioctl(inst->fd, LIRC_GET_LENGTH, &bits) != 0 || bits == 0 || bits > 64) {
-        inst->warned = 1;
+        inst->warn_mode = 1;
         fprintf(stderr, "[core:input:lirc] LIRC_GET_LENGTH failed: %s\n", inst->device);
         return -1;
     }
@@ -260,10 +254,10 @@ static int lirc_set_mode(lirc_instance_t *inst)
 {
     uint32_t features = 0;
 
-    if (inst->warned) return -1;  /* already failed and logged; just retry quietly */
+    if (inst->warn_mode) return -1;  /* already failed and logged; just retry quietly */
 
     if (ioctl(inst->fd, LIRC_GET_FEATURES, &features) != 0) {
-        inst->warned = 1;
+        inst->warn_mode = 1;
         fprintf(stderr, "[core:input:lirc] LIRC_GET_FEATURES failed: %s (%s)\n",
                 inst->device, strerror(errno));
         return -1;
@@ -282,7 +276,7 @@ static int lirc_set_mode(lirc_instance_t *inst)
     } else if (features & LIRC_CAN_REC_MODE2) {
         inst->mode = LIRC_MODE_MODE2;
     } else {
-        inst->warned = 1;
+        inst->warn_mode = 1;
         fprintf(stderr, "[core:input:lirc] %s has no usable rec mode (features=0x%08X)\n",
                 inst->device, features);
         return -1;
@@ -292,11 +286,13 @@ static int lirc_set_mode(lirc_instance_t *inst)
         return -1;
 
     if (ioctl(inst->fd, LIRC_SET_REC_MODE, &inst->mode) != 0) {
-        inst->warned = 1;
+        inst->warn_mode = 1;
         fprintf(stderr, "[core:input:lirc] LIRC_SET_REC_MODE %s failed: %s (%s)\n",
                 lirc_mode_name(inst->mode), inst->device, strerror(errno));
         return -1;
     }
+    inst->repeat_frames = inst->mode == LIRC_MODE_MODE2 ? inst->decoder->repeat_frames
+                        : inst->mode == LIRC_MODE_SCANCODE;
     inst->decoder->reset(inst->port);
     return 0;
 }
@@ -342,8 +338,8 @@ static int lirc_try_connect(lirc_instance_t *inst)
         /* retrying quietly is for hotplug, but the 1st failure always
          * shows: otherwise a wrong dev= looks exactly like "receiver not
          * plugged in yet" */
-        if (!inst->warned) {
-            inst->warned = 1;
+        if (!inst->warn_open) {
+            inst->warn_open = 1;
             fprintf(stderr, "[core:input:lirc] open failed: %s (%s) — retrying every %dms\n",
                     inst->device, strerror(errno), inst->retry_ms);
         }
@@ -359,7 +355,8 @@ static int lirc_try_connect(lirc_instance_t *inst)
 
     if (!inst->connected) {
         inst->connected = 1;
-        inst->warned    = 0;
+        inst->warn_open = 0;
+        inst->warn_mode = 0;
         fprintf(stderr, "[core:input:lirc] %s connected mode=%s%s%s (port=%d)\n",
                 inst->device, lirc_mode_name(inst->mode),
                 inst->mode == LIRC_MODE_MODE2 ? " protocol=" : "",
@@ -372,8 +369,9 @@ static int lirc_try_connect(lirc_instance_t *inst)
 static void lirc_disconnect(lirc_instance_t *inst)
 {
     close(inst->fd);
-    inst->fd     = -1;
-    inst->warned = 0;
+    inst->fd        = -1;
+    inst->warn_open = 0;
+    inst->warn_mode = 0;
     inst->decoder->reset(inst->port);
     if (inst->connected) {
         inst->connected = 0;
