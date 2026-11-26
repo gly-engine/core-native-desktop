@@ -59,6 +59,15 @@ static void register_libretro_inputs(void) {
     }
 }
 
+/** @brief Buttons held on a local controller, bit n = joypad id n (netplay). */
+uint32_t native_libretro_buttons(unsigned port) {
+    uint32_t buttons = 0;
+    if (port > 3) return 0;
+    for (unsigned id = 0; id < 16; id++)
+        if (s_pressed[port][id]) buttons |= 1u << id;
+    return buttons;
+}
+
 int16_t RETRO_CALLCONV engine_input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id) {
     static bool s_init = false;
     (void)index;

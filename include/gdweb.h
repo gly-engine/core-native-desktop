@@ -16,6 +16,7 @@ typedef struct {
     const char  *body;
     size_t       body_len;
     const char  *content_type;
+    const char  *content_type;
     const char * const *header_names;
     const char * const *header_values;
     size_t       header_count;
